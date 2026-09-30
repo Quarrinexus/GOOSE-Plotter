@@ -25,8 +25,8 @@ KEY = "goose_plotter_session"  # the session file's marker, holding VERSION
 FORMAT = 7
 TEXTS = {Panel: ("title", "x_label", "y_label"), Line: ("label",)}
 
-# Not saved: what the last draw found, and which line the controls edit.
-SKIP = {"shown", "error", "lines", "selected", "source"}
+# Not saved: what the last draw found (fit values too), and which line the controls edit.
+SKIP = {"shown", "error", "fit_values", "lines", "selected", "source"}
 # Settings that must be one of a menu's keys; anything else gets the default.
 # Per class: a Line's window is smoothing's, in points; a Panel's is the FFT's.
 CHOICES = {Line: {"smooth": smoothing.METHODS, "background": background.MODES,

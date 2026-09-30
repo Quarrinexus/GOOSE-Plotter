@@ -19,7 +19,7 @@ from goose_plotter.smoothing import describe as describe_smoothing
 SYNC = {"run": ("run",), "x": ("x",), "x_fn": ("x_fn",), "y": ("y",), "y_fn": ("y_fn",),
         "colour": ("colour",), "cut": ("cut", "cuts"),
         "smoothing": ("smooth", "window", "in_x", "span", "order"),
-        "background": ("background", "degree"),
+        "background": ("background", "degree", "advanced", "fit_function", "fit_start"),
         "style": ("style", "width", "marker", "marker_size")}
 SYNC_DEFAULT = "run x x_fn y y_fn colour style"
 X_UNITS = ("span", "cuts")  # settings in the plotted x
@@ -47,6 +47,10 @@ class Line:
     span: float | None = None  # window in x; None: estimated from `window` when drawn
     background: str = ""  # a key of background.MODES; "" for off
     degree: int = 10  # of the background polynomial
+    advanced: bool = False  # fit `fit_function` instead of the polynomial
+    fit_function: str = ""  # a function of x with capital-letter unknowns, e.g. "A * sin(B * x) + C"
+    fit_start: str = ""  # start values for its unknowns, e.g. "B=314"; 1 for any not given
+    fit_values: tuple = ()  # ((name, value), ...) the last fit found; not saved
     order: int = 2  # Savitzky–Golay polynomial order
     cut: str = ""  # a key of splicing.MODES, for all the ranges; "" for off
     cuts: tuple = ()  # the cut's x ranges, (start, end) pairs as splicing.tidy makes them
@@ -61,7 +65,7 @@ class Line:
     error: str = ""  # why the last draw failed, if it did
 
     def copy(self):
-        return replace(self, shown=None, error="")
+        return replace(self, shown=None, error="", fit_values=())
 
     @property
     def auto_width(self):
@@ -88,10 +92,14 @@ class Line:
 
     @property
     def fitting(self):
-        """(mode, degree), or None when the background is off."""
+        """(mode, degree, function, start values), or None when the background
+        is off; the function and start values are "" for the polynomial, and
+        the degree None for a function."""
         if not self.background:
             return None
-        return (self.background, self.degree)
+        if self.advanced:
+            return (self.background, None, self.fit_function, self.fit_start)
+        return (self.background, self.degree, "", "")
 
     @property
     def cutting(self):

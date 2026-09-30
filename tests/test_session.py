@@ -149,6 +149,18 @@ def test_line_colours_avoid_clashes():
     assert len(set(colours)) == 3
 
 
+def test_fit_values_are_not_saved_but_the_function_is():
+    panels, links = state()
+    line = panels[(0, 0)].lines[0]
+    line.advanced, line.fit_function, line.fit_start = True, "A * sin(B * x)", "B=314"
+    line.fit_values = (("A", 1.0), ("B", 314.0))
+    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
+    assert "fit_values" not in dumped["panels"]["0,0"]["lines"][0]
+    loaded = session.load(dumped)[2][(0, 0)].lines[0]
+    assert (loaded.advanced, loaded.fit_function, loaded.fit_start) == (True, "A * sin(B * x)", "B=314")
+    assert loaded.fit_values == () and line.copy().fit_values == ()
+
+
 def test_changing_x_clears_every_x_unit_setting():
     line = Line(span=0.1, cut="keep", cuts=((1.0, 2.0),))
     line.clear_x_units()

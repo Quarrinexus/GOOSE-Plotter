@@ -128,6 +128,17 @@ stay until it's done or cancelled.
   with + to lay its fit over it. It fits the whole line as cut: to fit only
   part of it (leaving out the parked ends of a sweep), keep that part in
   the Splicing tab. The fit comes before smoothing.
+
+  Tick **Advanced Fitting** to fit a function of your own instead of the
+  polynomial: type it in the **y =** box as a function of x, with capital
+  letters for the unknowns, e.g. `A * sin(B * x) + C` or `A + B / x`.
+  Write `*` for every product (`A sin(x)` is refused); `^` or `**` is a
+  power, and the Function boxes' functions (`exp`, `log`, `sin`, ...) and
+  `pi` work. Every unknown starts at 1 unless **Start** gives it a value,
+  e.g. `B=314, C=0`; a frequency or decay rate needs one close to the
+  answer, or the fit settles on the wrong one. The values found show
+  under the boxes. Untick it to go back to the polynomial; the function is
+  kept.
 - **Splicing**: per line, in its own tab. Give a line any number of x
   ranges: type x ... to ... and **Add**, or **Pick** one by dragging across
   the plot. One setting covers all of them: **Keep ranges** cuts the line

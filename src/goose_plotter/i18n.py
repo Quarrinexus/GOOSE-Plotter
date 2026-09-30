@@ -98,6 +98,10 @@ ZH = {
     "Show fit": "显示拟合",
     "Subtract": "扣除",
     "Degree": "次数",
+    "Advanced Fitting": "高级拟合",
+    "y =": "y =",
+    "Start": "初值",
+    "custom": "自定义",
     "to": "至",
     "Pick": "选取",
 

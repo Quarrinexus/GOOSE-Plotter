@@ -183,7 +183,7 @@ class Plotter(tk.Tk):
         # _plot_state kept of it, or None for the one shown, which is live}.
         self.plots, self.plot_index, self.plot_count = [{"n": 1, "state": None}], 0, 1
         self.link_partner = None  # id of the panel whose link the Linking tab shows
-        self.cache = {}  # _data_key -> (x, y and labels, span), see _line_data
+        self.cache = {}  # _data_key -> (x, y and labels, span, fit values), see _line_data
         # One step of undo: the state before the last change, and after it.
         self.undo_state = self.last_state = None
         self.merging = False  # the last change was a colour pick; see _changed
@@ -685,15 +685,21 @@ class Plotter(tk.Tk):
         self.smooth.show = refresh
 
     def _background_box(self, parent):
-        """A collapsed 'Background' toggle: mode and degree. It fits the whole
-        line; the Splicing tab is where a line is cut to part of its x."""
+        """A collapsed 'Background' toggle: mode and degree, or with Advanced
+        Fitting a function of x and its start values. It fits the whole line;
+        the Splicing tab is where a line is cut to part of its x."""
         self.fit_mode = tk.StringVar(value=shown(background.MODES, ""))
         self.degree = tk.StringVar(value="10")
+        self.advanced = tk.BooleanVar(value=False)
+        self.fit_function, self.fit_start = tk.StringVar(), tk.StringVar()
 
         def text(is_open):
             fitted = self.panel.line.fitting
-            used = f": {plain(background.describe(*fitted))}" if fitted and not is_open else ""
-            return tr("Background") + used
+            if not fitted or is_open:
+                return tr("Background")
+            # A function would widen the column; its box shows it.
+            short = background.describe(*fitted[:2], tr("custom") if fitted[2] else "")
+            return tr("Background") + f": {plain(short)}"
 
         body = self._collapsible(parent, (10, 0), text, start_open=True)
         row = ttk.Frame(body)
@@ -706,9 +712,37 @@ class Plotter(tk.Tk):
         degree = ttk.Spinbox(row, textvariable=self.degree, from_=0, to=30, width=3,
                              command=self.apply_controls)
         degree.pack(side=tk.LEFT, padx=(4, 0))
-        for key in ("<Return>", "<KP_Enter>"):
-            degree.bind(key, lambda _: self.apply_controls())
-        self.fit_mode.show = body.refresh
+        ttk.Checkbutton(body, text=tr("Advanced Fitting"), variable=self.advanced,
+                        command=self.apply_controls).pack(anchor=tk.W, pady=(4, 0))
+        # Width 1 and filling the row, so a long function never widens the column.
+        boxes = ttk.Frame(body)
+        boxes.pack(anchor=tk.W, fill=tk.X, pady=(2, 0))
+        boxes.columnconfigure(1, weight=1)
+        entries = []
+        for i, (label, var) in enumerate(((tr("y ="), self.fit_function),
+                                          (tr("Start"), self.fit_start))):
+            ttk.Label(boxes, text=label).grid(row=i, column=0, sticky=tk.W, pady=(0, 2))
+            entry = ttk.Entry(boxes, textvariable=var, width=1)
+            entry.grid(row=i, column=1, sticky=tk.EW, padx=(4, 0), pady=(0, 2))
+            entries.append(entry)
+        for box in (degree, *entries):
+            for key in ("<Return>", "<KP_Enter>"):
+                box.bind(key, lambda _: self.apply_controls())
+        self.fit_result = ttk.Label(body, foreground=theme.HINT, wraplength=300)
+
+        def refresh():
+            body.refresh()
+            l = self.panel.line
+            for entry in entries:
+                entry["state"] = "normal" if l.advanced else "disabled"
+            degree["state"] = "disabled" if l.advanced else "normal"
+            found = ", ".join(f"{name} = {value:.6g}" for name, value in l.fit_values)
+            self.fit_result["text"] = found
+            if l.advanced and found:
+                self.fit_result.pack(anchor=tk.W)
+            else:
+                self.fit_result.pack_forget()
+        self.fit_mode.show = refresh
 
     def _splicing_box(self, parent):
         """Cut the selected line to some x ranges, or cut them out of it: one
@@ -1265,6 +1299,9 @@ class Plotter(tk.Tk):
         self.smooth.show()
         self.fit_mode.set(shown(background.MODES, l.background))
         self.degree.set(l.degree)
+        self.advanced.set(l.advanced)
+        self.fit_function.set(l.fit_function)
+        self.fit_start.set(l.fit_start)
         self.fit_mode.show()
         self.cut_mode.set(shown(splicing.MODES, self._cut_target().cut))
         self._show_cuts()
@@ -1318,6 +1355,9 @@ class Plotter(tk.Tk):
             except ValueError:  # not a number: keep the old one (shown again below)
                 pass
         l.background = key_of(background.MODES, self.fit_mode.get())
+        l.advanced = self.advanced.get()
+        l.fit_function = self.fit_function.get().strip()
+        l.fit_start = self.fit_start.get().strip()
         try:
             l.degree = int(self.degree.get())
         except ValueError:
@@ -1474,12 +1514,13 @@ class Plotter(tk.Tk):
         the same line do the work once."""
         cached = self.cache.get(self._data_key(l))
         if cached:
-            result, span = cached
+            result, span, l.fit_values = cached
             if l.smooth and l.in_x and l.span is None:
                 l.span = span  # as working it out would have set it
             return result
         key = self._data_key(l)  # before a missing span is filled in below
         stage = "Function"
+        l.fit_values = ()
         try:
             df = self._load(l)
             x, x_label = self._axis(df, l.x, l.x_fn)
@@ -1492,7 +1533,7 @@ class Plotter(tk.Tk):
             # smoothing then works on what's left.
             stage = "Background"
             if l.fitting:
-                y = background.apply(x, y, *l.fitting)
+                y, l.fit_values = background.apply(x, y, *l.fitting)
             if l.background == "subtract":
                 y_label = tuple(f"{t} − fit" for t in y_label)
             stage = "Smoothing"
@@ -1503,7 +1544,7 @@ class Plotter(tk.Tk):
         except Exception as err:  # bad file or function shouldn't kill the window
             raise LineError(f"{stage} error: {err}" if l.run in self.frames else str(err))
         result = x, y, x_label, y_label
-        self.cache[key] = self.cache[self._data_key(l)] = result, l.span
+        self.cache[key] = self.cache[self._data_key(l)] = result, l.span, l.fit_values
         return result
 
     @staticmethod

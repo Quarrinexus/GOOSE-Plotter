@@ -48,7 +48,7 @@ mirror. If that folder isn't around this repo, use whatever data folder
 | `plotter.py` | the window: controls, drawing, zoom, saving |
 | `model.py` | `Line` and `Panel`, colours, legend text, shared axis labels |
 | `smoothing.py` | moving average, median, Savitzky–Golay; windows in points or x |
-| `background.py` | polynomial fit in x, shown or subtracted |
+| `background.py` | polynomial fit in x, or a typed function (Advanced Fitting, a numpy Levenberg–Marquardt), shown or subtracted |
 | `splicing.py` | cutting a line to x ranges, or those ranges out of it |
 | `spectrum.py` | FFT of a line against its plotted x, for FFT panels; `even_grid`, the binning it shares |
 | `derivative.py` | first and second derivatives on `even_grid`, for derivative panels |
@@ -70,7 +70,8 @@ mirror. If that folder isn't around this repo, use whatever data folder
    them are dropped; removed, the rows in any turn to NaN in x and y, so it's drawn as a
    gap and fits and x-unit windows leave it out (SG in points still
    interpolates across it, as across any NaN)
-3. background (`background.apply`): fit on the unsmoothed data, over the
+3. background (`background.apply`): fit on the unsmoothed data (the
+   polynomial, or with `Line.advanced` the typed `fit_function`), over the
    whole line as cut. Only the cut drops or blanks rows: the background had
    an x range of its own before session format 7, and `session._line` turns
    it into a Keep cut
@@ -92,6 +93,13 @@ Keep that order. Things that depend on it:
   `(run, x, x_fn, y, y_fn, smoothing, fitting, cutting)`. `parts()`, `legend_labels`,
   `_default_name` and the zoom logic in `apply_controls` all index into it, so
   a new per-line setting means updating each of them.
+- **`Line.fitting`** is `(mode, degree, function, start)`, one shape for
+  both kinds: `(mode, degree, "", "")` for the polynomial, `(mode, None,
+  function, start)` with Advanced Fitting, so the unused one doesn't split the
+  `_line_data` cache. `background.describe` / `file_part` take it as is.
+  What a function's fit found is `Line.fit_values`, in `session.SKIP` so
+  redraws make no undo steps; `_line_data` keeps it in the cache entry and
+  sets it on a hit, as for the span.
 - **Style isn't in `shown`**, on purpose: `Line.style`, `width`, `marker`,
   `marker_size` and `label` go through `Line.plot_style()` and the legend only, so they
   don't touch the `_line_data` cache, the filename or the zoom logic. A
@@ -299,7 +307,11 @@ window. So:
   window in x.
 - **No scipy.** Savitzky–Golay is done in numpy (it matches
   `scipy.signal.savgol_filter` to rounding error); `background.fit` uses
-  `numpy.polynomial.Chebyshev.fit` so high degrees stay well conditioned.
+  `numpy.polynomial.Chebyshev.fit` so high degrees stay well conditioned,
+  and `background.custom_fit` its own Levenberg–Marquardt, with a
+  forward-difference Jacobian (a linear model gives `fit`'s answer).
+- **Fit functions need every `*`.** `A sin(x)` is refused rather than read
+  as a product, by request; capital-letter names are the unknowns.
 - **Drawn icons and triangles**, not Unicode arrows: Tk's X core fonts can
   show them as '®'. The same goes for text: in Tk widgets − (minus), – (en
   dash) and → show as '®' and Δ as '∈'. matplotlib draws them fine, so plot

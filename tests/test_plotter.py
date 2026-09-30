@@ -480,6 +480,81 @@ def test_tab_order(app):
     assert app.tab.get() == "Process"
 
 
+def test_advanced_fitting_fits_the_typed_function(app):
+    plot(app, x_fn="1/x")
+    app.fit_mode.set("Subtract")
+    app.apply_controls()
+    assert entry_states(app) == ["disabled", "disabled"]  # greyed out until ticked
+    app.advanced.set(True)
+    app.fit_function.set("A + B / x")
+    app.apply_controls()
+    assert entry_states(app) == ["normal", "normal"]
+    line = app.panel.line
+    assert line.fitting == ("subtract", None, "A + B / x", "")
+    assert [name for name, _ in line.fit_values] == ["A", "B"]
+    assert dict(line.fit_values)["B"] == pytest.approx(1e-3, rel=0.05)  # conftest's 0.001 B
+    assert app.fit_result["text"].startswith("A = ") and app.fit_result.winfo_manager()
+    assert app.error_label["text"] == ""
+    assert "_bg_A_+_B_-over-_x" in app.filename.get()
+    app.fit_function.set("A * sin(y)")
+    app.apply_controls()
+    assert app.error_label["text"].startswith("Background error: 'y'")
+    app.advanced.set(False)  # the polynomial again, the function kept for later
+    app.apply_controls()
+    assert line.fitting == ("subtract", 10, "", "") and line.fit_function == "A * sin(y)"
+    assert entry_states(app) == ["disabled", "disabled"] and not app.fit_result.winfo_manager()
+
+
+def test_ticking_advanced_fitting_before_typing_asks_for_a_function(app):
+    plot(app)
+    app.fit_mode.set("Subtract")
+    app.advanced.set(True)
+    app.apply_controls()
+    assert app.error_label["text"].startswith("Background error: type a function")
+    assert "custom" in app.line_list.get(0) and "None" not in app.line_list.get(0)
+
+
+def entry_states(app):
+    """The states of the Background's function and start-value boxes."""
+    found = []
+
+    def walk(widget):
+        for child in widget.winfo_children():
+            if child.winfo_class() == "TEntry" and str(child["textvariable"]) in (
+                    str(app.fit_function), str(app.fit_start)):
+                found.append(str(child["state"]))
+            walk(child)
+    walk(app.tabs["Process"])
+    return found
+
+
+def test_advanced_fitting_goes_along_the_chain_to_the_fft(app):
+    """Data, a copy with the background subtracted, and that copy's FFT."""
+    plot(app, x_fn="1/x")
+    app.set_layout(2, 1)
+    app.selected = (1, 0)
+    app._load_controls()
+    plot(app, x_fn="1/x")
+    app._link((0, 0), (1, 0))
+    app.selected = (1, 0)
+    app._load_controls()
+    app.fit_mode.set("Subtract")
+    app.apply_controls()
+    app.new_derived_panel("fft")
+    fft = next(p for p in app.panels.values() if p.operation == "fft")
+    app.selected = (1, 0)
+    app._load_controls()
+    app.advanced.set(True)
+    app.fit_function.set("A + B / x")  # conftest's background, exactly
+    app.apply_controls()
+    assert fft.lines[0].fitting == app.panels[(1, 0)].lines[0].fitting
+    assert fft.lines[0].fit_values == app.panels[(1, 0)].lines[0].fit_values
+    assert not app.panels[(0, 0)].lines[0].background  # Background isn't ticked on 1-2
+    cell = next(c for c, p in app.panels.items() if p is fft)
+    frequency, amplitude = drawn(app, cell)
+    assert frequency[np.argmax(amplitude)] == pytest.approx(F, rel=0.05)
+
+
 def test_only_the_splicing_tab_cuts(app):
     assert "Pick" not in buttons(app.tabs["Process"])
     assert "Pick" in buttons(app.tabs["Splicing"])
