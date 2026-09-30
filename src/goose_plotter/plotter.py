@@ -322,7 +322,7 @@ class Plotter(tk.Tk):
         self._derivative_box(self.tabs["Derive"])
         self._link_box(self.tabs["Linking"])
         self._measure_box(self.tabs["Measure"])
-        self.tab.set("Process")
+        self.tab.set("Splicing")
         self._show_tab()
         self.bind("<Escape>", lambda _: self.stop_picking())
         self._bind_keys()

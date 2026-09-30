@@ -480,7 +480,7 @@ def test_clicking_a_tab_shows_it(app):
 def test_tab_order(app):
     assert [name for name, _ in app.tab_strip.tabs] == [
         "Splicing", "Process", "Derive", "Linking", "Measure"]
-    assert app.tab.get() == "Process"
+    assert app.tab.get() == "Splicing"
 
 
 def test_advanced_fitting_fits_the_typed_function(app):
