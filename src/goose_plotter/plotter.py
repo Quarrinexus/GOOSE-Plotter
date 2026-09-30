@@ -689,7 +689,7 @@ class Plotter(tk.Tk):
         Fitting a function of x and its start values. It fits the whole line;
         the Splicing tab is where a line is cut to part of its x."""
         self.fit_mode = tk.StringVar(value=shown(background.MODES, ""))
-        self.degree = tk.StringVar(value="10")
+        self.degree = tk.StringVar(value="5")
         self.advanced = tk.BooleanVar(value=False)
         self.fit_function, self.fit_start = tk.StringVar(), tk.StringVar()
 
@@ -1300,8 +1300,10 @@ class Plotter(tk.Tk):
         self.fit_mode.set(shown(background.MODES, l.background))
         self.degree.set(l.degree)
         self.advanced.set(l.advanced)
-        self.fit_function.set(l.fit_function)
-        self.fit_start.set(l.fit_start)
+        # Greyed out, the box shows the polynomial Degree fits, not the kept function.
+        self.fit_function.set(l.fit_function if l.advanced
+                              else background.polynomial_text(l.degree))
+        self.fit_start.set(l.fit_start if l.advanced else "")
         self.fit_mode.show()
         self.cut_mode.set(shown(splicing.MODES, self._cut_target().cut))
         self._show_cuts()
@@ -1355,13 +1357,16 @@ class Plotter(tk.Tk):
             except ValueError:  # not a number: keep the old one (shown again below)
                 pass
         l.background = key_of(background.MODES, self.fit_mode.get())
-        l.advanced = self.advanced.get()
-        l.fit_function = self.fit_function.get().strip()
-        l.fit_start = self.fit_start.get().strip()
         try:
             l.degree = int(self.degree.get())
         except ValueError:
             pass
+        was_advanced, l.advanced = l.advanced, self.advanced.get()
+        if was_advanced:  # the boxes were the line's to edit
+            l.fit_function = self.fit_function.get().strip()
+            l.fit_start = self.fit_start.get().strip()
+        elif l.advanced and not l.fit_function:  # just ticked: from the polynomial shown
+            l.fit_function = background.polynomial_text(l.degree)
         spectrum_cut = (self.panel.cut, self.panel.cuts)
         self._cut_target().cut = key_of(splicing.MODES, self.cut_mode.get())
         if (l.x, l.x_fn) != old_x:

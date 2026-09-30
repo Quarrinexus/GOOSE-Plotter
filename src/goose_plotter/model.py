@@ -46,7 +46,7 @@ class Line:
     in_x: bool = False  # window counted in the plotted x (span) instead of points
     span: float | None = None  # window in x; None: estimated from `window` when drawn
     background: str = ""  # a key of background.MODES; "" for off
-    degree: int = 10  # of the background polynomial
+    degree: int = 5  # of the background polynomial
     advanced: bool = False  # fit `fit_function` instead of the polynomial
     fit_function: str = ""  # a function of x with capital-letter unknowns, e.g. "A * sin(B * x) + C"
     fit_start: str = ""  # start values for its unknowns, e.g. "B=314"; 1 for any not given

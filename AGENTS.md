@@ -100,6 +100,9 @@ Keep that order. Things that depend on it:
   What a function's fit found is `Line.fit_values`, in `session.SKIP` so
   redraws make no undo steps; `_line_data` keeps it in the cache entry and
   sets it on a hit, as for the span.
+- Unticked, the function box shows `background.polynomial_text(degree)`,
+  not `Line.fit_function`, so `apply_controls` only reads the boxes when the
+  line was already advanced; ticking with no function stores that text.
 - **Style isn't in `shown`**, on purpose: `Line.style`, `width`, `marker`,
   `marker_size` and `label` go through `Line.plot_style()` and the legend only, so they
   don't touch the `_line_data` cache, the filename or the zoom logic. A

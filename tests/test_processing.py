@@ -44,6 +44,17 @@ def test_a_function_with_linear_unknowns_matches_the_polynomial():
     assert list(values) == ["A", "B", "C"]
 
 
+def test_the_polynomial_as_a_function_fits_like_the_polynomial():
+    assert background.polynomial_text(2) == "A*x**2 + B*x + C"
+    assert background.polynomial_text(0) == "A"
+    assert background.polynomial_text(26).endswith("Z*x + AA")
+    x = 1 / np.linspace(28, 4, 3000)  # 1/B, where raw powers are badly conditioned
+    y = 0.8 + 1e-3 / x + 1e-4 * np.sin(2 * np.pi * 50 * x)
+    for degree in (5, 10):
+        fitted, _ = background.custom_fit(x, y, background.polynomial_text(degree))
+        assert np.allclose(fitted, background.fit(x, y, degree), rtol=0, atol=1e-7)
+
+
 def test_a_function_finds_an_oscillation_from_start_values():
     x = np.linspace(1 / 28, 1 / 4, 3000)
     y = 2e-4 * np.sin(2 * np.pi * 50 * x) + 1e-5

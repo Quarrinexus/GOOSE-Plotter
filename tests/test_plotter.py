@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from goose_plotter import session, smoothing, splicing
+from goose_plotter import background, session, smoothing, splicing
 from conftest import B_HIGH, B_LOW, F, drawn, plot
 
 def test_plots_the_profile_default_axes(app):
@@ -29,7 +29,8 @@ def test_a_bad_function_is_reported_under_the_axes(app):
 
 def test_fft_panel_finds_the_oscillation(app):
     plot(app, x_fn="1/x")
-    app.fit_mode.set("Subtract")  # degree 10, the default
+    app.fit_mode.set("Subtract")
+    app.degree.set("10")  # 5, the default, leaves too much of the 1/x background
     app.apply_controls()
     app.new_derived_panel("fft")
     frequency, amplitude = drawn(app, (1, 0))
@@ -194,6 +195,7 @@ def buttons(widget):
 def test_this_panel_turns_into_its_fft_and_undo_turns_it_back(app):
     plot(app, x_fn="1/x")
     app.fit_mode.set("Subtract")
+    app.degree.set("10")
     app.apply_controls()
     panel = app.panel
     panel.x_min, panel.title = 0.05, "My data"
@@ -313,6 +315,7 @@ def test_measure_reads_points_and_their_difference(app):
 def test_measure_lists_an_ffts_peaks(app, tmp_path):
     plot(app, x_fn="1/x")
     app.fit_mode.set("Subtract")
+    app.degree.set("10")  # the made-up data's 1/x background needs more than 5
     app.apply_controls()
     app.in_place("fft")
     read = app.measured[(0, 0)]
@@ -485,7 +488,10 @@ def test_advanced_fitting_fits_the_typed_function(app):
     app.fit_mode.set("Subtract")
     app.apply_controls()
     assert entry_states(app) == ["disabled", "disabled"]  # greyed out until ticked
+    shown_default = background.polynomial_text(app.panel.line.degree)
+    assert app.fit_function.get() == shown_default and app.fit_start.get() == ""
     app.advanced.set(True)
+    app.apply_controls()
     app.fit_function.set("A + B / x")
     app.apply_controls()
     assert entry_states(app) == ["normal", "normal"]
@@ -501,14 +507,31 @@ def test_advanced_fitting_fits_the_typed_function(app):
     assert app.error_label["text"].startswith("Background error: 'y'")
     app.advanced.set(False)  # the polynomial again, the function kept for later
     app.apply_controls()
-    assert line.fitting == ("subtract", 10, "", "") and line.fit_function == "A * sin(y)"
+    assert line.fitting == ("subtract", line.degree, "", "") and line.fit_function == "A * sin(y)"
     assert entry_states(app) == ["disabled", "disabled"] and not app.fit_result.winfo_manager()
+    assert app.fit_function.get() == shown_default  # showing the polynomial, not the kept one
+    app.degree.set("3")
+    app.apply_controls()
+    assert app.fit_function.get() == "A*x**3 + B*x**2 + C*x + D"
+    assert line.fit_function == "A * sin(y)"
+    app.advanced.set(True)  # ticked again: the kept function is back
+    app.apply_controls()
+    assert app.fit_function.get() == "A * sin(y)"
 
 
-def test_ticking_advanced_fitting_before_typing_asks_for_a_function(app):
-    plot(app)
+def test_ticking_advanced_fitting_starts_from_the_polynomial(app):
+    plot(app, x_fn="1/x")
     app.fit_mode.set("Subtract")
+    app.apply_controls()
+    x, polynomial = drawn(app)
     app.advanced.set(True)
+    app.apply_controls()
+    line = app.panel.line
+    assert line.fit_function == background.polynomial_text(line.degree)
+    assert app.fit_function.get() == line.fit_function
+    _, typed = drawn(app)
+    assert np.allclose(typed, polynomial, rtol=0, atol=1e-7)  # the oscillation is 1e-4
+    app.fit_function.set("")  # cleared: it says what's missing
     app.apply_controls()
     assert app.error_label["text"].startswith("Background error: type a function")
     assert "custom" in app.line_list.get(0) and "None" not in app.line_list.get(0)
@@ -545,6 +568,7 @@ def test_advanced_fitting_goes_along_the_chain_to_the_fft(app):
     app.selected = (1, 0)
     app._load_controls()
     app.advanced.set(True)
+    app.apply_controls()
     app.fit_function.set("A + B / x")  # conftest's background, exactly
     app.apply_controls()
     assert fft.lines[0].fitting == app.panels[(1, 0)].lines[0].fitting

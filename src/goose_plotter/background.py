@@ -15,7 +15,7 @@ MODES = {"": "Off", "fit": "Show fit", "subtract": "Subtract"}
 
 
 def describe(mode, degree, function="", start=""):
-    """Short text for the legend and toggle: '− deg 10', 'fit deg 10',
+    """Short text for the legend and toggle: '− deg 5', 'fit deg 5',
     '− A * sin(B * x) + C'."""
     shape = f"deg {degree}" if degree is not None else function or "custom"
     return f"{'fit' if mode == 'fit' else '−'} {shape}"
@@ -73,6 +73,15 @@ def fit(x, y, degree):
 
 
 # --- a function of the user's own ---------------------------------------------
+
+def polynomial_text(degree):
+    """What `fit` fits, as a function to type: 'A*x**2 + B*x + C' for degree 2."""
+    names = [chr(65 + i) if i < 26 else chr(64 + i // 26) + chr(65 + i % 26)
+             for i in range(max(degree, 0) + 1)]
+    powers = range(max(degree, 0), -1, -1)
+    return " + ".join(name + ("" if n == 0 else "*x" if n == 1 else f"*x**{n}")
+                      for name, n in zip(names, powers))
+
 
 def parse(expr):
     """(compiled function of x, its parameters in order of first use) for a
@@ -165,12 +174,16 @@ def _levenberg_marquardt(residuals, p, iterations=200):
         if not np.all(np.isfinite(jac)):
             raise ValueError("the fit function stopped being finite while fitting; "
                              "try other start values")
-        normal, gradient = jac.T @ jac, jac.T @ r
-        scale = np.diag(normal).copy()
-        scale[scale == 0] = 1.0
+        # Columns scaled to norm 1 and solved as least squares, not through
+        # JᵀJ, whose squared condition loses a polynomial's high powers.
+        norms = np.linalg.norm(jac, axis=0)
+        norms[norms == 0] = 1.0
+        scaled = jac / norms
         while True:
             try:
-                delta = np.linalg.solve(normal + damping * np.diag(scale), -gradient)
+                stacked = np.vstack([scaled, np.sqrt(damping) * np.eye(len(p))])
+                wanted = np.concatenate([-r, np.zeros(len(p))])
+                delta = np.linalg.lstsq(stacked, wanted, rcond=None)[0] / norms
             except np.linalg.LinAlgError:
                 delta = None
             if delta is not None:
@@ -185,7 +198,7 @@ def _levenberg_marquardt(residuals, p, iterations=200):
         done = abs(cost - cost_trial) <= 1e-12 * cost or np.all(
             np.abs(delta) <= 1e-10 * (np.abs(p) + 1e-10))
         p, r, cost = trial, r_trial, cost_trial
-        damping = max(damping / 10, 1e-12)
+        damping = max(damping / 10, 1e-20)  # down to Gauss-Newton, lstsq keeps it stable
         if done:
             break
     return p

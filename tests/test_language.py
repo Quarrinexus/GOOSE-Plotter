@@ -39,6 +39,7 @@ def exercise(app, tmp_path):
     app.fit_mode.set(shown(background.MODES, "subtract"))
     app.apply_controls()
     app.advanced.set(True)
+    app.apply_controls()
     app.fit_function.set("A * sin(B * x) + C")
     app.fit_start.set("B=314")
     app.apply_controls()
