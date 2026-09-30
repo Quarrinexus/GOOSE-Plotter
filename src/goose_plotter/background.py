@@ -1,4 +1,4 @@
-"""The Background section: a polynomial in x, or a function of the user's own,
+"""The Fit section: a polynomial in x, or a function of the user's own,
 fitted to a line, shown or subtracted."""
 
 import math
@@ -10,7 +10,7 @@ from numpy.polynomial import Chebyshev
 
 from goose_plotter.axis_functions import FUNCTIONS, slug
 
-# Mode stored on a Line -> name shown in the Background box. "" is off.
+# Mode stored on a Line -> name shown in the Fit box. "" is off.
 MODES = {"": "Off", "fit": "Show fit", "subtract": "Subtract"}
 
 

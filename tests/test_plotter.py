@@ -504,7 +504,7 @@ def test_advanced_fitting_fits_the_typed_function(app):
     assert "_bg_A_+_B_-over-_x" in app.filename.get()
     app.fit_function.set("A * sin(y)")
     app.apply_controls()
-    assert app.error_label["text"].startswith("Background error: 'y'")
+    assert app.error_label["text"].startswith("Fit error: 'y'")
     app.advanced.set(False)  # the polynomial again, the function kept for later
     app.apply_controls()
     assert line.fitting == ("subtract", line.degree, "", "") and line.fit_function == "A * sin(y)"
@@ -533,7 +533,7 @@ def test_ticking_advanced_fitting_starts_from_the_polynomial(app):
     assert np.allclose(typed, polynomial, rtol=0, atol=1e-7)  # the oscillation is 1e-4
     app.fit_function.set("")  # cleared: it says what's missing
     app.apply_controls()
-    assert app.error_label["text"].startswith("Background error: type a function")
+    assert app.error_label["text"].startswith("Fit error: type a function")
     assert "custom" in app.line_list.get(0) and "None" not in app.line_list.get(0)
 
 

@@ -734,7 +734,7 @@ class Plotter(tk.Tk):
         self.smooth.show = refresh
 
     def _background_box(self, parent):
-        """A collapsed 'Background' toggle: mode and degree, or with Advanced
+        """A collapsed 'Fit' toggle: mode and degree, or with Advanced
         Fitting a function of x and its start values. It fits the whole line;
         the Splicing tab is where a line is cut to part of its x."""
         self.fit_mode = tk.StringVar(value=shown(background.MODES, ""))
@@ -745,10 +745,10 @@ class Plotter(tk.Tk):
         def text(is_open):
             fitted = self.panel.line.fitting
             if not fitted or is_open:
-                return tr("Background")
+                return tr("Fit")
             # A function would widen the column; its box shows it.
             short = background.describe(*fitted[:2], tr("custom") if fitted[2] else "")
-            return tr("Background") + f": {plain(short)}"
+            return tr("Fit") + f": {plain(short)}"
 
         body = self._collapsible(parent, (10, 0), text)
         row = ttk.Frame(body)
@@ -1191,7 +1191,7 @@ class Plotter(tk.Tk):
         self.sync_vars = {}
         names = {"run": "Dataset", "x": "X axis", "x_fn": "X function", "y": "Y axis",
                  "y_fn": "Y function", "colour": "Colour", "smoothing": "Smoothing",
-                 "background": "Background", "style": "Line style", "cut": "Splicing",
+                 "background": "Fit", "style": "Line style", "cut": "Splicing",
                  "despike": "Despike"}
         places = {"run": (0, 0), "colour": (0, 1), "x": (1, 0), "y": (1, 1), "x_fn": (2, 0),
                   "y_fn": (2, 1), "smoothing": (3, 0), "background": (3, 1), "style": (4, 0),
@@ -1611,7 +1611,7 @@ class Plotter(tk.Tk):
                 x, y, l.despiked = despike.despike(x, y, *l.despiking)
             # Background next, so the fit sees the unsmoothed data and
             # smoothing then works on what's left.
-            stage = "Background"
+            stage = "Fit"
             if l.fitting:
                 y, l.fit_values = background.apply(x, y, *l.fitting)
             if l.background == "subtract":

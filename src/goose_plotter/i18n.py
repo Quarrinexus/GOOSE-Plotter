@@ -101,6 +101,7 @@ ZH = {
     "x units": "x 单位",
     "Order": "阶数",
     "Background": "背景",
+    "Fit": "拟合",
     "Off": "关",
     "Show fit": "显示拟合",
     "Subtract": "扣除",

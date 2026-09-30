@@ -93,7 +93,7 @@ At the top of the controls column, **Files** opens to the folders, Data
 format and sessions (it starts closed once both folders are chosen). Under
 it Dataset, the Lines list and the axes are always shown, and the rest is in
 five tabs: **Splicing** (cutting lines to parts of their x), **Process**
-(Despike, Smoothing, Background), **Derive** (FFT, Derivative), **Linking**
+(Despike, Smoothing, Fit), **Derive** (FFT, Derivative), **Linking**
 (Linked data) and **Measure** (reading numbers off the plot). The Process
 tab's sections start closed, each showing what it's set to; the others
 start open. If the selected line can't be drawn (a bad function, a
@@ -119,7 +119,7 @@ stay until it's done or cancelled.
   local spread (the median absolute deviation, as a standard deviation) away
   from the median of the **Window** points around it, taken in the order
   they were recorded (a Hampel filter). The number removed shows under the
-  boxes. It comes after the cut and before the background fit, so spikes
+  boxes. It comes after the cut and before the fit, so spikes
   can't pull the fit or smear across an FFT. A spike wider than about half
   the window isn't caught; widen the window. A spike on a very steep part
   of a line can be missed too, as the slope counts as spread; lower the
@@ -133,7 +133,7 @@ stay until it's done or cancelled.
   becomes a polynomial fit in x, right for unevenly spaced points. It applies
   to the plotted y, after its function. To see raw and smoothed together, copy the
   line with + and smooth the copy; the legend tells them apart.
-- **Background**: per line, under Smoothing. Fits a polynomial of the chosen
+- **Fit**: per line, under Smoothing. Fits a polynomial of the chosen
   **Polynomial degree** (5 to start with) to the plotted y against the
   plotted x (so in 1/B with a `1/x` function) and either **Subtract**s it, leaving the oscillations, or
   **Show fit**, which draws the fit dashed in place of the data; copy a line
@@ -165,7 +165,7 @@ stay until it's done or cancelled.
   ranges. Click a range in the list to see it in the boxes, where Enter
   changes it; **Delete** removes it. They're in the
   plotted x, after its function, and a blank end means no limit. The cut
-  comes first, so it's what's drawn and all the background fit, smoothing,
+  comes first, so it's what's drawn and all the fit, smoothing,
   FFT and derivative ever see: an FFT of one kept range has its
   resolution, 1 / (the range's width). With Keep ranges on only those are
   drawn, so to pick outside them, turn it Off first. To only zoom in,
@@ -213,7 +213,7 @@ stay until it's done or cancelled.
   colour in either redraws both, and adding or removing a line does too; untick
   a box on it to keep that setting its own (e.g. untick Smoothing to take the
   FFT of the unsmoothed data), or **Freeze** it. The spectrum is of each line as plotted (after its function,
-  background and smoothing) against its plotted x, so with `1/x` on the field
+  fit and smoothing) against its plotted x, so with `1/x` on the field
   it's in F (T); amplitude is in y's units. Select the FFT panel for its
   settings: Window (Hann or none), Padding (zero-padding, for smoother
   peaks), F max, and **Back to data**, which turns it back into an ordinary
@@ -245,7 +245,7 @@ stay until it's done or cancelled.
   what it shares: **Dataset**, **X axis**, **X function**, **Y axis**, **Y
   function**, **Colour** and **Line style** (line, width, marker and its
   size) are ticked to start with; **Despike**, **Smoothing**,
-  **Background** and **Splicing** aren't.
+  **Fit** and **Splicing** aren't.
   The link is the same seen from either panel: panel 1's **Panel 2** tab
   shows the ticks of panel 2's **Panel 1** tab. So e.g. one panel shows the
   raw data, a linked one the same data with the background subtracted, and
@@ -253,7 +253,7 @@ stay until it's done or cancelled.
   the same x. Ticking a box sends the selected panel's setting across.
   Settings go on along chains of links, each link passing on what it
   shares: with 1 linked to 2 (sharing the axes) and 2 to its FFT in 3, a new
-  Y axis in 1 reaches 2 and then the FFT, while 2's background stays its own
+  Y axis in 1 reaches 2 and then the FFT, while 2's fit stays its own
   and still reaches the FFT. A frozen link stops them. Adding or removing a line, though, happens in every
   panel joined through links, so lines stay paired. Cut ranges and x-unit
   windows only cross between panels with the same x. FFT and derivative
@@ -263,7 +263,7 @@ stay until it's done or cancelled.
   sends the selected panel's settings across, carrying over what changed
   while it was frozen; the panel's other links carry on.
 - **Measure** (Measure tab): reads numbers off the selected line as it's
-  drawn (after its functions, cut, background and smoothing, and as an FFT or
+  drawn (after its functions, cut, fit and smoothing, and as an FFT or
   derivative on those panels), in the plotted units, and changes nothing.
   - **Region**: an x range typed, or dragged with **Pick**, shaded on the
     plot; blank is the whole line, **Clear** goes back to it.
