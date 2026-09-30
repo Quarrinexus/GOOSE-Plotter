@@ -93,9 +93,10 @@ At the top of the controls column, **Files** opens to the folders, Data
 format and sessions (it starts closed once both folders are chosen). Under
 it Dataset, the Lines list and the axes are always shown, and the rest is in
 five tabs: **Splicing** (cutting lines to parts of their x), **Process**
-(Smoothing, Background), **Derive** (FFT, Derivative), **Linking** (Linked
-data) and **Measure** (reading numbers off the plot); their sections start open. If
-the selected line can't be drawn (a bad function, a
+(Despike, Smoothing, Background), **Derive** (FFT, Derivative), **Linking**
+(Linked data) and **Measure** (reading numbers off the plot). The Process
+tab's sections start closed, each showing what it's set to; the others
+start open. If the selected line can't be drawn (a bad function, a
 file that won't load, a smoothing window that's too big), the reason shows
 in red under the Y axis until it's fixed or another line is selected.
 Other messages show above the buttons at the bottom of the column: green
@@ -112,6 +113,17 @@ stay until it's done or cancelled.
   (`M006_AH`, `M011_AH_Loss`, ...) included. Changing a control redraws.
 - **Function**: under each axis, e.g. `1/x`, `exp(y)`, `log10(x)`; numpy's usual
   functions plus `pi` and `e`. Enter applies.
+- **Despike**: per line, at the top of the Process tab. Tick **Remove
+  spikes** to turn isolated glitches into gaps and leave every other point
+  as it is: a point is a spike when it's more than **Threshold** times the
+  local spread (the median absolute deviation, as a standard deviation) away
+  from the median of the **Window** points around it, taken in the order
+  they were recorded (a Hampel filter). The number removed shows under the
+  boxes. It comes after the cut and before the background fit, so spikes
+  can't pull the fit or smear across an FFT. A spike wider than about half
+  the window isn't caught; widen the window. A spike on a very steep part
+  of a line can be missed too, as the slope counts as spread; lower the
+  Threshold, or remove it by hand in Splicing.
 - **Smoothing**: per line, under the axes. Moving average, median or
   Savitzky–Golay (with its polynomial order) over a window of points, taken in
   the order they were recorded; SG needs an odd window. Or set the window in
@@ -232,8 +244,8 @@ stay until it's done or cancelled.
   panel gets a heavier dashed frame. The chosen link's **Sync** boxes say
   what it shares: **Dataset**, **X axis**, **X function**, **Y axis**, **Y
   function**, **Colour** and **Line style** (line, width, marker and its
-  size) are ticked to start with; **Smoothing**, **Background** and
-  **Splicing** aren't.
+  size) are ticked to start with; **Despike**, **Smoothing**,
+  **Background** and **Splicing** aren't.
   The link is the same seen from either panel: panel 1's **Panel 2** tab
   shows the ticks of panel 2's **Panel 1** tab. So e.g. one panel shows the
   raw data, a linked one the same data with the background subtracted, and

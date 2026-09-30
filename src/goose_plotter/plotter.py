@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+import math
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -17,8 +18,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageTk
 
 from goose_plotter.axis_functions import apply_function, is_identity, rename
-from goose_plotter import (background, derivative, i18n, measure, session, smoothing,
-                           spectrum, splicing, theme)
+from goose_plotter import (background, derivative, despike, i18n, measure, session,
+                           smoothing, spectrum, splicing, theme)
 from goose_plotter.i18n import key_of, menu, shown, tr
 from goose_plotter.columns import label, lookup, with_unit, without_unit
 from goose_plotter.model import (DATA_VIEW, GRID_AXES, GRID_STYLES, GRIDS, LEGENDS, RANGES, SYNC,
@@ -183,7 +184,7 @@ class Plotter(tk.Tk):
         # _plot_state kept of it, or None for the one shown, which is live}.
         self.plots, self.plot_index, self.plot_count = [{"n": 1, "state": None}], 0, 1
         self.link_partner = None  # id of the panel whose link the Linking tab shows
-        self.cache = {}  # _data_key -> (x, y and labels, span, fit values), see _line_data
+        self.cache = {}  # _data_key -> (x, y and labels, span, fit values, spikes), see _line_data
         # One step of undo: the state before the last change, and after it.
         self.undo_state = self.last_state = None
         self.merging = False  # the last change was a colour pick; see _changed
@@ -315,6 +316,7 @@ class Plotter(tk.Tk):
                      for name in ("Splicing", "Process", "Derive", "Linking", "Measure")}
         self._tab_strip(controls)
         # Smoothing's and FFT's toggles add the 10 px above them.
+        self._despike_box(self.tabs["Process"])
         self._smoothing_box(self.tabs["Process"])
         self._background_box(self.tabs["Process"])
         self._splicing_box(self.tabs["Splicing"])
@@ -610,6 +612,53 @@ class Plotter(tk.Tk):
         var.show_label = body.refresh
         return var
 
+    def _despike_box(self, parent):
+        """A 'Despike' toggle: turn points far off the median around them into
+        gaps; the window and threshold greyed out until it's ticked."""
+        self.despike_on = tk.BooleanVar(value=False)
+        self.despike_window = tk.StringVar(value="21")
+        self.despike_threshold = tk.StringVar(value="5")
+
+        def text(is_open):
+            l = self.panel.line
+            if not l.despiking or is_open or not l.shown:
+                return tr("Despike")
+            return tr("Despike: {count} removed", count=l.despiked)
+
+        body = self._collapsible(parent, (10, 0), text)
+        ttk.Checkbutton(body, text=tr("Remove spikes"), variable=self.despike_on,
+                        command=self.apply_controls).pack(anchor=tk.W, pady=(2, 0))
+        row = ttk.Frame(body)
+        row.pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(row, text=tr("Window")).pack(side=tk.LEFT)
+        window = ttk.Spinbox(row, textvariable=self.despike_window, from_=3, to=100001,
+                             increment=2, width=6, command=self.apply_controls)
+        window.pack(side=tk.LEFT, padx=(4, 4))
+        ttk.Label(row, text=tr("points")).pack(side=tk.LEFT)
+        row = ttk.Frame(body)
+        row.pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(row, text=tr("Threshold")).pack(side=tk.LEFT)
+        threshold = ttk.Spinbox(row, textvariable=self.despike_threshold, from_=1, to=50,
+                                increment=0.5, width=4, command=self.apply_controls)
+        threshold.pack(side=tk.LEFT, padx=(4, 4))
+        ttk.Label(row, text=tr("× the local spread")).pack(side=tk.LEFT)
+        for box in (window, threshold):
+            for key in ("<Return>", "<KP_Enter>"):
+                box.bind(key, lambda _: self.apply_controls())
+        found = self.despike_found = ttk.Label(body, foreground=theme.HINT)
+
+        def refresh():
+            body.refresh()
+            l = self.panel.line
+            for box in (window, threshold):
+                box["state"] = "normal" if l.despike else "disabled"
+            if l.despiking and l.shown:
+                found["text"] = tr("{count} points removed", count=l.despiked)
+                found.pack(anchor=tk.W)
+            else:
+                found.pack_forget()
+        self.despike_on.show = refresh
+
     def _smoothing_box(self, parent):
         """A collapsed 'Smoothing' toggle: method, window and (for SG) order."""
         self.smooth = tk.StringVar(value=shown(smoothing.METHODS, ""))
@@ -621,7 +670,7 @@ class Plotter(tk.Tk):
             used = f": {plain(smoothing.describe(*l.smoothing))}" if l.smoothing and not is_open else ""
             return tr("Smoothing") + used
 
-        body = self._collapsible(parent, (10, 0), text, start_open=True)
+        body = self._collapsible(parent, (10, 0), text)
         # The method, and beside it for SG the order; then the window, and what
         # it's counted in (the menu says).
         top = ttk.Frame(body)
@@ -701,7 +750,7 @@ class Plotter(tk.Tk):
             short = background.describe(*fitted[:2], tr("custom") if fitted[2] else "")
             return tr("Background") + f": {plain(short)}"
 
-        body = self._collapsible(parent, (10, 0), text, start_open=True)
+        body = self._collapsible(parent, (10, 0), text)
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(2, 0))
         mode = ttk.Combobox(row, textvariable=self.fit_mode, state="readonly", width=9,
@@ -1142,10 +1191,11 @@ class Plotter(tk.Tk):
         self.sync_vars = {}
         names = {"run": "Dataset", "x": "X axis", "x_fn": "X function", "y": "Y axis",
                  "y_fn": "Y function", "colour": "Colour", "smoothing": "Smoothing",
-                 "background": "Background", "style": "Line style", "cut": "Splicing"}
+                 "background": "Background", "style": "Line style", "cut": "Splicing",
+                 "despike": "Despike"}
         places = {"run": (0, 0), "colour": (0, 1), "x": (1, 0), "y": (1, 1), "x_fn": (2, 0),
                   "y_fn": (2, 1), "smoothing": (3, 0), "background": (3, 1), "style": (4, 0),
-                  "cut": (4, 1)}
+                  "cut": (4, 1), "despike": (5, 0)}
         for key in SYNC:
             var = self.sync_vars[key] = tk.BooleanVar()
             row, col = places[key]
@@ -1295,6 +1345,10 @@ class Plotter(tk.Tk):
         self.y_fn.set(l.y_fn)
         self.x_fn.show_label()
         self.y_fn.show_label()
+        self.despike_on.set(l.despike)
+        self.despike_window.set(l.despike_window)
+        self.despike_threshold.set(f"{l.despike_threshold:g}")
+        self.despike_on.show()
         self.smooth.set(shown(smoothing.METHODS, l.smooth))
         self.window_unit.set(shown(smoothing.UNITS, l.in_x))
         self.window.set((f"{l.span:g}" if l.span is not None else "") if l.in_x else l.window)
@@ -1333,6 +1387,8 @@ class Plotter(tk.Tk):
                 name += f" · {plain(background.describe(*l.fitting))}"
             if l.cutting:
                 name += f" · {plain(splicing.describe(*l.cutting))}"
+            if l.despiking:
+                name += f" · {tr('despiked')}"
             self.line_list.insert(tk.END, name)
             self.line_list.itemconfigure(tk.END, foreground=colour,
                                          selectforeground=colour)
@@ -1359,6 +1415,17 @@ class Plotter(tk.Tk):
                 setattr(l, attr, kind(var.get()))
             except ValueError:  # not a number: keep the old one (shown again below)
                 pass
+        l.despike = self.despike_on.get()
+        try:
+            l.despike_window = max(3, int(self.despike_window.get()))
+        except ValueError:
+            pass
+        try:
+            threshold = float(self.despike_threshold.get())
+            if threshold > 0 and math.isfinite(threshold):
+                l.despike_threshold = threshold
+        except ValueError:
+            pass
         l.background = key_of(background.MODES, self.fit_mode.get())
         try:
             l.degree = int(self.degree.get())
@@ -1390,10 +1457,11 @@ class Plotter(tk.Tk):
             except Exception:  # anything else is reported by the redraw below
                 pass
         # Same axes: keep the zoom, as smoothing and fits are often tuned zoomed
-        # in. A background change moves y by orders of magnitude, so only x.
+        # in. A background change moves y by orders of magnitude, and removing
+        # a spike can shrink it as much, so only x.
         keep, others = "", ""
         if before and before[:5] == (l.run, l.x, l.x_fn, l.y, l.y_fn):
-            keep = "xy" if before[6] == l.fitting else "x"
+            keep = "xy" if (before[6], before[8]) == (l.fitting, l.despiking) else "x"
             if self.panel.derived:  # any change reshapes a spectrum or derivative
                 keep = "x"
             others = "x"  # the other panels redrawn plot the same data as before
@@ -1522,13 +1590,13 @@ class Plotter(tk.Tk):
         the same line do the work once."""
         cached = self.cache.get(self._data_key(l))
         if cached:
-            result, span, l.fit_values = cached
+            result, span, l.fit_values, l.despiked = cached
             if l.smooth and l.in_x and l.span is None:
                 l.span = span  # as working it out would have set it
             return result
         key = self._data_key(l)  # before a missing span is filled in below
         stage = "Function"
-        l.fit_values = ()
+        l.fit_values, l.despiked = (), 0
         try:
             df = self._load(l)
             x, x_label = self._axis(df, l.x, l.x_fn)
@@ -1537,6 +1605,10 @@ class Plotter(tk.Tk):
             stage = "Splicing"
             if l.cutting:
                 x, y = splicing.cut(x, y, *l.cutting)
+            # Then the spikes, before they can pull the fit.
+            stage = "Despike"
+            if l.despiking:
+                x, y, l.despiked = despike.despike(x, y, *l.despiking)
             # Background next, so the fit sees the unsmoothed data and
             # smoothing then works on what's left.
             stage = "Background"
@@ -1552,13 +1624,14 @@ class Plotter(tk.Tk):
         except Exception as err:  # bad file or function shouldn't kill the window
             raise LineError(f"{stage} error: {err}" if l.run in self.frames else str(err))
         result = x, y, x_label, y_label
-        self.cache[key] = self.cache[self._data_key(l)] = result, l.span, l.fit_values
+        self.cache[key] = self.cache[self._data_key(l)] = (result, l.span, l.fit_values,
+                                                           l.despiked)
         return result
 
     @staticmethod
     def _data_key(l):
         """What a line's data depends on: its settings through smoothing."""
-        return l.run, l.x, l.x_fn, l.y, l.y_fn, l.smoothing, l.fitting, l.cutting
+        return l.run, l.x, l.x_fn, l.y, l.y_fn, l.smoothing, l.fitting, l.cutting, l.despiking
 
     def _prune_cache(self):
         """Keep only the data of lines still in the panels."""
@@ -1619,7 +1692,7 @@ class Plotter(tk.Tk):
                 y_label = (derivative.LABELS[p.operation],) * 2
             # What's on screen, so Save names the plot shown rather than
             # whatever is typed but not yet applied.
-            l.shown = (l.run, l.x, l.x_fn, l.y, l.y_fn, l.smoothing, l.fitting, l.cutting)
+            l.shown = self._data_key(l)
             (artist,) = ax.plot(x, y, color=colour, **l.plot_style())
             self.artists[cell][artist] = i
             drawn.append(l)
@@ -3042,8 +3115,9 @@ class Plotter(tk.Tk):
         first = self.panels[0, 0].lines[0]
         if not first.shown:
             return ""
-        run, y, x, smoothed, fitted, cut = first.parts()
+        run, y, x, smoothed, fitted, cut, despiked = first.parts()
         tail = f"_{splicing.file_part(*cut)}" if cut else ""
+        tail += f"_{despike.file_part(*despiked)}" if despiked else ""
         tail += f"_{background.file_part(*fitted)}" if fitted else ""
         tail += f"_{smoothing.file_part(*smoothed)}" if smoothed else ""
         corner = self.panels[0, 0]

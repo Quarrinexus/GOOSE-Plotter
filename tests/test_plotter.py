@@ -537,6 +537,50 @@ def test_ticking_advanced_fitting_starts_from_the_polynomial(app):
     assert "custom" in app.line_list.get(0) and "None" not in app.line_list.get(0)
 
 
+def test_despike_turns_spikes_into_gaps(app):
+    plot(app)
+    df = app.frames[app.panel.line.run]
+    column = next(c for c in df.columns if c.startswith("M006_AH"))
+    df.loc[df.index[[1000, 3000]], column] += 0.05
+    app.cache.clear()
+    app.apply_controls()
+    assert spinbox_states(app) == ["disabled", "disabled"]  # greyed out until ticked
+    app.despike_on.set(True)
+    app.apply_controls()
+    assert spinbox_states(app) == ["normal", "normal"]
+    line = app.panel.line
+    _, y = drawn(app)
+    assert np.isnan(y[[1000, 3000]]).all() and np.isfinite(y).sum() == len(y) - 2
+    assert line.despiked == 2 and app.despike_found["text"] == "2 points removed"
+    assert app.filename.get().endswith("_ds5-21.png")
+    assert "despiked" in app.line_list.get(0)
+    app.despike_threshold.set("0")  # refused: the last good one stays
+    app.apply_controls()
+    assert line.despike_threshold == 5
+    app.new_derived_panel("fft")  # its line follows the data panel's despiking
+    assert app.panels[(1, 0)].lines[0].despiking == (21, 5.0)
+    app.selected = (0, 0)
+    app._load_controls()
+    app.despike_on.set(False)
+    app.apply_controls()
+    assert np.isfinite(drawn(app)[1]).all() and not app.despike_found.winfo_manager()
+    assert app.panels[(1, 0)].lines[0].despiking is None
+
+
+def spinbox_states(app):
+    """The states of the Despike window and threshold boxes."""
+    found = []
+
+    def walk(widget):
+        for child in widget.winfo_children():
+            if child.winfo_class() == "TSpinbox" and str(child["textvariable"]) in (
+                    str(app.despike_window), str(app.despike_threshold)):
+                found.append(str(child["state"]))
+            walk(child)
+    walk(app.tabs["Process"])
+    return found
+
+
 def entry_states(app):
     """The states of the Background's function and start-value boxes."""
     found = []

@@ -14,19 +14,21 @@ from goose_plotter.widgets import MAX_GRID
 # 5: lines can be cut (Splicing), and links can share the cut.
 # 6: a line's cut is a list of ranges, all kept or all removed.
 # 7: the background fits the whole line; its old x range is a cut.
-VERSION = 7
+# 8: lines can be despiked, and links can share it.
+VERSION = 8
 KEY = "goose_plotter_session"  # the session file's marker, holding VERSION
 # `dump`'s own marker, so `load` reads undo snapshots and files alike; its
 # absence means the layout of version 1, where a derived panel shared its
 # data panel's lines and every panel carried an operation. Before 3, "" was
 # the automatic text; before 4, links were groups, each panel with its ticks;
 # before 5, there was no cut to share; in 5, a line had one cut range;
-# before 7, a line's background had an x range of its own.
-FORMAT = 7
+# before 7, a line's background had an x range of its own; before 8, there
+# was no despiking to share.
+FORMAT = 8
 TEXTS = {Panel: ("title", "x_label", "y_label"), Line: ("label",)}
 
 # Not saved: what the last draw found (fit values too), and which line the controls edit.
-SKIP = {"shown", "error", "fit_values", "lines", "selected", "source"}
+SKIP = {"shown", "error", "fit_values", "despiked", "lines", "selected", "source"}
 # Settings that must be one of a menu's keys; anything else gets the default.
 # Per class: a Line's window is smoothing's, in points; a Panel's is the FFT's.
 CHOICES = {Line: {"smooth": smoothing.METHODS, "background": background.MODES,
@@ -45,7 +47,8 @@ TIDY = {Line: {"cuts": splicing.tidy},
 
 # Numbers that only make sense above 0, per class as for CHOICES; the
 # controls refuse the rest too.
-POSITIVE = {Line: {"width", "marker_size", "window", "span"},
+POSITIVE = {Line: {"width", "marker_size", "window", "span", "despike_window",
+                   "despike_threshold"},
             Panel: {"f_max", "derivative_window", "peak_count"}, Link: set()}
 
 
@@ -150,7 +153,7 @@ def load(state):
         raise ValueError(f"a {rows} x {cols} layout is bigger than the plotter allows")
     grid = [(r, c) for r in range(rows) for c in range(cols)]
     fmt = state.get("format")
-    if fmt not in (2, 3, 4, 5, 6, FORMAT):
+    if fmt not in (2, 3, 4, 5, 6, 7, FORMAT):
         panels, groups = _load_old(saved, grid)
         return rows, cols, _blank_is_auto(panels), _group_links(panels, groups)
     panels = {}
@@ -166,25 +169,27 @@ def load(state):
         if p.id in seen:
             p.id = Panel().id
         seen.add(p.id)
-    if fmt in (5, 6, FORMAT):
+    if fmt == FORMAT:
         return rows, cols, panels, _links(state.get("links"), panels)
-    if fmt == 4:
-        return rows, cols, panels, _share_cut(_links(state.get("links"), panels), panels)
+    new = {"despike"} if fmt in (5, 6, 7) else {"cut", "despike"}  # keys it hadn't
+    if fmt in (4, 5, 6, 7):
+        return rows, cols, panels, _share_new(_links(state.get("links"), panels), panels, new)
     groups = {cell: _group_of(saved.get(cell), old_ticks=False) for cell in panels}
     if fmt == 2:
         panels = _blank_is_auto(panels)
-    return rows, cols, panels, _share_cut(_group_links(panels, groups), panels)
+    return rows, cols, panels, _share_new(_group_links(panels, groups), panels, new)
 
 
-def _share_cut(links, panels):
-    """Links saved before format 5 had no cut to share. Those that shared
-    everything else (a derived panel's with its data panel, at least) share
-    it too, so an FFT or derivative still follows its data when it's cut."""
+def _share_new(links, panels, new):
+    """Links saved before the SYNC keys in `new` existed (the cut before
+    format 5, despiking before 8). Those that shared everything else (a
+    derived panel's with its data panel, at least) share them too, so an FFT
+    or derivative still follows its data panel."""
     derived = {frozenset((p.id, panels[p.source].id)) for p in panels.values()
                if p.derived and p.source in panels}
     for pair, link in links.items():
-        if pair in derived or set(SYNC) - {"cut"} <= link.synced:
-            link.sync = " ".join(k for k in SYNC if k in link.synced | {"cut"})
+        if pair in derived or set(SYNC) - new <= link.synced:
+            link.sync = " ".join(k for k in SYNC if k in link.synced | new)
     return links
 
 

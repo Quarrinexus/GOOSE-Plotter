@@ -134,12 +134,14 @@ def test_format_2_blank_text_was_automatic():
 
 def test_legend_names_only_what_differs():
     base = dict(run="r.005", x="B", x_fn="x", y="M006_AH", y_fn="y", smoothing=None,
-                fitting=None, cutting=None)
+                fitting=None, cutting=None, despiking=None)
     lines = [Line(shown=tuple(base.values())),
              Line(shown=tuple({**base, "cutting": ("keep", ((1.0, 2.0),))}.values()))]
     assert legend_labels(lines) == ["M006_AH", "M006_AH · x 1–2"]
     lines[1].shown = tuple({**base, "run": "r.003"}.values())
     assert legend_labels(lines) == ["run 005", "run 003"]
+    lines[1].shown = tuple({**base, "despiking": (21, 5.0)}.values())
+    assert legend_labels(lines) == ["M006_AH", "M006_AH · despiked 5σ/21"]
 
 
 def test_line_colours_avoid_clashes():
@@ -159,6 +161,29 @@ def test_fit_values_are_not_saved_but_the_function_is():
     loaded = session.load(dumped)[2][(0, 0)].lines[0]
     assert (loaded.advanced, loaded.fit_function, loaded.fit_start) == (True, "A * sin(B * x)", "B=314")
     assert loaded.fit_values == () and line.copy().fit_values == ()
+
+
+def test_despiking_is_saved_but_not_what_it_found():
+    panels, links = state()
+    line = panels[(0, 0)].lines[0]
+    line.despike, line.despike_window, line.despike_threshold, line.despiked = True, 31, 4.5, 7
+    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
+    assert "despiked" not in dumped["panels"]["0,0"]["lines"][0]
+    loaded = session.load(dumped)[2][(0, 0)].lines[0]
+    assert loaded.despiking == (31, 4.5) and loaded.despiked == 0
+
+
+def test_before_format_8_links_that_shared_everything_share_despiking():
+    panels, links = state()
+    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
+    dumped["format"] = 7
+    everything = " ".join(k for k in SYNC if k != "despike")
+    dumped["links"][0]["sync"] = everything
+    loaded = session.load(dumped)[3]
+    assert "despike" in next(iter(loaded.values())).synced
+    del dumped["panels"]["1,0"]["source"]  # not known as derived: judged by what it shares
+    dumped["links"][0]["sync"] = "run x y"  # partial links stay partial
+    assert "despike" not in next(iter(session.load(dumped)[3].values())).synced
 
 
 def test_changing_x_clears_every_x_unit_setting():

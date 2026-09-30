@@ -11,6 +11,7 @@ from goose_plotter.axis_functions import file_part
 from goose_plotter.columns import sample_of
 from goose_plotter.datasets import describe
 from goose_plotter.background import describe as describe_background
+from goose_plotter.despike import describe as describe_despike
 from goose_plotter.splicing import describe as describe_cut
 from goose_plotter.smoothing import describe as describe_smoothing
 
@@ -18,6 +19,7 @@ from goose_plotter.smoothing import describe as describe_smoothing
 # names the keys it shares.
 SYNC = {"run": ("run",), "x": ("x",), "x_fn": ("x_fn",), "y": ("y",), "y_fn": ("y_fn",),
         "colour": ("colour",), "cut": ("cut", "cuts"),
+        "despike": ("despike", "despike_window", "despike_threshold"),
         "smoothing": ("smooth", "window", "in_x", "span", "order"),
         "background": ("background", "degree", "advanced", "fit_function", "fit_start"),
         "style": ("style", "width", "marker", "marker_size")}
@@ -54,6 +56,10 @@ class Line:
     order: int = 2  # Savitzky–Golay polynomial order
     cut: str = ""  # a key of splicing.MODES, for all the ranges; "" for off
     cuts: tuple = ()  # the cut's x ranges, (start, end) pairs as splicing.tidy makes them
+    despike: bool = False  # spikes (see despike.spikes) turned to gaps
+    despike_window: int = 21  # points around each one, for its median
+    despike_threshold: float = 5.0  # how many local spreads off it makes a spike
+    despiked: int = 0  # how many the last draw found; not saved
     colour: str | None = None  # None: picked automatically, see line_colours
     # How it's drawn; not in `shown`, so changing them keeps the zoom.
     style: str = "auto"  # a key of STYLES
@@ -61,11 +67,12 @@ class Line:
     marker: str = ""  # a key of MARKERS
     marker_size: float | None = None  # None: AUTO_MARKER_SIZE
     label: str | None = None  # its name in the legend; None: the automatic one, "": none
-    shown: tuple | None = None  # (run, x, x_fn, y, y_fn, smoothing, fitting, cutting) as last drawn
+    # (run, x, x_fn, y, y_fn, smoothing, fitting, cutting, despiking) as last drawn
+    shown: tuple | None = None
     error: str = ""  # why the last draw failed, if it did
 
     def copy(self):
-        return replace(self, shown=None, error="", fit_values=())
+        return replace(self, shown=None, error="", fit_values=(), despiked=0)
 
     @property
     def auto_width(self):
@@ -108,15 +115,23 @@ class Line:
             return None
         return (self.cut, self.cuts)
 
+    @property
+    def despiking(self):
+        """(window, threshold), or None when spikes are left in."""
+        if not self.despike:
+            return None
+        return (self.despike_window, self.despike_threshold)
+
     def clear_x_units(self):
         """Forget the settings in the plotted x (X_UNITS), when x or its function changes."""
         self.span = None
         self.cuts = ()
 
     def parts(self):
-        """(run, y part, x part, smoothing, fitting, cutting) as they'd appear in a filename."""
-        run, x, x_fn, y, y_fn, smoothed, fitted, cut = self.shown
-        return run, file_part(y_fn, y), file_part(x_fn, x), smoothed, fitted, cut
+        """(run, y part, x part, smoothing, fitting, cutting, despiking) as
+        they'd appear in a filename."""
+        run, x, x_fn, y, y_fn, smoothed, fitted, cut, despiked = self.shown
+        return run, file_part(y_fn, y), file_part(x_fn, x), smoothed, fitted, cut, despiked
 
 
 @dataclass
@@ -290,11 +305,11 @@ def line_colours(panel, samples):
 def legend_labels(lines):
     """Legend text naming only what differs between the lines."""
     parts = [l.parts() for l in lines]
-    differs = [len({p[i] for p in parts}) > 1 for i in range(6)]
+    differs = [len({p[i] for p in parts}) > 1 for i in range(7)]
     if not any(differs[:3]):
         differs[1] = True  # identical, or only processed differently: say what's on y
     labels = []
-    for run, y, x, smoothed, fitted, cut in parts:
+    for run, y, x, smoothed, fitted, cut, despiked in parts:
         bits = [describe(run)] if differs[0] else []
         if differs[1]:
             bits.append(y)
@@ -306,6 +321,8 @@ def legend_labels(lines):
             bits.append(describe_background(*fitted))
         if differs[5] and cut:
             bits.append(describe_cut(*cut))
+        if differs[6] and despiked:
+            bits.append(describe_despike(*despiked))
         labels.append(" · ".join(bits))
     return labels
 

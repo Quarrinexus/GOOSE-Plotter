@@ -50,6 +50,7 @@ mirror. If that folder isn't around this repo, use whatever data folder
 | `smoothing.py` | moving average, median, Savitzky–Golay; windows in points or x |
 | `background.py` | polynomial fit in x, or a typed function (Advanced Fitting, a numpy Levenberg–Marquardt), shown or subtracted |
 | `splicing.py` | cutting a line to x ranges, or those ranges out of it |
+| `despike.py` | the Despike section: a Hampel filter turning spikes to NaN gaps |
 | `spectrum.py` | FFT of a line against its plotted x, for FFT panels; `even_grid`, the binning it shares |
 | `derivative.py` | first and second derivatives on `even_grid`, for derivative panels |
 | `measure.py` | the Measure tab's reading: extremes in a region, peaks, parabola refining, snapping to a drawn point |
@@ -70,17 +71,20 @@ mirror. If that folder isn't around this repo, use whatever data folder
    them are dropped; removed, the rows in any turn to NaN in x and y, so it's drawn as a
    gap and fits and x-unit windows leave it out (SG in points still
    interpolates across it, as across any NaN)
-3. background (`background.apply`): fit on the unsmoothed data (the
+3. despiking (`despike.despike`): spikes turn to NaN in x and y, like a
+   removed cut, so the fit never sees them; `Line.despiked` counts them
+   (not saved, cached like `fit_values`)
+4. background (`background.apply`): fit on the unsmoothed data (the
    polynomial, or with `Line.advanced` the typed `fit_function`), over the
    whole line as cut. Only the cut drops or blanks rows: the background had
    an x range of its own before session format 7, and `session._line` turns
    it into a Keep cut
-4. smoothing (`smoothing.smooth`), on what's left
-5. in a derived panel only, `spectrum.spectrum` or `derivative.derivative` of
+5. smoothing (`smoothing.smooth`), on what's left
+6. in a derived panel only, `spectrum.spectrum` or `derivative.derivative` of
    that against x
-6. one `ax.plot` call
+7. one `ax.plot` call
 
-`_line_data` caches steps 1–4 per line, keyed on the line's settings, so a
+`_line_data` caches steps 1–5 per line, keyed on the line's settings, so a
 data panel and its derived panels do the work once; `_reload_folder` clears it.
 
 Keep that order. Things that depend on it:
@@ -90,7 +94,8 @@ Keep that order. Things that depend on it:
   a line index. A second artist per line breaks all three; that's why "show
   the fit" is a mode on a copied line, not an overlay.
 - **`Line.shown`** is the tuple of what was last drawn:
-  `(run, x, x_fn, y, y_fn, smoothing, fitting, cutting)`. `parts()`, `legend_labels`,
+  `(run, x, x_fn, y, y_fn, smoothing, fitting, cutting, despiking)`, which
+  is `_data_key`. `parts()`, `legend_labels`,
   `_default_name` and the zoom logic in `apply_controls` all index into it, so
   a new per-line setting means updating each of them.
 - **`Line.fitting`** is `(mode, degree, function, start)`, one shape for
@@ -204,9 +209,10 @@ objects, and axis ranges and zoom are each panel's own. So:
   selected panel's settings across it.
 - `_tidy_links`, run by `_build_axes`, drops links to panels that are gone
   and clears a derived panel's `source` once no link joins them.
-- Sessions before format 5 have no "cut" in their links' `sync`; `load`
-  adds it to links that shared everything else (derived panels' included),
-  so an FFT still follows its data panel's cut.
+- Sessions before format 5 have no "cut" in their links' `sync`, and before
+  8 no "despike"; `load` (`_share_new`) adds them to links that shared
+  everything else (derived panels' included), so an FFT still follows its
+  data panel. A new SYNC key needs the same.
 - `session.dump` / `load` carry the links (sorted, so undo compares equal
   states equal); sessions before format 4 had groups (`link_group`, and
   `sync` / `frozen` on each panel), which `load` turns into a link between
