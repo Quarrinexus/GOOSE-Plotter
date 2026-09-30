@@ -708,7 +708,10 @@ class Plotter(tk.Tk):
                             values=menu(background.MODES))
         mode.pack(side=tk.LEFT)
         mode.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
-        ttk.Label(row, text=tr("Degree")).pack(side=tk.LEFT, padx=(10, 0))
+        # Its own row: beside the mode, the name would widen the column.
+        row = ttk.Frame(body)
+        row.pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(row, text=tr("Polynomial degree")).pack(side=tk.LEFT)
         degree = ttk.Spinbox(row, textvariable=self.degree, from_=0, to=30, width=3,
                              command=self.apply_controls)
         degree.pack(side=tk.LEFT, padx=(4, 0))

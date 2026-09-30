@@ -122,16 +122,17 @@ stay until it's done or cancelled.
   to the plotted y, after its function. To see raw and smoothed together, copy the
   line with + and smooth the copy; the legend tells them apart.
 - **Background**: per line, under Smoothing. Fits a polynomial of the chosen
-  degree (5 to start with) to the plotted y against the plotted x (so in 1/B with a `1/x`
-  function) and either **Subtract**s it, leaving the oscillations, or
+  **Polynomial degree** (5 to start with) to the plotted y against the
+  plotted x (so in 1/B with a `1/x` function) and either **Subtract**s it, leaving the oscillations, or
   **Show fit**, which draws the fit dashed in place of the data; copy a line
   with + to lay its fit over it. It fits the whole line as cut: to fit only
   part of it (leaving out the parked ends of a sweep), keep that part in
   the Splicing tab. The fit comes before smoothing.
 
   Tick **Advanced Fitting** to fit a function of your own instead of the
-  polynomial. Greyed out, the **y =** box shows the polynomial the Degree
-  fits (`A*x**5 + B*x**4 + ... + F`), and ticking starts you from it. Type
+  polynomial. Greyed out, the **y =** box shows the polynomial that
+  Polynomial degree fits (`A*x**5 + B*x**4 + ... + F`), and ticking
+  starts you from it. Type
   a function of x there, with capital letters for the unknowns, e.g.
   `A * sin(B * x) + C` or `A + B / x`.
   Write `*` for every product (`A sin(x)` is refused); `^` or `**` is a
@@ -142,7 +143,7 @@ stay until it's done or cancelled.
   under the boxes. Untick it to go back to the polynomial; the function is
   kept for when it's ticked again. For a high-degree polynomial leave it
   unticked: typed out as powers of x, degree 15 or more can't be fitted as
-  precisely as Degree fits it.
+  precisely as Polynomial degree fits it.
 - **Splicing**: per line, in its own tab. Give a line any number of x
   ranges: type x ... to ... and **Add**, or **Pick** one by dragging across
   the plot. One setting covers all of them: **Keep ranges** cuts the line

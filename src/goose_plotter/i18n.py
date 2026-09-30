@@ -97,7 +97,7 @@ ZH = {
     "Off": "关",
     "Show fit": "显示拟合",
     "Subtract": "扣除",
-    "Degree": "次数",
+    "Polynomial degree": "多项式次数",
     "Advanced Fitting": "高级拟合",
     "y =": "y =",
     "Start": "初值",
