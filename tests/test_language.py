@@ -47,8 +47,6 @@ def exercise(app, tmp_path):
     app.apply_controls()
     app.pick_range("cut")
     app.stop_picking()
-    app.pick_range()
-    app.stop_picking()
     app.set_region((0.05, 0.1))
     app.mark_var.set(True)
     app.apply_measure()

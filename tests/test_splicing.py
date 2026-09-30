@@ -62,3 +62,8 @@ def test_describe_and_file_part_count_many_ranges():
     three = two + ((5.0, None),)
     assert splicing.describe("keep", three) == "3 x ranges"
     assert splicing.file_part("remove", three) == "no3ranges"
+
+
+def test_within_and_gaps():
+    assert splicing.within(((None, 1.0), (2.0, 3.0)), 0.5, 2.5) == ((0.5, 1.0), (2.0, 2.5))
+    assert splicing.gaps(((1.0, 2.0), (3.0, None)), None, 5.0) == ((None, 1.0), (2.0, 3.0))

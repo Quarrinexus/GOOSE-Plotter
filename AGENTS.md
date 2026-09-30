@@ -70,7 +70,10 @@ mirror. If that folder isn't around this repo, use whatever data folder
    them are dropped; removed, the rows in any turn to NaN in x and y, so it's drawn as a
    gap and fits and x-unit windows leave it out (SG in points still
    interpolates across it, as across any NaN)
-3. background (`background.apply`): fit on the unsmoothed data
+3. background (`background.apply`): fit on the unsmoothed data, over the
+   whole line as cut. Only the cut drops or blanks rows: the background had
+   an x range of its own before session format 7, and `session._line` turns
+   it into a Keep cut
 4. smoothing (`smoothing.smooth`), on what's left
 5. in a derived panel only, `spectrum.spectrum` or `derivative.derivative` of
    that against x
@@ -95,8 +98,7 @@ Keep that order. Things that depend on it:
   width of None means `auto_width` (heavier for a shown fit), and a
   `marker_size` of None `AUTO_MARKER_SIZE`; `apply_controls` only stores the
   box's number if it differs from the auto one it showed.
-- **Settings in x units** (`model.X_UNITS`: `Line.span`, `fit_from`,
-  `fit_to`, `cuts`) are in the *plotted* x, after its function. They're
+- **Settings in x units** (`model.X_UNITS`: `Line.span`, `cuts`) are in the *plotted* x, after its function. They're
   cleared (`Line.clear_x_units`) whenever x or its function changes, or on
   ⇅, since a value in T means nothing in 1/B.
 - Errors are stored in `Line.error` as `"<Stage> error: message"`.
@@ -117,8 +119,7 @@ them (unlinked, deleted, removed by the layout). So:
   derived. `operation` only matters where FFTs and derivatives differ
   (drawing, the Derive tab's boxes, `_default_name`).
 - Derived panels are only made from data panels (no FFT of a derivative),
-  and there's no fit-range picking on them, nor cut-range picking on
-  derivative panels. On an FFT panel the Splicing tab edits `Panel.cut` /
+  and there's no cut-range picking on derivative panels. On an FFT panel the Splicing tab edits `Panel.cut` /
   `Panel.cuts` (`_cut_target`), a cut of the spectrum in F applied after F
   max, not its lines' cuts, which stay the data's (and follow the data
   panel through the link); `clear_ranges` clears it with x. Putting one on a panel already

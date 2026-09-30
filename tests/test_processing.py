@@ -3,7 +3,9 @@
 import numpy as np
 import pytest
 
-from goose_plotter import background, derivative, smoothing, spectrum
+from numpy.polynomial import Chebyshev
+
+from goose_plotter import background, derivative, smoothing, spectrum, splicing
 
 
 # --- background -------------------------------------------------------------
@@ -11,33 +13,34 @@ from goose_plotter import background, derivative, smoothing, spectrum
 def test_background_subtract_removes_a_polynomial_exactly():
     x = np.linspace(0.03, 0.07, 500)
     y = 3 - 20 * x + 150 * x ** 2
-    assert np.allclose(background.apply(x, y, "subtract", 2, None, None), 0, atol=1e-9)
-    assert np.allclose(background.apply(x, y, "fit", 2, None, None), y)
+    assert np.allclose(background.apply(x, y, "subtract", 2), 0, atol=1e-9)
+    assert np.allclose(background.apply(x, y, "fit", 2), y)
 
 
-def test_background_range_limits_the_fit_and_the_line():
+def test_a_kept_cut_then_the_background_fits_only_that_part():
     x = np.linspace(0, 10, 101)
-    fitted = background.apply(x, x ** 2, "fit", 2, 2, 5)
-    inside = (x >= 2) & (x <= 5)
-    assert np.all(np.isnan(fitted[~inside]))
-    assert np.allclose(fitted[inside], x[inside] ** 2)
+    y = x ** 3
+    kept_x, kept_y = splicing.cut(x, y, "keep", ((2.0, 5.0),))
+    expected = Chebyshev.fit(kept_x, kept_y, 2)
+    assert np.allclose(background.apply(kept_x, kept_y, "subtract", 2),
+                       kept_y - expected(kept_x))
 
 
 def test_background_errors():
     x = np.linspace(0, 1, 50)
-    with pytest.raises(ValueError, match="no points in the fit range"):
-        background.apply(x, x, "fit", 2, 5, 6)
+    with pytest.raises(ValueError, match="no points to fit"):
+        background.apply(x, np.full(50, np.nan), "fit", 2)
     with pytest.raises(ValueError, match="more than 3 different"):
-        background.apply(np.repeat([1.0, 2.0, 3.0], 5), np.ones(15), "fit", 3, None, None)
+        background.apply(np.repeat([1.0, 2.0, 3.0], 5), np.ones(15), "fit", 3)
     with pytest.raises(ValueError, match="negative"):
-        background.apply(x, x, "fit", -1, None, None)
+        background.apply(x, x, "fit", -1)
 
 
 def test_background_skips_nan():
     x = np.linspace(0, 1, 50)
     y = 2 * x + 1
     y[10] = np.nan
-    result = background.apply(x, y, "subtract", 1, None, None)
+    result = background.apply(x, y, "subtract", 1)
     assert np.isnan(result[10])
     assert np.allclose(np.delete(result, 10), 0, atol=1e-9)
 

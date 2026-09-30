@@ -92,8 +92,8 @@ keeps them.
 At the top of the controls column, **Files** opens to the folders, Data
 format and sessions (it starts closed once both folders are chosen). Under
 it Dataset, the Lines list and the axes are always shown, and the rest is in
-five tabs: **Process** (Smoothing, Background), **Splicing** (cutting lines
-to parts of their x), **Derive** (FFT, Derivative), **Linking** (Linked
+five tabs: **Splicing** (cutting lines to parts of their x), **Process**
+(Smoothing, Background), **Derive** (FFT, Derivative), **Linking** (Linked
 data) and **Measure** (reading numbers off the plot); their sections start open. If
 the selected line can't be drawn (a bad function, a
 file that won't load, a smoothing window that's too big), the reason shows
@@ -125,10 +125,9 @@ stay until it's done or cancelled.
   degree to the plotted y against the plotted x (so in 1/B with a `1/x`
   function) and either **Subtract**s it, leaving the oscillations, or
   **Show fit**, which draws the fit dashed in place of the data; copy a line
-  with + to lay its fit over it. **Fit x ... to** limits the fit to part
-  of the line (leave out the parked ends of a sweep); outside it the line
-  isn't drawn. **Pick** sets the range by dragging across the plot.
-  The fit comes before smoothing.
+  with + to lay its fit over it. It fits the whole line as cut: to fit only
+  part of it (leaving out the parked ends of a sweep), keep that part in
+  the Splicing tab. The fit comes before smoothing.
 - **Splicing**: per line, in its own tab. Give a line any number of x
   ranges: type x ... to ... and **Add**, or **Pick** one by dragging across
   the plot. One setting covers all of them: **Keep ranges** cuts the line
@@ -136,7 +135,7 @@ stay until it's done or cancelled.
   oscillations), **Remove ranges** cuts them all out (glitches, parked
   stretches), leaving gaps. Adding a range while it's Off turns on Keep
   ranges. Click a range in the list to see it in the boxes, where Enter
-  changes it; **Delete** removes it. Like the fit range they're in the
+  changes it; **Delete** removes it. They're in the
   plotted x, after its function, and a blank end means no limit. The cut
   comes first, so it's what's drawn and all the background fit, smoothing,
   FFT and derivative ever see: an FFT of one kept range has its
@@ -228,7 +227,7 @@ stay until it's done or cancelled.
   shares: with 1 linked to 2 (sharing the axes) and 2 to its FFT in 3, a new
   Y axis in 1 reaches 2 and then the FFT, while 2's background stays its own
   and still reaches the FFT. A frozen link stops them. Adding or removing a line, though, happens in every
-  panel joined through links, so lines stay paired. Fit ranges and x-unit
+  panel joined through links, so lines stay paired. Cut ranges and x-unit
   windows only cross between panels with the same x. FFT and derivative
   panels are linked to their data panel, with every box ticked. Axis ranges
   and zoom stay each panel's own. **Unlink** removes the chosen link, and
@@ -317,7 +316,7 @@ stay until it's done or cancelled.
 | Delete | remove the selected line (-) |
 | Up / Down | select the previous / next line |
 | Ctrl+arrow keys | select the panel beside the selected one |
-| Esc | stop picking a fit range or a panel |
+| Esc | stop picking a range or a panel |
 
 Delete and the arrow keys are left alone while you type in a box; click
 the plot to get out of it.

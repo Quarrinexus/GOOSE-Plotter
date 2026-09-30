@@ -98,7 +98,6 @@ ZH = {
     "Show fit": "显示拟合",
     "Subtract": "扣除",
     "Degree": "次数",
-    "Fit x": "拟合 x",
     "to": "至",
     "Pick": "选取",
 
@@ -237,16 +236,12 @@ ZH = {
     "Exported {name}": "已导出 {name}",
 
     # Picking ranges
-    "Pick the fit range on the data panel, not its {kind}.": "请在数据面板上选取拟合区间，而不是在其{kind}上。",
     "Pick the cut range on the data panel, not its {kind}.": "请在数据面板上选取截取区间，而不是在其{kind}上。",
-    "Plot the line first, then pick its fit range.": "请先绘制曲线，再选取拟合区间。",
     "Plot the line first, then pick its cut range.": "请先绘制曲线，再选取截取区间。",
     "Plot the line first, then pick its measuring range.": "请先绘制曲线，再选取测量区间。",
-    "Drag across the plot to set the fit range; Esc cancels.": "在图上拖动以设定拟合区间；按 Esc 取消。",
     "Drag across the plot to set the cut range; Esc cancels.": "在图上拖动以设定截取区间；按 Esc 取消。",
     "Drag across the plot to set the measuring range; Esc cancels.": "在图上拖动以设定测量区间；按 Esc 取消。",
     "Turn off the toolbar's zoom or pan first.": "请先关闭工具栏的缩放或平移。",
-    "Range set; choose Show fit or Subtract to use it.": "区间已设定；选择“显示拟合”或“扣除”以使用它。",
 
     # Messages
     "Could not load dataset: {error}": "无法加载数据集：{error}",

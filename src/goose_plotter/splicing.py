@@ -43,6 +43,38 @@ def tidy(ranges):
     return tuple(sorted(kept, key=lambda p: -math.inf if p[0] is None else p[0]))
 
 
+def _low(value):
+    return -math.inf if value is None else value
+
+
+def _high(value):
+    return math.inf if value is None else value
+
+
+def within(ranges, start, end):
+    """The parts of `ranges` from `start` to `end` (None: no limit), tidied."""
+    out = []
+    for a, b in ranges:
+        low, high = max(_low(a), _low(start)), min(_high(b), _high(end))
+        if low <= high:
+            out.append((None if low == -math.inf else low, None if high == math.inf else high))
+    return tidy(out)
+
+
+def gaps(ranges, start, end):
+    """What's between `ranges` from `start` to `end`: the x a Remove cut of
+    them leaves, as ranges to keep (sharing their ends)."""
+    out, low = [], _low(start)
+    for a, b in sorted(ranges, key=lambda r: _low(r[0])):
+        if _low(a) > low:
+            out.append((low, _low(a)))
+        low = max(low, _high(b))
+    if low < _high(end):
+        out.append((low, _high(end)))
+    return within([(None if a == -math.inf else a, None if b == math.inf else b) for a, b in out],
+                  start, end)
+
+
 def describe(mode, ranges):
     """Short text for the legend and line list: 'x 0.036–0.067',
     'without x 1–2, 3–4', 'without 3 x ranges'."""

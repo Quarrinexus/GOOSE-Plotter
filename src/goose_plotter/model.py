@@ -19,10 +19,10 @@ from goose_plotter.smoothing import describe as describe_smoothing
 SYNC = {"run": ("run",), "x": ("x",), "x_fn": ("x_fn",), "y": ("y",), "y_fn": ("y_fn",),
         "colour": ("colour",), "cut": ("cut", "cuts"),
         "smoothing": ("smooth", "window", "in_x", "span", "order"),
-        "background": ("background", "degree", "fit_from", "fit_to"),
+        "background": ("background", "degree"),
         "style": ("style", "width", "marker", "marker_size")}
 SYNC_DEFAULT = "run x x_fn y y_fn colour style"
-X_UNITS = ("span", "fit_from", "fit_to", "cuts")  # settings in the plotted x
+X_UNITS = ("span", "cuts")  # settings in the plotted x
 
 AUTO_MARKER_SIZE = 3.0  # matplotlib's markersize, in points
 
@@ -47,8 +47,6 @@ class Line:
     span: float | None = None  # window in x; None: estimated from `window` when drawn
     background: str = ""  # a key of background.MODES; "" for off
     degree: int = 10  # of the background polynomial
-    fit_from: float | None = None  # the fit's x range; None: no limit
-    fit_to: float | None = None
     order: int = 2  # Savitzky–Golay polynomial order
     cut: str = ""  # a key of splicing.MODES, for all the ranges; "" for off
     cuts: tuple = ()  # the cut's x ranges, (start, end) pairs as splicing.tidy makes them
@@ -90,10 +88,10 @@ class Line:
 
     @property
     def fitting(self):
-        """(mode, degree, fit_from, fit_to), or None when the background is off."""
+        """(mode, degree), or None when the background is off."""
         if not self.background:
             return None
-        return (self.background, self.degree, self.fit_from, self.fit_to)
+        return (self.background, self.degree)
 
     @property
     def cutting(self):
@@ -104,7 +102,7 @@ class Line:
 
     def clear_x_units(self):
         """Forget the settings in the plotted x (X_UNITS), when x or its function changes."""
-        self.span = self.fit_from = self.fit_to = None
+        self.span = None
         self.cuts = ()
 
     def parts(self):

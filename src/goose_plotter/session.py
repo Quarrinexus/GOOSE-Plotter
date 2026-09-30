@@ -13,14 +13,16 @@ from goose_plotter.widgets import MAX_GRID
 # 4: links are between pairs of panels, each with its own ticks and freeze.
 # 5: lines can be cut (Splicing), and links can share the cut.
 # 6: a line's cut is a list of ranges, all kept or all removed.
-VERSION = 6
+# 7: the background fits the whole line; its old x range is a cut.
+VERSION = 7
 KEY = "goose_plotter_session"  # the session file's marker, holding VERSION
 # `dump`'s own marker, so `load` reads undo snapshots and files alike; its
 # absence means the layout of version 1, where a derived panel shared its
 # data panel's lines and every panel carried an operation. Before 3, "" was
 # the automatic text; before 4, links were groups, each panel with its ticks;
-# before 5, there was no cut to share; in 5, a line had one cut range.
-FORMAT = 6
+# before 5, there was no cut to share; in 5, a line had one cut range;
+# before 7, a line's background had an x range of its own.
+FORMAT = 7
 TEXTS = {Panel: ("title", "x_label", "y_label"), Line: ("label",)}
 
 # Not saved: what the last draw found, and which line the controls edit.
@@ -115,10 +117,25 @@ def _build(cls, data, **extra):
 
 def _line(data):
     """A Line from `dump`'s data; before format 6 its cut was one range,
-    `cut_from` to `cut_to`."""
+    `cut_from` to `cut_to`, and before 7 its fit had its own range."""
     if isinstance(data, dict) and "cuts" not in data:
         data = {**data, "cuts": [[data.get("cut_from"), data.get("cut_to")]]}
-    return _build(Line, data)
+    line = _build(Line, data)
+    if isinstance(data, dict) and line.background:
+        fit_range = splicing.tidy([[data.get("fit_from"), data.get("fit_to")]])
+        if fit_range:
+            _cut_to(line, *fit_range[0])
+    return line
+
+
+def _cut_to(line, start, end):
+    """Cut `line` to x from `start` to `end` as well as its own cut: the old
+    fit range, which left out the rest of the line."""
+    if not line.cutting:
+        line.cut, line.cuts = "keep", ((start, end),)
+        return
+    ranges = line.cuts if line.cut == "keep" else splicing.gaps(line.cuts, start, end)
+    line.cut, line.cuts = "keep", splicing.within(ranges, start, end)
 
 
 def load(state):
@@ -133,7 +150,7 @@ def load(state):
         raise ValueError(f"a {rows} x {cols} layout is bigger than the plotter allows")
     grid = [(r, c) for r in range(rows) for c in range(cols)]
     fmt = state.get("format")
-    if fmt not in (2, 3, 4, 5, FORMAT):
+    if fmt not in (2, 3, 4, 5, 6, FORMAT):
         panels, groups = _load_old(saved, grid)
         return rows, cols, _blank_is_auto(panels), _group_links(panels, groups)
     panels = {}
@@ -149,7 +166,7 @@ def load(state):
         if p.id in seen:
             p.id = Panel().id
         seen.add(p.id)
-    if fmt in (5, FORMAT):
+    if fmt in (5, 6, FORMAT):
         return rows, cols, panels, _links(state.get("links"), panels)
     if fmt == 4:
         return rows, cols, panels, _share_cut(_links(state.get("links"), panels), panels)

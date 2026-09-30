@@ -175,7 +175,7 @@ class Plotter(tk.Tk):
         self.point_pick = False  # while clicks on the selected panel read points (Measure)
         self.marks = {}  # cell -> Measure's artists on it: region, markers, their labels
         self.measured = {}  # cell -> what Measure read off its selected line, as last drawn
-        self.pick_target = "fit"  # which range it sets: "fit" or "cut"
+        self.pick_target = "cut"  # which range it sets: "cut" or "measure"
         self.derive_pick = None  # (source cell, operation) while the user clicks where it goes
         self.link_pick = None  # cell while the user clicks a panel to link it to
         self.links = {}  # frozenset of two panel ids -> Link; see _link_partners
@@ -312,7 +312,7 @@ class Plotter(tk.Tk):
         ttk.Separator(controls).pack(fill=tk.X, pady=(10, 8))
         self.tab = tk.StringVar()
         self.tabs = {name: ttk.Frame(controls)
-                     for name in ("Process", "Splicing", "Derive", "Linking", "Measure")}
+                     for name in ("Splicing", "Process", "Derive", "Linking", "Measure")}
         self._tab_strip(controls)
         # Smoothing's and FFT's toggles add the 10 px above them.
         self._smoothing_box(self.tabs["Process"])
@@ -685,21 +685,17 @@ class Plotter(tk.Tk):
         self.smooth.show = refresh
 
     def _background_box(self, parent):
-        """A collapsed 'Background' toggle: mode, degree and the fit's x range."""
+        """A collapsed 'Background' toggle: mode and degree. It fits the whole
+        line; the Splicing tab is where a line is cut to part of its x."""
         self.fit_mode = tk.StringVar(value=shown(background.MODES, ""))
         self.degree = tk.StringVar(value="10")
-        self.fit_from, self.fit_to = tk.StringVar(), tk.StringVar()
 
         def text(is_open):
             fitted = self.panel.line.fitting
-            # Without the range, which would widen the column.
-            used = (f": {plain(background.describe(*fitted[:2], None, None))}"
-                    if fitted and not is_open else "")
+            used = f": {plain(background.describe(*fitted))}" if fitted and not is_open else ""
             return tr("Background") + used
 
         body = self._collapsible(parent, (10, 0), text, start_open=True)
-        # The mode and the polynomial's degree; then the x range fitted (blank
-        # ends: the whole line), typed or picked on the plot.
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(2, 0))
         mode = ttk.Combobox(row, textvariable=self.fit_mode, state="readonly", width=9,
@@ -710,18 +706,8 @@ class Plotter(tk.Tk):
         degree = ttk.Spinbox(row, textvariable=self.degree, from_=0, to=30, width=3,
                              command=self.apply_controls)
         degree.pack(side=tk.LEFT, padx=(4, 0))
-        row = ttk.Frame(body)
-        row.pack(anchor=tk.W, pady=(4, 0))
-        ttk.Label(row, text=tr("Fit x")).pack(side=tk.LEFT)
-        start = ttk.Entry(row, textvariable=self.fit_from, width=7)
-        start.pack(side=tk.LEFT, padx=(4, 4))
-        ttk.Label(row, text=tr("to")).pack(side=tk.LEFT)
-        end = ttk.Entry(row, textvariable=self.fit_to, width=7)
-        end.pack(side=tk.LEFT, padx=(4, 6))
-        ttk.Button(row, text=tr("Pick"), width=5, command=self.pick_range).pack(side=tk.LEFT)
-        for box in (degree, start, end):
-            for key in ("<Return>", "<KP_Enter>"):
-                box.bind(key, lambda _: self.apply_controls())
+        for key in ("<Return>", "<KP_Enter>"):
+            degree.bind(key, lambda _: self.apply_controls())
         self.fit_mode.show = body.refresh
 
     def _splicing_box(self, parent):
@@ -1279,8 +1265,6 @@ class Plotter(tk.Tk):
         self.smooth.show()
         self.fit_mode.set(shown(background.MODES, l.background))
         self.degree.set(l.degree)
-        self.fit_from.set("" if l.fit_from is None else f"{l.fit_from:.12g}")
-        self.fit_to.set("" if l.fit_to is None else f"{l.fit_to:.12g}")
         self.fit_mode.show()
         self.cut_mode.set(shown(splicing.MODES, self._cut_target().cut))
         self._show_cuts()
@@ -1340,11 +1324,6 @@ class Plotter(tk.Tk):
             pass
         spectrum_cut = (self.panel.cut, self.panel.cuts)
         self._cut_target().cut = key_of(splicing.MODES, self.cut_mode.get())
-        for attr, var in (("fit_from", self.fit_from), ("fit_to", self.fit_to)):
-            try:
-                setattr(l, attr, float(var.get()) if var.get().strip() else None)
-            except ValueError:
-                pass
         if (l.x, l.x_fn) != old_x:
             # A window or range in the old x means nothing in the new one.
             l.clear_x_units()
@@ -2216,16 +2195,15 @@ class Plotter(tk.Tk):
             self._build_axes()
             self._load_controls()
 
-    # --- fit range --------------------------------------------------------
+    # --- picking ranges ---------------------------------------------------
 
-    def pick_range(self, target="fit"):
-        """Drag across the selected panel to set the selected line's fit range,
-        or with `target` "cut" its cut range."""
+    def pick_range(self, target):
+        """Drag across the selected panel to add a range to the selected line's
+        cut (`target` "cut"), or to set the Measure region ("measure")."""
         self.stop_picking()
         ax = self.axes[self.selected]
-        what = {"fit": "fit", "cut": "cut", "measure": "measuring"}[target]
-        if target == "fit" and self.panel.derived or (
-                target == "cut" and self.panel.derived and self.panel.operation != "fft"):
+        what = {"cut": "cut", "measure": "measuring"}[target]
+        if target == "cut" and self.panel.derived and self.panel.operation != "fft":
             self._say(tr(f"Pick the {what} range on the data panel, not its {{kind}}.",
                          kind=self._kind(self.panel.operation)), error=True)
             return
@@ -2253,17 +2231,10 @@ class Plotter(tk.Tk):
         if self.pick_target == "measure":
             self.set_region((float(f"{start:.5g}"), float(f"{end:.5g}")))
             return
-        if self.pick_target == "cut":  # a new range, beside any there are
-            self.add_cut((float(f"{start:.5g}"), float(f"{end:.5g}")))
-            return
-        self.fit_from.set(f"{start:.5g}")
-        self.fit_to.set(f"{end:.5g}")
-        self.apply_controls()
-        if not self.panel.line.background:
-            self._say(tr("Range set; choose Show fit or Subtract to use it."))
+        self.add_cut((float(f"{start:.5g}"), float(f"{end:.5g}")))  # beside any there are
 
     def stop_picking(self):
-        """End a fit-range drag or a pick of where a derived panel or link goes, if one is under way."""
+        """End a range drag or a pick of where a derived panel or link goes, if one is under way."""
         if self.derive_pick is not None or self.link_pick is not None or self.point_pick:
             self.derive_pick = self.link_pick = None
             self.point_pick = False

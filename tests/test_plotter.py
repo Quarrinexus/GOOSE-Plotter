@@ -448,7 +448,7 @@ def test_session_save_and_open(app, tmp_path):
     path = tmp_path / "s.json"
     app.save_session(path)
     saved = json.loads(path.read_text())
-    assert saved["format"] == 6 and saved["cols"] == 2
+    assert saved["format"] == session.FORMAT and saved["cols"] == 2
     app.set_layout(1, 1)
     app.cut_mode.set(splicing.MODES[""])
     app.apply_controls()
@@ -472,6 +472,17 @@ def test_clicking_a_tab_shows_it(app):
     strip.event_generate("<Button-1>", x=(left + right) // 2, y=10)
     assert app.tab.get() == "Derive"
     assert app.tabs["Derive"].winfo_manager() and not app.tabs["Process"].winfo_manager()
+
+
+def test_tab_order(app):
+    assert [name for name, _ in app.tab_strip.tabs] == [
+        "Splicing", "Process", "Derive", "Linking", "Measure"]
+    assert app.tab.get() == "Process"
+
+
+def test_only_the_splicing_tab_cuts(app):
+    assert "Pick" not in buttons(app.tabs["Process"])
+    assert "Pick" in buttons(app.tabs["Splicing"])
 
 
 @pytest.mark.parametrize("language", ["en", "zh"])

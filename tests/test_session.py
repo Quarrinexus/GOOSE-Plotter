@@ -69,6 +69,29 @@ def test_format_5_single_cut_becomes_one_range():
     assert session.load(dumped)[2][(0, 0)].lines[0].cuts == ((0.2, 0.5),)
 
 
+@pytest.mark.parametrize("cut, cuts, wanted", [
+    ("", [], ((0.2, 0.5),)),
+    ("keep", [[0.1, 0.3], [0.4, None]], ((0.2, 0.3), (0.4, 0.5))),
+    ("remove", [[0.3, 0.4]], ((0.2, 0.3), (0.4, 0.5))),
+])
+def test_format_6_fit_range_becomes_a_cut(cut, cuts, wanted):
+    panels, links = state()
+    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
+    dumped["format"] = 6
+    line = dumped["panels"]["0,0"]["lines"][0]
+    line.update(background="subtract", fit_from=0.5, fit_to=0.2, cut=cut, cuts=cuts)
+    loaded = session.load(dumped)[2][(0, 0)].lines[0]
+    assert (loaded.cut, loaded.cuts) == ("keep", wanted)
+
+
+def test_format_6_fit_range_is_ignored_with_the_background_off():
+    panels, links = state()
+    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
+    dumped["format"] = 6
+    dumped["panels"]["0,0"]["lines"][0].update(background="", fit_from=0.2, fit_to=0.5)
+    assert session.load(dumped)[2][(0, 0)].lines[0].cutting == panels[(0, 0)].lines[0].cutting
+
+
 def test_before_format_5_derived_links_share_the_cut():
     panels, links = state()
     dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
@@ -127,7 +150,7 @@ def test_line_colours_avoid_clashes():
 
 
 def test_changing_x_clears_every_x_unit_setting():
-    line = Line(span=0.1, fit_from=1.0, fit_to=2.0, cut="keep", cuts=((1.0, 2.0),))
+    line = Line(span=0.1, cut="keep", cuts=((1.0, 2.0),))
     line.clear_x_units()
-    assert (line.span, line.fit_from, line.fit_to, line.cuts) == (None, None, None, ())
+    assert (line.span, line.cuts) == (None, ())
     assert line.cutting is None and line.cut == "keep"  # the mode stays for new ranges
