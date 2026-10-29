@@ -21,7 +21,8 @@ SYNC = {"run": ("run",), "x": ("x",), "x_fn": ("x_fn",), "y": ("y",), "y_fn": ("
         "colour": ("colour",), "cut": ("cut", "cuts"),
         "despike": ("despike", "despike_window", "despike_threshold"),
         "smoothing": ("smooth", "window", "in_x", "span", "order"),
-        "background": ("background", "degree", "advanced", "fit_function", "fit_start"),
+        "background": ("background", "degree", "advanced", "fit_function", "fit_start",
+                       "fits_drawn", "first_fit"),
         "style": ("style", "width", "marker", "marker_size")}
 SYNC_DEFAULT = "run x x_fn y y_fn colour style"
 X_UNITS = ("span", "cuts")  # settings in the plotted x
@@ -53,6 +54,10 @@ class Line:
     fit_function: str = ""  # a function of x with capital-letter unknowns, e.g. "A * sin(B * x) + C"
     fit_start: str = ""  # start values for its unknowns, e.g. "B=314"; 1 for any not given
     fit_values: tuple = ()  # ((name, value), ...) the last fit found; not saved
+    # Made by Fit as new line: its fit is of the line as drawn, after smoothing,
+    # and `first_fit` is the `fitting` of the line it copied, done before it.
+    fits_drawn: bool = False
+    first_fit: tuple = ()  # () for none
     order: int = 2  # Savitzky–Golay polynomial order
     cut: str = ""  # a key of splicing.MODES, for all the ranges; "" for off
     cuts: tuple = ()  # the cut's x ranges, (start, end) pairs as splicing.tidy makes them
@@ -67,7 +72,8 @@ class Line:
     marker: str = ""  # a key of MARKERS
     marker_size: float | None = None  # None: AUTO_MARKER_SIZE
     label: str | None = None  # its name in the legend; None: the automatic one, "": none
-    # (run, x, x_fn, y, y_fn, smoothing, fitting, cutting, despiking) as last drawn
+    # (run, x, x_fn, y, y_fn, smoothing, fitting, cutting, despiking,
+    # (fits_drawn, first_fit)) as last drawn
     shown: tuple | None = None
     error: str = ""  # why the last draw failed, if it did
 
@@ -130,7 +136,7 @@ class Line:
     def parts(self):
         """(run, y part, x part, smoothing, fitting, cutting, despiking) as
         they'd appear in a filename."""
-        run, x, x_fn, y, y_fn, smoothed, fitted, cut, despiked = self.shown
+        run, x, x_fn, y, y_fn, smoothed, fitted, cut, despiked = self.shown[:9]
         return run, file_part(y_fn, y), file_part(x_fn, x), smoothed, fitted, cut, despiked
 
 
@@ -289,7 +295,9 @@ def near(colour, others, distance=0.25):
 def line_colours(panel, samples):
     """Each line's colour: its pick, else its sample's, else an unused PALETTE one."""
     colours = [l.colour for l in panel.lines]
-    used = [c for c in colours if c]
+    # A fit made by Fit as new line takes its line's colour, so it doesn't
+    # move that line, if automatic, onto another.
+    used = [c for l, c in zip(panel.lines, colours) if c and not l.fits_drawn]
     for i, l in enumerate(panel.lines):
         if colours[i]:
             continue

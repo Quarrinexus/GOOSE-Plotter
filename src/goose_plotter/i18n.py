@@ -110,6 +110,9 @@ ZH = {
     "y =": "y =",
     "Start": "初值",
     "custom": "自定义",
+    "Fit as new line": "拟合为新曲线",
+    "Fits the line as drawn.": "拟合所画出的曲线。",
+    "Fits the line as drawn, after {fit}.": "拟合所画出的曲线（在 {fit} 之后）。",
     "to": "至",
     "Pick": "选取",
 

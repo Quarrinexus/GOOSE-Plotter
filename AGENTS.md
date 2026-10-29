@@ -80,6 +80,14 @@ mirror. If that folder isn't around this repo, use whatever data folder
    an x range of its own before session format 7, and `session._line` turns
    it into a Keep cut
 5. smoothing (`smoothing.smooth`), on what's left
+   - a line made by **Fit as new line** (`Line.fits_drawn`) does step 4
+     with `Line.first_fit` (the copied line's `fitting`) and, after
+     smoothing, its own `fitting`, always in "fit" mode: a fit of the
+     line as drawn. The Fit section edits that one and hides the mode
+     box, so `fitting` keeps its one shape. `first_fit` rides in
+     `_data_key`'s last item, so `parts()` takes the first nine.
+     `line_colours` leaves such lines' colours out of those taken, as
+     each starts in its line's colour.
 6. in a derived panel only, `spectrum.spectrum` or `derivative.derivative` of
    that against x
 7. one `ax.plot` call

@@ -537,6 +537,73 @@ def test_ticking_advanced_fitting_starts_from_the_polynomial(app):
     assert "custom" in app.line_list.get(0) and "None" not in app.line_list.get(0)
 
 
+def test_fit_as_new_line_fits_the_line_as_drawn(app):
+    """Subtract the background, then fit the oscillation left, on a new line."""
+    plot(app, x_fn="1/x")
+    app.fit_mode.set("Subtract")
+    app.advanced.set(True)
+    app.apply_controls()
+    app.fit_function.set("A + B / x")  # conftest's background, in 1/B
+    app.apply_controls()
+    colour = app.line_list.itemcget(0, "foreground")
+    app.fit_as_line()
+    p = app.panel
+    data, fit = p.lines
+    assert p.selected == 1 and fit.fits_drawn
+    assert fit.first_fit == ("subtract", None, "A + B / x", "") and fit.background == "fit"
+    assert data.fits_drawn is False and data.fitting == fit.first_fit  # the original as it was
+    # The polynomial to start with, drawn at once.
+    assert fit.fitting == ("fit", data.degree, "", "") and app.error_label["text"] == ""
+    assert not app.advanced.get() and 1 in app.artists[app.selected].values()
+    assert app.fit_hint["text"] == "Fits the line as drawn, after - A + B / x."
+    app.advanced.set(True)  # ticked: from that polynomial, as in the Fit section
+    app.apply_controls()
+    assert fit.fit_function == background.polynomial_text(fit.degree)
+    app.fit_function.set("A * sin(B * x + C)")
+    app.fit_start.set("A=1e-4, B=314, C=0")
+    app.apply_controls()
+    assert app.error_label["text"] == ""
+    values = dict(fit.fit_values)
+    assert values["B"] == pytest.approx(2 * np.pi * F, rel=1e-3)
+    assert abs(values["A"]) == pytest.approx(1e-4, rel=0.02)
+    # Drawn over the subtracted line, dashed, in its colour, which it keeps.
+    x, y = drawn(app, index=0)
+    fx, fy = drawn(app, index=1)
+    assert np.allclose(fx, x) and np.nanmax(abs(fy - y)) < 1e-5
+    assert {app.line_list.itemcget(i, "foreground") for i in (0, 1)} == {colour}
+    artist = next(a for a, i in app.artists[app.selected].items() if i == 1)
+    assert artist.get_linestyle() == "--"
+    # Smoothing the copy smooths before its fit; the original isn't touched.
+    app.smooth.set(smoothing.METHODS["median"])
+    app.apply_controls()
+    assert fit.smooth == "median" and data.smooth == ""
+    assert dict(fit.fit_values)["B"] == pytest.approx(2 * np.pi * F, rel=1e-3)
+    # Its own fit's controls replace the mode and the button.
+    app._select_line(0)
+    assert app.fit_mode.get() == "Subtract" and not app.fit_hint.winfo_manager()
+
+
+def test_fit_as_new_line_without_a_fit_and_in_sessions(app, tmp_path):
+    plot(app)
+    app.new_derived_panel("fft")
+    app.selected = (0, 0)
+    app._load_controls()
+    app.fit_as_line()
+    assert app.fit_hint["text"] == "Fits the line as drawn."
+    fit = app.panel.lines[1]
+    assert fit.fitting == ("fit", 5, "", "") and fit.first_fit == ()
+    assert app.panels[(1, 0)].lines[1].fits_drawn  # in the linked FFT panel too
+    path = tmp_path / "s.json"
+    app.save_session(path)
+    app.remove_line()
+    app.open_session(path)
+    loaded = app.panels[(0, 0)].lines[1]
+    assert loaded.fits_drawn and loaded.first_fit == () and loaded.fitting == fit.fitting
+    assert background.tidy_fitting(["subtract", None, "A*x", ""]) == ("subtract", None, "A*x", "")
+    assert background.tidy_fitting(["subtract", None, "", ""]) == ()  # no function
+    assert background.tidy_fitting(["nonsense", 5, "", ""]) == ()
+
+
 def test_despike_turns_spikes_into_gaps(app):
     plot(app)
     df = app.frames[app.panel.line.run]

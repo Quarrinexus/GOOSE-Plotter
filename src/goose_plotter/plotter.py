@@ -753,12 +753,17 @@ class Plotter(tk.Tk):
             return tr("Fit") + f": {plain(short)}"
 
         body = self._collapsible(parent, (10, 0), text)
-        row = ttk.Frame(body)
-        row.pack(anchor=tk.W, pady=(2, 0))
-        mode = ttk.Combobox(row, textvariable=self.fit_mode, state="readonly", width=9,
+        modes = ttk.Frame(body)
+        modes.pack(anchor=tk.W, pady=(2, 0))
+        mode = ttk.Combobox(modes, textvariable=self.fit_mode, state="readonly", width=9,
                             values=menu(background.MODES))
         mode.pack(side=tk.LEFT)
         mode.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
+        ttk.Button(modes, text=tr("Fit as new line"), command=self.fit_as_line).pack(
+            side=tk.LEFT, padx=(6, 0))
+        # In their place on a line Fit as new line made, whose mode is always
+        # Show fit: what it was fitted to.
+        self.fit_hint = ttk.Label(body, foreground=theme.HINT, wraplength=300, justify=tk.LEFT)
         # Its own row: beside the mode, the name would widen the column.
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
@@ -787,6 +792,15 @@ class Plotter(tk.Tk):
         def refresh():
             body.refresh()
             l = self.panel.line
+            if l.fits_drawn:
+                modes.pack_forget()
+                self.fit_hint["text"] = (tr("Fits the line as drawn, after {fit}.",
+                                             fit=plain(background.describe(*l.first_fit)))
+                                          if l.first_fit else tr("Fits the line as drawn."))
+                self.fit_hint.pack(anchor=tk.W, pady=(2, 0), before=degree.master)
+            else:
+                self.fit_hint.pack_forget()
+                modes.pack(anchor=tk.W, pady=(2, 0), before=degree.master)
             for entry in entries:
                 entry["state"] = "normal" if l.advanced else "disabled"
             degree["state"] = "disabled" if l.advanced else "normal"
@@ -1534,6 +1548,26 @@ class Plotter(tk.Tk):
         self._set_selected_line(self.selected, at)
         self._redraw_selected()
 
+    def fit_as_line(self):
+        """Add a line under the selected one showing a fit of it as drawn (after
+        its cut, fit and smoothing), dashed in its colour. It's a copy, starting
+        from the polynomial of the line's degree, so it draws at once.
+
+        Linked panels get one too, as with + (add_line)."""
+        at = self.panel.selected + 1
+        for cell in self._tied(self.selected):
+            p = self.panels[cell]
+            colour = line_colours(p, self.profile.samples)[at - 1]
+            old = p.lines[at - 1]
+            new = old.copy()
+            new.colour, new.label = colour, None
+            new.fits_drawn, new.first_fit = True, old.fitting or ()
+            # Ticking Advanced Fitting then starts from that polynomial's function.
+            new.background, new.advanced, new.fit_function, new.fit_start = "fit", False, "", ""
+            p.lines.insert(at, new)
+        self._set_selected_line(self.selected, at)
+        self._redraw_selected()
+
     def remove_line(self):
         """Remove the selected line, here and in linked panels."""
         p = self.panel
@@ -1614,15 +1648,22 @@ class Plotter(tk.Tk):
             # Background next, so the fit sees the unsmoothed data and
             # smoothing then works on what's left.
             stage = "Fit"
-            if l.fitting:
-                y, l.fit_values = background.apply(x, y, *l.fitting)
-            if l.background == "subtract":
-                y_label = tuple(f"{t} − fit" for t in y_label)
+            first = l.first_fit if l.fits_drawn else l.fitting
+            if first:
+                y, values = background.apply(x, y, *first)
+                if not l.fits_drawn:
+                    l.fit_values = values
+                if first[0] == "subtract":
+                    y_label = tuple(f"{t} − fit" for t in y_label)
             stage = "Smoothing"
             if l.smooth and l.in_x and l.span is None:
                 l.span = smoothing.span_for(x, l.window)
             if l.smoothing:
                 y = smoothing.smooth(x, y, *l.smoothing)
+            # Fit as new line's own fit, of the line as it was drawn.
+            stage = "Fit"
+            if l.fits_drawn and l.fitting:
+                y, l.fit_values = background.apply(x, y, *l.fitting)
         except Exception as err:  # bad file or function shouldn't kill the window
             raise LineError(f"{stage} error: {err}" if l.run in self.frames else str(err))
         result = x, y, x_label, y_label
@@ -1632,8 +1673,10 @@ class Plotter(tk.Tk):
 
     @staticmethod
     def _data_key(l):
-        """What a line's data depends on: its settings through smoothing."""
-        return l.run, l.x, l.x_fn, l.y, l.y_fn, l.smoothing, l.fitting, l.cutting, l.despiking
+        """What a line's data depends on: its settings through smoothing, and
+        the fit after it for a line made by Fit as new line."""
+        return (l.run, l.x, l.x_fn, l.y, l.y_fn, l.smoothing, l.fitting, l.cutting, l.despiking,
+                (l.fits_drawn, l.first_fit))
 
     def _prune_cache(self):
         """Keep only the data of lines still in the panels."""

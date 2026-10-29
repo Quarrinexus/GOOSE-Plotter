@@ -40,7 +40,7 @@ CHOICES = {Line: {"smooth": smoothing.METHODS, "background": background.MODES,
            Link: {}}
 
 # Fields holding a list, and what makes the saved one fit, per class as for CHOICES.
-TIDY = {Line: {"cuts": splicing.tidy},
+TIDY = {Line: {"cuts": splicing.tidy, "first_fit": background.tidy_fitting},
         Panel: {"data_view": tidy_data_view, "cuts": splicing.tidy, "region": measure.tidy_region,
                 "points": measure.tidy_points},
         Link: {}}

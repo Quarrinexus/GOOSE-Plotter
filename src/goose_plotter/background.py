@@ -30,6 +30,19 @@ def file_part(mode, degree, function="", start=""):
     return f"{prefix}_{slug(function) or 'custom'}"
 
 
+def tidy_fitting(saved):
+    """A saved `Line.fitting` as a tuple, or () if it isn't one."""
+    try:
+        mode, degree, function, start = saved
+    except (TypeError, ValueError):
+        return ()
+    if (mode not in MODES or not mode or not isinstance(function, str)
+            or not isinstance(start, str)
+            or not (degree is None and function or type(degree) is int and degree >= 0)):
+        return ()
+    return mode, degree, function, start
+
+
 def apply(x, y, mode, degree, function="", start=""):
     """(`y` with the fit subtracted, or the fit itself, for mode 'subtract' or
     'fit'; the fitted parameters as ((name, value), ...), () for a polynomial).

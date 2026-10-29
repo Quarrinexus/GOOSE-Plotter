@@ -156,6 +156,16 @@ stay until it's done or cancelled.
   kept for when it's ticked again. For a high-degree polynomial leave it
   unticked: typed out as powers of x, degree 15 or more can't be fitted as
   precisely as Polynomial degree fits it.
+
+  **Fit as new line** fits the selected line *as it's drawn* (after its
+  cut, despiking, fit and smoothing) on a new line under it, dashed in
+  its colour: e.g. Subtract the background, then fit `A * sin(B * x + C)`
+  to the oscillation left. The new line starts as a polynomial fit of
+  the line's Polynomial degree; tick Advanced Fitting to type a function
+  instead. It's a copy, so changing the original
+  afterwards doesn't change it. On it, Fit edits this second fit, and
+  the line's own fit, done before smoothing, is named above the boxes
+  and kept as it was copied.
 - **Splicing**: per line, in its own tab. Give a line any number of x
   ranges: type x ... to ... and **Add**, or **Pick** one by dragging across
   the plot. One setting covers all of them: **Keep ranges** cuts the line
