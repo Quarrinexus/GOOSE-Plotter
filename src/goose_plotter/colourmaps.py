@@ -12,6 +12,9 @@ NANOANALYSIS = {
     "nanoanalysis_bright": ("#B50E0E", "#FF8E00", "#F6F93A", "#0080FF", "#452ABE", "#DE46AE"),
     "nanoanalysis_hazy": ("#EA4A4A", "#EFD267", "#5BDD82", "#67D5EE", "#5F66E9", "#E484CC"),
 }
+# Each taken from its blue, wrapping round (blue, indigo, pink, red, yellow,
+# green), so the first lines are blue, as in the other maps.
+FROM_BLUE = 3
 
 # Map key -> name shown in the menu. "classic" is no map: the profile's sample
 # colours, else model.PALETTE.
@@ -25,7 +28,8 @@ STEPPED = {"tab10"}  # distinct colours, taken in turn rather than spread
 def colourmap(name):
     """The matplotlib colormap for a MAPS key other than "classic"."""
     if name in NANOANALYSIS:
-        return LinearSegmentedColormap.from_list(name, NANOANALYSIS[name])
+        anchors = NANOANALYSIS[name]
+        return LinearSegmentedColormap.from_list(name, anchors[FROM_BLUE:] + anchors[:FROM_BLUE])
     return matplotlib.colormaps[name]
 
 

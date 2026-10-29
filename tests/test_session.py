@@ -165,7 +165,7 @@ def test_line_colours_from_a_colour_map():
     colours = line_colours(Panel(lines), {}, "nanoanalysis_muted")
     # The three data lines run from one end of the map to the other; the fit
     # line takes its line's colour and no place of its own.
-    assert colours[0] == "#bd2020" and colours[3] == "#b63896"  # its ends
+    assert colours[0] == "#2f95ac" and colours[3] == "#2fac55"  # its ends: from its blue
     assert colours[1] == colours[2] not in (colours[0], colours[3])
     lines[1].colour = "#000000"  # picked: keeps its place, so no other moves
     assert line_colours(Panel(lines), {}, "nanoanalysis_muted") == [

@@ -192,7 +192,8 @@ stay until it's done or cancelled.
   **Automatic** goes back to the colour map's; **Colour Maps** picks the map
   automatic colours come from, for every panel and remembered in
   `settings.json`: nanoanalysis muted (the default), bright or hazy (from
-  [nanoanalysis_cm](https://github.com/igtz-hub/nanoanalysis_cm)), viridis,
+  [nanoanalysis_cm](https://github.com/igtz-hub/nanoanalysis_cm), each taken
+  from its blue round to its green), viridis,
   plasma or coolwarm spread a panel's lines evenly from one end of the map
   to the other; tab10 takes its ten colours in turn; Classic is the
   profile's sample colours, else a fixed palette. A line made by Fit as new
