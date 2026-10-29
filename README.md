@@ -92,11 +92,10 @@ keeps them.
 At the top of the controls column, **Files** opens to the folders, Data
 format and sessions (it starts closed once both folders are chosen). Under
 it Dataset, the Lines list and the axes are always shown, and the rest is in
-five tabs: **Splicing** (cutting lines to parts of their x), **Process**
-(Despike, Smoothing, Fit), **Derive** (FFT, Derivative), **Linking**
-(Linked data) and **Measure** (reading numbers off the plot). The Process
-tab's sections start closed, each showing what it's set to; the others
-start open. If the selected line can't be drawn (a bad function, a
+four tabs: **Process** (how each line is processed: cut, despiked,
+background subtracted, smoothed, fitted), **Derive** (FFT, Derivative),
+**Linking** (Linked data) and **Measure** (reading numbers off the plot).
+If the selected line can't be drawn (a bad function, a
 file that won't load, a smoothing window that's too big), the reason shows
 in red under the Y axis until it's fixed or another line is selected.
 Other messages show above the buttons at the bottom of the column: green
@@ -113,80 +112,79 @@ stay until it's done or cancelled.
   (`M006_AH`, `M011_AH_Loss`, ...) included. Changing a control redraws.
 - **Function**: under each axis, e.g. `1/x`, `exp(y)`, `log10(x)`; numpy's usual
   functions plus `pi` and `e`. Enter applies.
-- **Despike**: per line, at the top of the Process tab. Tick **Remove
-  spikes** to turn isolated glitches into gaps and leave every other point
-  as it is: a point is a spike when it's more than **Threshold** times the
-  local spread (the median absolute deviation, as a standard deviation) away
-  from the median of the **Window** points around it, taken in the order
-  they were recorded (a Hampel filter). The number removed shows under the
-  boxes. It comes after the cut and before the fit, so spikes
-  can't pull the fit or smear across an FFT. A spike wider than about half
-  the window isn't caught; widen the window. A spike on a very steep part
-  of a line can be missed too, as the slope counts as spread; lower the
-  Threshold, or remove it by hand in Splicing.
-- **Smoothing**: per line, under the axes. Moving average, median or
-  Savitzky–Golay (with its polynomial order) over a window of points, taken in
-  the order they were recorded; SG needs an odd window. Or set the window in
-  **x units**: the plotted x, so with a `1/x` function on the field the window
-  is in 1/B. Each point then uses the unbroken run of rows around it whose x is
-  within half the window of its own, so separate sweeps aren't mixed, and SG
-  becomes a polynomial fit in x, right for unevenly spaced points. It applies
-  to the plotted y, after its function. To see raw and smoothed together, copy the
-  line with + and smooth the copy; the legend tells them apart.
-- **Fit**: per line, under Smoothing. Fits a polynomial of the chosen
-  **Polynomial degree** (5 to start with) to the plotted y against the
-  plotted x (so in 1/B with a `1/x` function) and either **Subtract**s it, leaving the oscillations, or
-  **Show fit**, which draws the fit dashed in place of the data (Solid
-  again when you switch away, unless you picked another style); copy a line
-  with + to lay its fit over it. It fits the whole line as cut: to fit only
-  part of it (leaving out the parked ends of a sweep), keep that part in
-  the Splicing tab. The fit comes before smoothing.
+- **Steps** (Process tab): each line has its own list of steps, done top to
+  bottom on the plotted x and y (after their functions). **Add step** puts a
+  step after the chosen one; **drag** a step up or down the list to change
+  the order; **Remove** deletes the chosen one, and unticking **On** leaves
+  it out without losing its settings (it shows greyed, "(off)"). A step of
+  any kind can be used any number of times, e.g. subtract a polynomial,
+  smooth, then subtract again. The chosen step's settings show under the
+  list. The kinds:
+  - **Cut**: give it any number of x ranges: type x ... to ... and **Add**,
+    or **Pick** one by dragging across the plot. **Keep ranges** cuts the
+    line to what's in any of them (e.g. the parts of a sweep with the
+    oscillations), **Remove ranges** cuts them all out (glitches, parked
+    stretches), leaving gaps. Click a range in the list to see it in the
+    boxes, where Enter changes it; **Delete** removes it. They're in the
+    plotted x, and a blank end means no limit. Everything after the cut
+    sees only what's left: an FFT of one kept range has its resolution, 1 /
+    (the range's width). To only zoom in, without cutting anything, type a
+    range in the axes editor instead.
+  - **Despike**: turns isolated glitches into gaps and leaves every other
+    point as it is: a point is a spike when it's more than **Threshold**
+    times the local spread (the median absolute deviation, as a standard
+    deviation) away from the median of the **Window** points around it,
+    taken in the order they were recorded (a Hampel filter). The number
+    removed shows under the boxes. Put it before a Subtract so spikes can't
+    pull the fit. A spike wider than about half the window isn't caught;
+    widen the window. A spike on a very steep part of a line can be missed
+    too, as the slope counts as spread; lower the Threshold, or cut it out.
+  - **Subtract**: fits a polynomial of the chosen **Polynomial degree** (5
+    to start with) to the line as it is at that step, against the plotted x
+    (so in 1/B with a `1/x` function), and takes it off, leaving the
+    oscillations for the steps after it.
+  - **Smooth**: moving average, median or Savitzky–Golay (with its
+    polynomial order) over a window of points, taken in the order they were
+    recorded; SG needs an odd window. Or set the window in **x units**: the
+    plotted x, so with a `1/x` function on the field the window is in 1/B.
+    Each point then uses the unbroken run of rows around it whose x is
+    within half the window of its own, so separate sweeps aren't mixed, and
+    SG becomes a polynomial fit in x, right for unevenly spaced points. To
+    see raw and smoothed together, copy the line with + and smooth the
+    copy; the legend tells them apart.
+  - **Fit curve**: fits a polynomial, or a function of your own, to the
+    line as it is at that step and draws it over the line, dashed, in a
+    colour of its own and with its own legend entry ("fit: ..."). It
+    leaves the line as it was, so it usually goes last: e.g. Cut, Subtract,
+    Smooth, then Fit curve `A * sin(B * x + C) + D` to the oscillation left.
+    Fit curves are drawn on data panels only, not on their FFT or derivative.
+    If its fit fails, the reason shows in red and the line is still drawn.
 
-  Tick **Advanced Fitting** to fit a function of your own instead of the
-  polynomial. Greyed out, the **y =** box shows the polynomial that
-  Polynomial degree fits (`A*x**5 + B*x**4 + ... + F`), and ticking
-  starts you from it. Type
-  a function of x there, with capital letters for the unknowns, e.g.
-  `A * sin(B * x) + C` or `A + B / x`.
-  Write `*` for every product (`A sin(x)` is refused); `^` or `**` is a
-  power, and the Function boxes' functions (`exp`, `log`, `sin`, ...) and
-  `pi` work. Every unknown starts at 1 unless **Start** gives it a value,
-  e.g. `B=314, C=0`; a frequency or decay rate needs one close to the
-  answer, or the fit settles on the wrong one. The values found show
-  under the boxes. Untick it to go back to the polynomial; the function is
-  kept for when it's ticked again. For a high-degree polynomial leave it
+  Subtract and Fit curve have **Advanced Fitting**: tick it to fit a
+  function of your own instead of the polynomial. Greyed out, the **y =**
+  box shows the polynomial that Polynomial degree fits (`A*x**5 + B*x**4 +
+  ... + F`), and ticking starts you from it. Type a function of x there,
+  with capital letters for the unknowns, e.g. `A * sin(B * x) + C` or `A +
+  B / x`. Write `*` for every product (`A sin(x)` is refused); `^` or `**`
+  is a power, and the Function boxes' functions (`exp`, `log`, `sin`, ...)
+  and `pi` work. Every unknown starts at 1 unless **Start** gives it a
+  value, e.g. `B=314, C=0`; a frequency or decay rate needs one close to the
+  answer, or the fit settles on the wrong one. The values found show under
+  the boxes. Untick it to go back to the polynomial; the function is kept
+  for when it's ticked again. For a high-degree polynomial leave it
   unticked: typed out as powers of x, degree 15 or more can't be fitted as
   precisely as Polynomial degree fits it.
 
-  **Fit as new line** fits the selected line *as it's drawn* (after its
-  cut, despiking, fit and smoothing) on a new line under it, dashed in
-  a colour of its own: e.g. Subtract the background, then fit `A * sin(B * x + C)`
-  to the oscillation left. The new line starts as a polynomial fit of
-  the line's Polynomial degree; tick Advanced Fitting to type a function
-  instead. It's a copy, so changing the original
-  afterwards doesn't change it. On it, Fit edits this second fit, and
-  the line's own fit, done before smoothing, is named above the boxes
-  and kept as it was copied.
-- **Splicing**: per line, in its own tab. Give a line any number of x
-  ranges: type x ... to ... and **Add**, or **Pick** one by dragging across
-  the plot. One setting covers all of them: **Keep ranges** cuts the line
-  to what's in any of them (e.g. the parts of a sweep with the
-  oscillations), **Remove ranges** cuts them all out (glitches, parked
-  stretches), leaving gaps. Adding a range while it's Off turns on Keep
-  ranges. Click a range in the list to see it in the boxes, where Enter
-  changes it; **Delete** removes it. They're in the
-  plotted x, after its function, and a blank end means no limit. The cut
-  comes first, so it's what's drawn and all the fit, smoothing,
-  FFT and derivative ever see: an FFT of one kept range has its
-  resolution, 1 / (the range's width). With Keep ranges on only those are
-  drawn, so to pick outside them, turn it Off first. To only zoom in,
-  without cutting anything, type a range in the axes editor instead.
+  On an **FFT panel** the list ends with **Cut spectrum (F)**, after the
+  line's steps: a cut of the spectrum itself, in F. Pick a stretch of
+  frequency and the plot fits itself to it, an easier zoom than the
+  toolbar's; Remove ranges hides, e.g., the low-frequency end. It's the FFT
+  panel's own, so its data panel and lines aren't cut. Changing x or its
+  function clears it, as it does every step's ranges and x-unit windows.
 
-  On an **FFT panel**, Splicing cuts the spectrum instead, in F: Pick a
-  stretch of frequency and the plot fits itself to it, an easier zoom than
-  the toolbar's; Remove ranges hides, e.g., the low-frequency end. It's the
-  FFT panel's own, so its data panel and lines aren't cut (cut the data on
-  the data panel). Changing x or its function clears it.
+  Sessions saved before steps open with each line's old settings as steps,
+  in the order they were done: cut, despike, background, smoothing (a Show
+  fit becomes a Fit curve).
 - **Line editor**: the box under + and -, which shows the selected line's
   look, opens it. **Colour** (drag in the field and the brightness strip;
   **Automatic** goes back to the colour map's; **Colour Maps** picks the map
@@ -196,11 +194,9 @@ stay until it's done or cancelled.
   from its blue round to its green), viridis,
   plasma or coolwarm spread a panel's lines evenly from one end of the map
   to the other; tab10 takes its ten colours in turn; Classic is the
-  profile's sample colours, else a fixed palette. Every line, a fit line
-  too, gets its own), **Line**
-  (Solid to start with, Dashed for a shown fit or a line made by Fit as
-  new line; None
-  leaves only the markers),
+  profile's sample colours, else a fixed palette. Every line and fit curve
+  gets its own), **Line**
+  (Solid to start with; None leaves only the markers),
   **Width** (**Auto** undoes a set width), **Marker** with its **Size**
   (for any marker but None; **Auto** is 3), and **Name in the
   legend**, also shown in the Lines list: the box shows the automatic name
@@ -230,11 +226,11 @@ stay until it's done or cancelled.
   under it; **Existing panel...** puts it in the panel you click next
   (asking first if that panel has lines of its own). The new panel is linked
   to the data panel (see Linked data below, and the Linking tab) with every
-  Sync box ticked on both, so changing a line's axes, fit, smoothing or
+  Sync box ticked on both, so changing a line's axes, steps or
   colour in either redraws both, and adding or removing a line does too; untick
-  a box on it to keep that setting its own (e.g. untick Smoothing to take the
-  FFT of the unsmoothed data), or **Freeze** it. The spectrum is of each line as plotted (after its function,
-  fit and smoothing) against its plotted x, so with `1/x` on the field
+  a box on it to keep that setting its own (e.g. untick Steps to give the
+  FFT steps of its own), or **Freeze** it. The spectrum is of each line as plotted (after its functions
+  and steps) against its plotted x, so with `1/x` on the field
   it's in F (T); amplitude is in y's units. Select the FFT panel for its
   settings: Window (Hann or none), Padding (zero-padding, for smoother
   peaks), F max, and **Back to data**, which turns it back into an ordinary
@@ -265,8 +261,8 @@ stay until it's done or cancelled.
   panel gets a heavier dashed frame. The chosen link's **Sync** boxes say
   what it shares: **Dataset**, **X axis**, **X function**, **Y axis**, **Y
   function**, **Colour** and **Line style** (line, width, marker and its
-  size) are ticked to start with; **Despike**, **Smoothing**,
-  **Fit** and **Splicing** aren't.
+  size) are ticked to start with; **Steps** (the whole list, in its order)
+  isn't.
   The link is the same seen from either panel: panel 1's **Panel 2** tab
   shows the ticks of panel 2's **Panel 1** tab. So e.g. one panel shows the
   raw data, a linked one the same data with the background subtracted, and
@@ -274,8 +270,8 @@ stay until it's done or cancelled.
   the same x. Ticking a box sends the selected panel's setting across.
   Settings go on along chains of links, each link passing on what it
   shares: with 1 linked to 2 (sharing the axes) and 2 to its FFT in 3, a new
-  Y axis in 1 reaches 2 and then the FFT, while 2's fit stays its own
-  and still reaches the FFT. A frozen link stops them. Adding or removing a line, though, happens in every
+  Y axis in 1 reaches 2 and then the FFT, while 2's steps stay its own
+  and still reach the FFT. A frozen link stops them. Adding or removing a line, though, happens in every
   panel joined through links, so lines stay paired. Cut ranges and x-unit
   windows only cross between panels with the same x. FFT and derivative
   panels are linked to their data panel, with every box ticked. Axis ranges
@@ -284,7 +280,7 @@ stay until it's done or cancelled.
   sends the selected panel's settings across, carrying over what changed
   while it was frozen; the panel's other links carry on.
 - **Measure** (Measure tab): reads numbers off the selected line as it's
-  drawn (after its functions, cut, fit and smoothing, and as an FFT or
+  drawn (after its functions and steps, and as an FFT or
   derivative on those panels), in the plotted units, and changes nothing.
   - **Region**: an x range typed, or dragged with **Pick**, shaded on the
     plot; blank is the whole line, **Clear** goes back to it.

@@ -1,6 +1,7 @@
 """Interactive plotter window: pick datasets and axes, plot, save. See README.md."""
 
 import csv
+from dataclasses import replace
 import io
 import json
 import math
@@ -22,16 +23,18 @@ from goose_plotter import (background, colourmaps, derivative, despike, i18n, me
                            smoothing, spectrum, splicing, theme)
 from goose_plotter.i18n import key_of, menu, shown, tr
 from goose_plotter.columns import label, lookup, with_unit, without_unit
-from goose_plotter.model import (DATA_VIEW, GRID_AXES, GRID_STYLES, GRIDS, LEGENDS, RANGES, SYNC,
-                               X_UNITS, Link, Panel, clear_data_ranges, clear_ranges,
-                               legend_labels, line_colours, shared, swap_data_view)
+from goose_plotter.model import (DATA_VIEW, GRID_AXES, GRID_STYLES, GRIDS, KINDS, LEGENDS,
+                               RANGES, SYNC, Link, Panel, Step, clear_data_ranges, clear_ranges,
+                               curve_colours, legend_labels, line_colours, shared,
+                               swap_data_view, without_x_units)
 from goose_plotter.profile import load_profile, save_format
 from goose_plotter.datasets import (FormatError, describe, detect_format, find_datasets,
                                   load_dataset, read_lines, run_number)
 from goose_plotter.format_dialog import FormatDialog
 from goose_plotter.settings import load_settings, save_settings
 from goose_plotter.widgets import (MAX_GRID, SELECTED, AxesPopup, LayoutPicker, LineStylePopup,
-                                 OverwriteDialog, SaveOptionsPopup, TabStrip, line_sample)
+                                 OverwriteDialog, SaveOptionsPopup, StepList, TabStrip,
+                                 line_sample)
 
 PARTNER = "#f0c987"  # frame around the panel locked to the selected one
 
@@ -43,6 +46,11 @@ PLAIN = str.maketrans({"\u2212": "-", "\u2013": "-", "\u0394": "d", "\u2192": "-
 
 def plain(text):
     return text.translate(PLAIN)
+
+
+# Where the Process tab's notes wrap: inside the column in Chinese too, whose
+# 16 px song ti makes it narrower than in English.
+STEP_WRAP = 270
 
 
 class LineError(Exception):
@@ -166,6 +174,7 @@ class Plotter(tk.Tk):
         self.selected = (0, 0)
         self.axes = {}  # (row, col) -> matplotlib Axes
         self.artists = {}  # (row, col) -> {matplotlib Line2D: line index}
+        self.curves = {}  # (row, col) -> {its fit curves' Line2D: (line index, step index)}
         # What each panel drew where its text is automatic, for the editors to show:
         # (row, col) -> {"title"/"x_label"/"y_label": text}, and -> {line index: legend name}.
         self.auto_text, self.auto_names = {}, {}
@@ -317,18 +326,15 @@ class Plotter(tk.Tk):
         ttk.Separator(controls).pack(fill=tk.X, pady=(10, 8))
         self.tab = tk.StringVar()
         self.tabs = {name: ttk.Frame(controls)
-                     for name in ("Splicing", "Process", "Derive", "Linking", "Measure")}
+                     for name in ("Process", "Derive", "Linking", "Measure")}
         self._tab_strip(controls)
-        # Smoothing's and FFT's toggles add the 10 px above them.
-        self._despike_box(self.tabs["Process"])
-        self._smoothing_box(self.tabs["Process"])
-        self._background_box(self.tabs["Process"])
-        self._splicing_box(self.tabs["Splicing"])
+        self._steps_box(self.tabs["Process"])
+        # FFT's toggle adds the 10 px above it.
         self._fft_box(self.tabs["Derive"])
         self._derivative_box(self.tabs["Derive"])
         self._link_box(self.tabs["Linking"])
         self._measure_box(self.tabs["Measure"])
-        self.tab.set("Splicing")
+        self.tab.set("Process")
         self._show_tab()
         self.bind("<Escape>", lambda _: self.stop_picking())
         self._bind_keys()
@@ -618,22 +624,55 @@ class Plotter(tk.Tk):
         var.show_label = body.refresh
         return var
 
-    def _despike_box(self, parent):
-        """A 'Despike' toggle: turn points far off the median around them into
-        gaps; the window and threshold greyed out until it's ticked."""
-        self.despike_on = tk.BooleanVar(value=False)
+    # --- steps ------------------------------------------------------------
+
+    CUT_MODES = {k: v for k, v in splicing.MODES.items() if k}  # a Cut step is always on
+
+    def _steps_box(self, parent):
+        """The Process tab: the selected line's steps in the order they're done
+        (drag one to move it), buttons to add, remove and turn one off, and
+        under them the chosen step's settings, one kind's at a time."""
+        self.step_list = StepList(parent, self.choose_step, self.move_step)
+        self.step_list.pack(anchor=tk.W, fill=tk.X, pady=(8, 0))
+        # Equal shares of the column (width 1), as they'd widen it otherwise.
+        row = ttk.Frame(parent)
+        row.pack(fill=tk.X, pady=(6, 0))
+        row.columnconfigure((0, 1, 2), weight=1, uniform="step")
+        self.add_menu = tk.Menu(self, tearoff=0)
+        for kind, name in KINDS.items():
+            self.add_menu.add_command(label=tr(name), command=lambda kind=kind: self.add_step(kind))
+        add = ttk.Button(row, text=tr("Add step"), width=1)
+        add.configure(command=lambda: self.add_menu.tk_popup(
+            add.winfo_rootx(), add.winfo_rooty() + add.winfo_height()))
+        add.grid(row=0, column=0, sticky="ew")
+        self.remove_step_button = ttk.Button(row, text=tr("Remove"), width=1,
+                                             command=self.remove_step)
+        self.remove_step_button.grid(row=0, column=1, sticky="ew", padx=6)
+        self.step_on = tk.BooleanVar(value=True)
+        self.step_on_box = ttk.Checkbutton(row, text=tr("On"), variable=self.step_on,
+                                           command=self.toggle_step)
+        self.step_on_box.grid(row=0, column=2, sticky=tk.W)
+        ttk.Label(parent, text=tr("done top to bottom; drag one to reorder"),
+                  foreground=theme.HINT, wraplength=STEP_WRAP).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Separator(parent).pack(fill=tk.X, pady=(8, 0))
+        self.step_title = ttk.Label(parent, foreground=theme.MUTED)
+        self.step_title.pack(anchor=tk.W, pady=(6, 0))
+        holder = ttk.Frame(parent)
+        holder.pack(anchor=tk.W, fill=tk.X)
+        self.editors = {}
+        for kind, build in (("cut", self._cut_editor), ("despike", self._despike_editor),
+                            ("smooth", self._smoothing_editor), ("fit", self._fit_editor)):
+            self.editors[kind] = ttk.Frame(holder)
+            build(self.editors[kind])
+        self.editors["subtract"] = self.editors["fit"]  # the same boxes; see _show_step
+        self.no_steps = ttk.Label(holder, foreground=theme.HINT, wraplength=STEP_WRAP,
+                                  text=tr("No steps: Add step cuts, despikes, subtracts, "
+                                          "smooths or fits a curve to the line."))
+
+    def _despike_editor(self, body):
+        """A Despike step: turn points far off the median around them into gaps."""
         self.despike_window = tk.StringVar(value="21")
         self.despike_threshold = tk.StringVar(value="5")
-
-        def text(is_open):
-            l = self.panel.line
-            if not l.despiking or is_open or not l.shown:
-                return tr("Despike")
-            return tr("Despike: {count} removed", count=l.despiked)
-
-        body = self._collapsible(parent, (10, 0), text)
-        ttk.Checkbutton(body, text=tr("Remove spikes"), variable=self.despike_on,
-                        command=self.apply_controls).pack(anchor=tk.W, pady=(2, 0))
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text=tr("Window")).pack(side=tk.LEFT)
@@ -651,38 +690,20 @@ class Plotter(tk.Tk):
         for box in (window, threshold):
             for key in ("<Return>", "<KP_Enter>"):
                 box.bind(key, lambda _: self.apply_controls())
-        found = self.despike_found = ttk.Label(body, foreground=theme.HINT)
+        self.despike_found = ttk.Label(body, foreground=theme.HINT)
+        self.despike_found.pack(anchor=tk.W)
 
-        def refresh():
-            body.refresh()
-            l = self.panel.line
-            for box in (window, threshold):
-                box["state"] = "normal" if l.despike else "disabled"
-            if l.despiking and l.shown:
-                found["text"] = tr("{count} points removed", count=l.despiked)
-                found.pack(anchor=tk.W)
-            else:
-                found.pack_forget()
-        self.despike_on.show = refresh
-
-    def _smoothing_box(self, parent):
-        """A collapsed 'Smoothing' toggle: method, window and (for SG) order."""
-        self.smooth = tk.StringVar(value=shown(smoothing.METHODS, ""))
+    def _smoothing_editor(self, body):
+        """A Smooth step: method, window and (for SG) order."""
+        self.smooth = tk.StringVar(value=shown(smoothing.METHODS, "savgol"))
         self.window, self.order = tk.StringVar(value="21"), tk.StringVar(value="2")
         self.window_unit = tk.StringVar(value=shown(smoothing.UNITS, False))
-
-        def text(is_open):
-            l = self.panel.line
-            used = f": {plain(smoothing.describe(*l.smoothing))}" if l.smoothing and not is_open else ""
-            return tr("Smoothing") + used
-
-        body = self._collapsible(parent, (10, 0), text)
         # The method, and beside it for SG the order; then the window, and what
         # it's counted in (the menu says).
         top = ttk.Frame(body)
-        top.pack(anchor=tk.W, pady=(2, 0))
+        top.pack(anchor=tk.W, pady=(4, 0))
         method = ttk.Combobox(top, textvariable=self.smooth, state="readonly", width=15,
-                              values=menu(smoothing.METHODS))
+                              values=menu({k: v for k, v in smoothing.METHODS.items() if k}))
         method.pack(side=tk.LEFT)
         method.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
         sizes = ttk.Frame(body)
@@ -695,9 +716,9 @@ class Plotter(tk.Tk):
                             values=menu(smoothing.UNITS))
         unit.pack(side=tk.LEFT)
         unit.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
-        orders = ttk.Frame(top)
-        ttk.Label(orders, text=tr("Order")).pack(side=tk.LEFT)
-        order = ttk.Spinbox(orders, textvariable=self.order, from_=0, to=10, width=2,
+        self.orders = ttk.Frame(top)
+        ttk.Label(self.orders, text=tr("Order")).pack(side=tk.LEFT)
+        order = ttk.Spinbox(self.orders, textvariable=self.order, from_=0, to=10, width=2,
                             command=self.apply_controls)
         order.pack(side=tk.LEFT, padx=(4, 0))
         for box in (window, order):
@@ -706,11 +727,12 @@ class Plotter(tk.Tk):
 
         def step(direction):
             """Arrows on the window: 1-2-5 steps in x; odd numbers only for SG."""
+            chosen = self.panel.line.chosen
             if self.window_unit.get() == shown(smoothing.UNITS, True):
                 try:
                     span = float(self.window.get())
                 except ValueError:
-                    span = self.panel.line.span
+                    span = chosen.span
                 if span and span > 0:
                     self.window.set(f"{smoothing.step_nice(span, direction):g}")
                     self.apply_controls()
@@ -720,7 +742,7 @@ class Plotter(tk.Tk):
             try:
                 n, order = int(self.window.get()), int(self.order.get())
             except ValueError:
-                n, order = self.panel.line.window, self.panel.line.order
+                n, order = chosen.window, chosen.order
             # From an odd number to the next odd one; from an even one to the odd beside it.
             n += 2 * direction if n % 2 else direction
             # No lower than the smallest odd window the order allows (order < window - 1).
@@ -730,106 +752,51 @@ class Plotter(tk.Tk):
         window.bind("<<Increment>>", lambda _: step(1))
         window.bind("<<Decrement>>", lambda _: step(-1))
 
-        def refresh():
-            body.refresh()
-            # Order only means something for Savitzky–Golay.
-            if self.panel.line.smooth == "savgol":
-                orders.pack(side=tk.LEFT, padx=(10, 0))
-            else:
-                orders.pack_forget()
-        self.smooth.show = refresh
-
-    def _background_box(self, parent):
-        """A collapsed 'Fit' toggle: mode and degree, or with Advanced
-        Fitting a function of x and its start values. It fits the whole line;
-        the Splicing tab is where a line is cut to part of its x."""
-        self.fit_mode = tk.StringVar(value=shown(background.MODES, ""))
+    def _fit_editor(self, body):
+        """A Subtract or Fit curve step: a polynomial of a degree, or with
+        Advanced Fitting a function of x and its start values; for a fit
+        curve, the values found too."""
         self.degree = tk.StringVar(value="5")
         self.advanced = tk.BooleanVar(value=False)
         self.fit_function, self.fit_start = tk.StringVar(), tk.StringVar()
-
-        def text(is_open):
-            fitted = self.panel.line.fitting
-            if not fitted or is_open:
-                return tr("Fit")
-            # A function would widen the column; its box shows it.
-            short = background.describe(*fitted[:2], tr("custom") if fitted[2] else "")
-            return tr("Fit") + f": {plain(short)}"
-
-        body = self._collapsible(parent, (10, 0), text)
-        modes = ttk.Frame(body)
-        modes.pack(anchor=tk.W, pady=(2, 0))
-        mode = ttk.Combobox(modes, textvariable=self.fit_mode, state="readonly", width=9,
-                            values=menu(background.MODES))
-        mode.pack(side=tk.LEFT)
-        mode.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
-        ttk.Button(modes, text=tr("Fit as new line"), command=self.fit_as_line).pack(
-            side=tk.LEFT, padx=(6, 0))
-        # In their place on a line Fit as new line made, whose mode is always
-        # Show fit: what it was fitted to.
-        self.fit_hint = ttk.Label(body, foreground=theme.HINT, wraplength=300, justify=tk.LEFT)
-        # Its own row: beside the mode, the name would widen the column.
+        self.fit_hint = ttk.Label(body, foreground=theme.HINT, wraplength=STEP_WRAP, justify=tk.LEFT)
+        self.fit_hint.pack(anchor=tk.W, pady=(2, 0))
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text=tr("Polynomial degree")).pack(side=tk.LEFT)
-        degree = ttk.Spinbox(row, textvariable=self.degree, from_=0, to=30, width=3,
-                             command=self.apply_controls)
-        degree.pack(side=tk.LEFT, padx=(4, 0))
+        self.degree_box = ttk.Spinbox(row, textvariable=self.degree, from_=0, to=30, width=3,
+                                      command=self.apply_controls)
+        self.degree_box.pack(side=tk.LEFT, padx=(4, 0))
         ttk.Checkbutton(body, text=tr("Advanced Fitting"), variable=self.advanced,
                         command=self.apply_controls).pack(anchor=tk.W, pady=(4, 0))
         # Width 1 and filling the row, so a long function never widens the column.
         boxes = ttk.Frame(body)
         boxes.pack(anchor=tk.W, fill=tk.X, pady=(2, 0))
         boxes.columnconfigure(1, weight=1)
-        entries = []
+        self.fit_entries = []
         for i, (label, var) in enumerate(((tr("y ="), self.fit_function),
                                           (tr("Start"), self.fit_start))):
             ttk.Label(boxes, text=label).grid(row=i, column=0, sticky=tk.W, pady=(0, 2))
             entry = ttk.Entry(boxes, textvariable=var, width=1)
             entry.grid(row=i, column=1, sticky=tk.EW, padx=(4, 0), pady=(0, 2))
-            entries.append(entry)
-        for box in (degree, *entries):
+            self.fit_entries.append(entry)
+        for box in (self.degree_box, *self.fit_entries):
             for key in ("<Return>", "<KP_Enter>"):
                 box.bind(key, lambda _: self.apply_controls())
-        self.fit_result = ttk.Label(body, foreground=theme.HINT, wraplength=300)
+        self.fit_result = ttk.Label(body, foreground=theme.HINT, wraplength=STEP_WRAP)
+        self.fit_result.pack(anchor=tk.W)
 
-        def refresh():
-            body.refresh()
-            l = self.panel.line
-            if l.fits_drawn:
-                modes.pack_forget()
-                self.fit_hint["text"] = (tr("Fits the line as drawn, after {fit}.",
-                                             fit=plain(background.describe(*l.first_fit)))
-                                          if l.first_fit else tr("Fits the line as drawn."))
-                self.fit_hint.pack(anchor=tk.W, pady=(2, 0), before=degree.master)
-            else:
-                self.fit_hint.pack_forget()
-                modes.pack(anchor=tk.W, pady=(2, 0), before=degree.master)
-            for entry in entries:
-                entry["state"] = "normal" if l.advanced else "disabled"
-            degree["state"] = "disabled" if l.advanced else "normal"
-            found = ", ".join(f"{name} = {value:.6g}" for name, value in l.fit_values)
-            self.fit_result["text"] = found
-            if l.advanced and found:
-                self.fit_result.pack(anchor=tk.W)
-            else:
-                self.fit_result.pack_forget()
-        self.fit_mode.show = refresh
-
-    def _splicing_box(self, parent):
-        """Cut the selected line to some x ranges, or cut them out of it: one
-        mode for all its ranges, then the ranges, typed or picked. No toggle,
-        as it has the Splicing tab to itself."""
-        self.cut_mode = tk.StringVar(value=shown(splicing.MODES, ""))
+    def _cut_editor(self, body):
+        """A Cut step (or an FFT panel's cut of its spectrum): keep or remove
+        some x ranges, typed or picked."""
+        self.cut_mode = tk.StringVar(value=shown(self.CUT_MODES, "keep"))
         self.cut_from, self.cut_to = tk.StringVar(), tk.StringVar()
         self.cut_index = None  # the range chosen in the list, which Enter changes
-        self.cut_owner = None  # the line the list was last filled from
-        body = ttk.Frame(parent)
-        body.pack(anchor=tk.W, fill=tk.X, pady=(8, 0))
-        mode = ttk.Combobox(body, textvariable=self.cut_mode, state="readonly", width=14,
-                            values=menu(splicing.MODES))
-        mode.pack(anchor=tk.W, pady=(2, 0))
-        mode.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
+        self.cut_owner = None  # what the list was last filled from
+        self.cut_mode_box = ttk.Combobox(body, textvariable=self.cut_mode, state="readonly",
+                                         width=14, values=menu(self.CUT_MODES))
+        self.cut_mode_box.pack(anchor=tk.W, pady=(4, 0))
+        self.cut_mode_box.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text="x").pack(side=tk.LEFT)
@@ -868,23 +835,200 @@ class Plotter(tk.Tk):
         for text in ("in the plotted x; a blank end: no limit",
                      "click a range, then Enter changes it"):
             ttk.Label(body, text=tr(text), foreground=theme.HINT).pack(anchor=tk.W)
-        self.cut_hint = ttk.Label(body, foreground=theme.HINT)  # which it cuts
-        self.cut_hint.pack(anchor=tk.W)
+
+    def _spectrum_row(self):
+        """Whether the Process tab shows an FFT panel's cut of its spectrum, the
+        row after its line's steps, rather than one of them."""
+        return self.panel.operation == "fft" and self.panel.line.step >= len(self.panel.line.steps)
+
+    def _show_steps(self):
+        """The selected line's steps in the list, and the chosen one's settings."""
+        p, l = self.panel, self.panel.line
+        l.step = max(0, min(l.step, len(l.steps) - (p.operation != "fft")))
+        rows = [f"{i + 1}  {tr(KINDS[s.kind])}  {plain(s.describe())}"
+                + ("" if s.on else "  " + tr("(off)")) for i, s in enumerate(l.steps)]
+        if p.operation == "fft":
+            cut = splicing.describe(p.cut, p.cuts) if p.cut and p.cuts else tr("none")
+            rows.append(tr("Cut spectrum (F)") + f"  {plain(cut)}")
+        self.step_list.show(rows, l.step, off={i for i, s in enumerate(l.steps) if not s.on},
+                            fixed=len(l.steps))
+        step = l.chosen if not self._spectrum_row() else None
+        for state, widget in ((step is not None, self.remove_step_button),
+                              (step is not None, self.step_on_box)):
+            widget.state(["!disabled" if state else "disabled"])
+        self.step_on.set(step.on if step else True)
+        kind = "cut" if self._spectrum_row() else step.kind if step else None
+        for name, frame in self.editors.items():
+            if name != kind and frame.winfo_manager():
+                frame.pack_forget()
+        if kind:
+            self.editors[kind].pack(anchor=tk.W, fill=tk.X)
+            self.no_steps.pack_forget()
+            self.step_title["text"] = (tr("Cut spectrum (F)") if step is None else
+                                       tr("Step {n}: {kind}", n=l.step + 1, kind=tr(KINDS[kind])))
+            self._show_step(step)
+        else:
+            self.no_steps.pack(anchor=tk.W)
+            self.step_title["text"] = ""
+
+    def _show_step(self, step):
+        """Fill the chosen step's editor from it (None: the spectrum's cut)."""
+        l = self.panel.line
+        found = l.found[l.step] if step is not None and l.step < len(l.found) else None
+        if step is None or step.kind == "cut":
+            modes = splicing.MODES if step is None else self.CUT_MODES
+            self.cut_mode_box["values"] = menu(modes)
+            self.cut_mode.set(shown(modes, self.panel.cut if step is None else step.cut))
+            self._show_cuts()
+        elif step.kind == "despike":
+            self.despike_window.set(step.spike_window)
+            self.despike_threshold.set(f"{step.threshold:g}")
+            self.despike_found["text"] = ("" if found is None or not l.shown
+                                          else tr("{count} points removed", count=found))
+        elif step.kind == "smooth":
+            self.smooth.set(shown(smoothing.METHODS, step.method))
+            self.window_unit.set(shown(smoothing.UNITS, step.in_x))
+            self.window.set((f"{step.span:g}" if step.span is not None else "") if step.in_x
+                            else step.window)
+            self.order.set(step.order)
+            # Order only means something for Savitzky–Golay.
+            if step.method == "savgol":
+                self.orders.pack(side=tk.LEFT, padx=(10, 0))
+            else:
+                self.orders.pack_forget()
+        else:  # subtract or fit
+            self.fit_hint["text"] = tr(
+                "Takes its fit off the line; the steps after it get what's left."
+                if step.kind == "subtract" else
+                "Draws its fit over the line, dashed; the line goes on unchanged.")
+            self.degree.set(step.degree)
+            self.advanced.set(step.advanced)
+            # Greyed out, the box shows the polynomial Degree fits, not the kept function.
+            self.fit_function.set(step.function if step.advanced
+                                  else background.polynomial_text(step.degree))
+            self.fit_start.set(step.start if step.advanced else "")
+            for entry in self.fit_entries:
+                entry["state"] = "normal" if step.advanced else "disabled"
+            self.degree_box["state"] = "disabled" if step.advanced else "normal"
+            values = ", ".join(f"{name} = {value:.6g}" for name, value in found or ())
+            self.fit_result["text"] = values if step.advanced else ""
+
+    def _read_step(self, step):
+        """`step` with its editor's settings; boxes that don't hold a number keep the old one."""
+        def number(var, kind, old, ok=lambda v: True):
+            try:
+                value = kind(var.get())
+            except ValueError:
+                return old
+            return value if ok(value) else old
+        if step.kind == "cut":
+            return replace(step, cut=key_of(self.CUT_MODES, self.cut_mode.get()) or step.cut)
+        if step.kind == "despike":
+            return replace(step, spike_window=max(3, number(self.despike_window, int,
+                                                            step.spike_window)),
+                           threshold=number(self.despike_threshold, float, step.threshold,
+                                            lambda v: v > 0 and math.isfinite(v)))
+        if step.kind == "smooth":
+            in_x = self.window_unit.get() == shown(smoothing.UNITS, True)
+            # The box holds the window in the units it was showing; the other is kept.
+            window, span = step.window, step.span
+            if step.in_x:
+                span = number(self.window, float, span, lambda v: v > 0 and math.isfinite(v))
+            else:
+                window = number(self.window, int, window)
+            return replace(step, method=key_of(smoothing.METHODS, self.smooth.get()) or step.method,
+                           in_x=in_x, window=window, span=span,
+                           order=number(self.order, int, step.order))
+        degree = number(self.degree, int, step.degree)
+        advanced, function, start = self.advanced.get(), step.function, step.start
+        if step.advanced:  # the boxes were the step's to edit
+            function, start = self.fit_function.get().strip(), self.fit_start.get().strip()
+        elif advanced and not function:  # just ticked: from the polynomial shown
+            function = background.polynomial_text(degree)
+        return replace(step, degree=degree, advanced=advanced, function=function, start=start)
+
+    def _set_step(self, l, index, step):
+        l.steps = l.steps[:index] + (step,) + l.steps[index + 1:]
+
+    def choose_step(self, index):
+        """Show step `index` of the selected line (past the last: an FFT panel's spectrum cut)."""
+        self.stop_picking()
+        self.panel.line.step = index
+        self._show_steps()
+
+    def add_step(self, kind):
+        """Add a step of `kind` after the chosen one, and choose it."""
+        l = self.panel.line
+        before = l.steps
+        at = min(l.step + 1, len(l.steps)) if l.steps else 0
+        l.steps = l.steps[:at] + (Step(kind),) + l.steps[at:]
+        l.step = at
+        self._steps_changed(before)
+
+    def remove_step(self):
+        l = self.panel.line
+        if l.chosen is None or self._spectrum_row():
+            return
+        before = l.steps
+        l.steps = l.steps[:l.step] + l.steps[l.step + 1:]
+        l.step = max(0, min(l.step, len(l.steps) - 1))
+        self._steps_changed(before)
+
+    def move_step(self, old, new):
+        """Move step `old` to `new`, as a drag in the list does."""
+        l = self.panel.line
+        before = l.steps
+        steps = list(l.steps)
+        steps.insert(new, steps.pop(old))
+        l.steps, l.step = tuple(steps), new
+        self._steps_changed(before)
+
+    def toggle_step(self):
+        """Turn the chosen step on or off, as its On box says."""
+        l = self.panel.line
+        if l.chosen is None or self._spectrum_row():
+            return
+        before = l.steps
+        self._set_step(l, l.step, replace(l.chosen, on=self.step_on.get()))
+        self._steps_changed(before)
+
+    def _steps_changed(self, before):
+        """After the selected line's steps changed from `before`: pass them on
+        through links and redraw, keeping the zoom where the data stays put."""
+        self.stop_picking()
+        self._sync_inputs(self.selected)
+        keep, others = self._zoom_kept(before, self.panel.line.steps)
+        self._redraw_selected(keep, others)
+
+    def _zoom_kept(self, before, after):
+        """(keep, others) for _redraw_selected after steps change from `before`
+        to `after`, and typed y ranges cleared if what's subtracted changed:
+        only fit curves changed, both axes stay; a cut changed, neither (a
+        kept zoom could hide it, or show nothing); else x only."""
+        def active(steps, kinds):
+            return [s for s in steps if s.active and s.kind in kinds]
+        if active(before, ("subtract",)) != active(after, ("subtract",)):
+            self._clear_ranges(self.panel.lines, "y")
+        if active(before, ("cut",)) != active(after, ("cut",)):
+            return "", ""
+        if self.panel.derived:  # any change reshapes a spectrum or derivative
+            return "x", "x"
+        unfitted = lambda steps: [s for s in steps if s.kind != "fit"]
+        return ("xy" if unfitted(before) == unfitted(after) else "x"), "x"
 
     def _show_cuts(self):
-        """Fill the Splicing list with the selected line's ranges (an FFT panel's
+        """Fill the cut list with the chosen Cut step's ranges (an FFT panel's
         spectrum's), and the boxes with the chosen one."""
-        l = self._cut_target()
-        self.cut_hint["text"] = tr("on an FFT: cuts the spectrum, in F" if l is self.panel
-                                   else "cut before fits, smoothing and FFT")
-        if l is not self.cut_owner:  # another line: start at its first range
-            self.cut_owner, self.cut_index = l, 0 if l.cuts else None
+        mode, cuts = self._cut_ranges()
+        owner = (id(self.panel), self.panel.line.step)
+        if owner != self.cut_owner:  # another step: start at its first range
+            self.cut_owner, self.cut_index = owner, 0 if cuts else None
             self.cut_from.set("")
             self.cut_to.set("")
-        if self.cut_index is not None and not 0 <= self.cut_index < len(l.cuts):
-            self.cut_index = len(l.cuts) - 1 if l.cuts else None
+        if self.cut_index is not None and not 0 <= self.cut_index < len(cuts):
+            self.cut_index = len(cuts) - 1 if cuts else None
         self.cut_list.delete(0, tk.END)
-        for start, end in l.cuts:
+        for start, end in cuts:
             self.cut_list.insert(tk.END, tr("x from {start}", start=f"{start:.6g}") if end is None
                                  else tr("x up to {end}", end=f"{end:.6g}") if start is None
                                  else tr("x {start} to {end}", start=f"{start:.6g}",
@@ -892,7 +1036,7 @@ class Plotter(tk.Tk):
         if self.cut_index is not None:
             self.cut_list.selection_set(self.cut_index)
             self.cut_list.see(self.cut_index)
-            start, end = l.cuts[self.cut_index]
+            start, end = cuts[self.cut_index]
             self.cut_from.set("" if start is None else f"{start:.12g}")
             self.cut_to.set("" if end is None else f"{end:.12g}")
 
@@ -902,14 +1046,23 @@ class Plotter(tk.Tk):
             self.cut_index = chosen[0]
             self._show_cuts()
 
-    def _cut_target(self):
-        """What the Splicing tab cuts: on an FFT panel its spectrum (the Panel's
-        cut, in F, so picking a range there is an easy zoom), else the selected
-        line's data."""
-        return self.panel if self.panel.operation == "fft" else self.panel.line
+    def _cut_ranges(self):
+        """(mode, ranges) of what the cut editor edits: an FFT panel's spectrum
+        cut, or the chosen Cut step."""
+        if self._spectrum_row():
+            return self.panel.cut, self.panel.cuts
+        step = self.panel.line.chosen
+        return step.cut, step.cuts
+
+    def _set_cuts(self, cuts):
+        if self._spectrum_row():
+            self.panel.cuts = cuts
+        else:
+            l = self.panel.line
+            self._set_step(l, l.step, replace(l.chosen, cuts=cuts))
 
     def _typed_cut(self):
-        """The range typed in the Splicing boxes, or None, saying why, if it isn't one."""
+        """The range typed in the cut boxes, or None, saying why, if it isn't one."""
         ends = []
         for var in (self.cut_from, self.cut_to):
             text = var.get().strip()
@@ -927,33 +1080,34 @@ class Plotter(tk.Tk):
         return tuple(ends)
 
     def add_cut(self, pair=None, replace=False):
-        """Add a range to the selected line's cut (an FFT panel's spectrum's):
+        """Add a range to the chosen Cut step (an FFT panel's spectrum cut):
         `pair`, else the typed one. `replace`: in place of the range chosen in
         the list (Enter), if there is one."""
         pair = pair or self._typed_cut()
         if pair is None:
             return
-        l = self._cut_target()
-        cuts = list(l.cuts)
+        mode, cuts = self._cut_ranges()
+        cuts = list(cuts)
         if replace and self.cut_index is not None:
             del cuts[self.cut_index]
-        l.cuts = splicing.tidy(cuts + [pair])
-        self.cut_index = l.cuts.index(splicing.tidy([pair])[0])
-        switched = not l.cut
-        if switched:  # adding a range means cutting with it
+        cuts = splicing.tidy(cuts + [pair])
+        self._set_cuts(cuts)
+        self.cut_index = cuts.index(splicing.tidy([pair])[0])
+        switched = not mode  # the spectrum's, off: adding a range means cutting with it
+        if switched:
             self.cut_mode.set(shown(splicing.MODES, "keep"))
         self.apply_controls()
         if switched:  # after the redraw, which clears the status
             self._say(tr("Keeping the range; choose Remove ranges to cut it out instead."))
 
     def delete_cut(self):
-        """Delete the range chosen in the list from the selected line's cut
-        (an FFT panel's spectrum's)."""
-        l = self._cut_target()
+        """Delete the range chosen in the list from the chosen Cut step (an
+        FFT panel's spectrum cut)."""
         if self.cut_index is None:
             self._say(tr("Click a range in the list to delete it."), error=True)
             return
-        l.cuts = l.cuts[:self.cut_index] + l.cuts[self.cut_index + 1:]
+        _, cuts = self._cut_ranges()
+        self._set_cuts(cuts[:self.cut_index] + cuts[self.cut_index + 1:])
         self.apply_controls()
 
     def _fft_box(self, parent):
@@ -1210,12 +1364,10 @@ class Plotter(tk.Tk):
         boxes.pack(anchor=tk.W, fill=tk.X)
         self.sync_vars = {}
         names = {"run": "Dataset", "x": "X axis", "x_fn": "X function", "y": "Y axis",
-                 "y_fn": "Y function", "colour": "Colour", "smoothing": "Smoothing",
-                 "background": "Fit", "style": "Line style", "cut": "Splicing",
-                 "despike": "Despike"}
+                 "y_fn": "Y function", "colour": "Colour", "steps": "Steps",
+                 "style": "Line style"}
         places = {"run": (0, 0), "colour": (0, 1), "x": (1, 0), "y": (1, 1), "x_fn": (2, 0),
-                  "y_fn": (2, 1), "smoothing": (3, 0), "background": (3, 1), "style": (4, 0),
-                  "cut": (4, 1), "despike": (5, 0)}
+                  "y_fn": (2, 1), "steps": (3, 0), "style": (3, 1)}
         for key in SYNC:
             var = self.sync_vars[key] = tk.BooleanVar()
             row, col = places[key]
@@ -1365,25 +1517,7 @@ class Plotter(tk.Tk):
         self.y_fn.set(l.y_fn)
         self.x_fn.show_label()
         self.y_fn.show_label()
-        self.despike_on.set(l.despike)
-        self.despike_window.set(l.despike_window)
-        self.despike_threshold.set(f"{l.despike_threshold:g}")
-        self.despike_on.show()
-        self.smooth.set(shown(smoothing.METHODS, l.smooth))
-        self.window_unit.set(shown(smoothing.UNITS, l.in_x))
-        self.window.set((f"{l.span:g}" if l.span is not None else "") if l.in_x else l.window)
-        self.order.set(l.order)
-        self.smooth.show()
-        self.fit_mode.set(shown(background.MODES, l.background))
-        self.degree.set(l.degree)
-        self.advanced.set(l.advanced)
-        # Greyed out, the box shows the polynomial Degree fits, not the kept function.
-        self.fit_function.set(l.fit_function if l.advanced
-                              else background.polynomial_text(l.degree))
-        self.fit_start.set(l.fit_start if l.advanced else "")
-        self.fit_mode.show()
-        self.cut_mode.set(shown(splicing.MODES, self._cut_target().cut))
-        self._show_cuts()
+        self._show_steps()
         self._show_axes()
         self.fft_window.show()
         self.derivative_order.show()
@@ -1401,14 +1535,9 @@ class Plotter(tk.Tk):
             name = f"{l.y} · {run_number(l.run) or l.run}" if l.run else "(no dataset)"
             if l.label:
                 name = f"{plain(l.label)} · {name}"
-            if l.smoothing:
-                name += f" · {plain(smoothing.describe(*l.smoothing))}"
-            if l.fitting:
-                name += f" · {plain(background.describe(*l.fitting))}"
-            if l.cutting:
-                name += f" · {plain(splicing.describe(*l.cutting))}"
-            if l.despiking:
-                name += f" · {tr('despiked')}"
+            for step in l.steps:
+                if step.active:
+                    name += (" · fit " if step.kind == "fit" else " · ") + plain(step.describe())
             self.line_list.insert(tk.END, name)
             self.line_list.itemconfigure(tk.END, foreground=colour,
                                          selectforeground=colour)
@@ -1420,55 +1549,22 @@ class Plotter(tk.Tk):
         """Copy the controls into the selected line and redraw its panel."""
         self.stop_picking()
         l = self.panel.line
-        before, old_x = l.shown, (l.x, l.x_fn)
-        old_y = (l.y, l.y_fn, l.background == "subtract")
+        before, old_x, old_y = l.shown, (l.x, l.x_fn), (l.y, l.y_fn)
+        spectrum_cut = (self.panel.cut, self.panel.cuts)
         l.run = self.run.get()
         l.x, l.y = without_unit(self.x.get()) or l.x, without_unit(self.y.get()) or l.y
         l.x_fn, l.y_fn = self.x_fn.get().strip(), self.y_fn.get().strip()
-        l.smooth = key_of(smoothing.METHODS, self.smooth.get())
-        was_in_x, l.in_x = l.in_x, self.window_unit.get() == shown(smoothing.UNITS, True)
-        # The box holds the window in the units it was showing; the other is kept.
-        fields = (("span" if was_in_x else "window", self.window, float if was_in_x else int),
-                  ("order", self.order, int))
-        for attr, var, kind in fields:
-            try:
-                setattr(l, attr, kind(var.get()))
-            except ValueError:  # not a number: keep the old one (shown again below)
-                pass
-        l.despike = self.despike_on.get()
-        try:
-            l.despike_window = max(3, int(self.despike_window.get()))
-        except ValueError:
-            pass
-        try:
-            threshold = float(self.despike_threshold.get())
-            if threshold > 0 and math.isfinite(threshold):
-                l.despike_threshold = threshold
-        except ValueError:
-            pass
-        was_fit, l.background = l.background == "fit", key_of(background.MODES, self.fit_mode.get())
-        # A shown fit is dashed, to read as a fit; a style the user picked stays.
-        if l.background == "fit" and not was_fit and l.style == "-":
-            l.style = "--"
-        elif was_fit and l.background != "fit" and l.style == "--":
-            l.style = "-"
-        try:
-            l.degree = int(self.degree.get())
-        except ValueError:
-            pass
-        was_advanced, l.advanced = l.advanced, self.advanced.get()
-        if was_advanced:  # the boxes were the line's to edit
-            l.fit_function = self.fit_function.get().strip()
-            l.fit_start = self.fit_start.get().strip()
-        elif l.advanced and not l.fit_function:  # just ticked: from the polynomial shown
-            l.fit_function = background.polynomial_text(l.degree)
-        spectrum_cut = (self.panel.cut, self.panel.cuts)
-        self._cut_target().cut = key_of(splicing.MODES, self.cut_mode.get())
+        steps = l.steps
+        if self._spectrum_row():
+            spectrum_cut = (self.panel.cut, self.panel.cuts)
+            self.panel.cut = key_of(splicing.MODES, self.cut_mode.get())
+        elif l.chosen is not None:
+            self._set_step(l, l.step, self._read_step(l.chosen))
         if (l.x, l.x_fn) != old_x:
             # A window or range in the old x means nothing in the new one.
             l.clear_x_units()
             self._clear_ranges(self.panel.lines, "x")
-        if (l.y, l.y_fn, l.background == "subtract") != old_y:
+        if (l.y, l.y_fn) != old_y:
             self._clear_ranges(self.panel.lines, "y")
         self._sync_inputs(self.selected)
         if l.run in self.datasets and l.run not in self.frames:
@@ -1486,12 +1582,7 @@ class Plotter(tk.Tk):
         # a spike can shrink it as much, so only x.
         keep, others = "", ""
         if before and before[:5] == (l.run, l.x, l.x_fn, l.y, l.y_fn):
-            keep = "xy" if (before[6], before[8]) == (l.fitting, l.despiking) else "x"
-            if self.panel.derived:  # any change reshapes a spectrum or derivative
-                keep = "x"
-            others = "x"  # the other panels redrawn plot the same data as before
-            if before[7] != l.cutting:  # a kept zoom could hide the cut, or show nothing
-                keep = others = ""
+            keep, others = self._zoom_kept(steps, l.steps)
             if (self.panel.cut, self.panel.cuts) != spectrum_cut:  # an FFT's: fit to it
                 keep = ""
         self._redraw_selected(keep, others)
@@ -1557,25 +1648,6 @@ class Plotter(tk.Tk):
         self._set_selected_line(self.selected, at)
         self._redraw_selected()
 
-    def fit_as_line(self):
-        """Add a line under the selected one showing a fit of it as drawn (after
-        its cut, fit and smoothing), dashed, in a colour of its own. It's a copy, starting
-        from the polynomial of the line's degree, so it draws at once.
-
-        Linked panels get one too, as with + (add_line)."""
-        at = self.panel.selected + 1
-        for cell in self._tied(self.selected):
-            p = self.panels[cell]
-            old = p.lines[at - 1]
-            new = old.copy()
-            new.colour, new.label, new.style = None, None, "--"  # its own colour, as with +
-            new.fits_drawn, new.first_fit = True, old.fitting or ()
-            # Ticking Advanced Fitting then starts from that polynomial's function.
-            new.background, new.advanced, new.fit_function, new.fit_start = "fit", False, "", ""
-            p.lines.insert(at, new)
-        self._set_selected_line(self.selected, at)
-        self._redraw_selected()
-
     def remove_line(self):
         """Remove the selected line, here and in linked panels."""
         p = self.panel
@@ -1626,65 +1698,66 @@ class Plotter(tk.Tk):
         self.canvas.draw()
         self._changed()
 
+    # The stage named in a step's errors, by kind.
+    STAGES = {"cut": "Splicing", "despike": "Despike", "subtract": "Fit", "smooth": "Smoothing",
+              "fit": "Fit"}
+
     def _line_data(self, l):
-        """(x, y, x labels, y labels) for a line: its columns through its function,
-        background and smoothing. Raises LineError, with the text Line.error holds.
+        """(x, y, x labels, y labels, curves, fit error) for a line: its columns
+        through their functions, then its steps in order (see model.Step).
+        `curves` is {step index: (x, fitted y)} for its fit steps, which leave
+        the data as it was; a fit step that fails is the "fit error" (its text,
+        or ""), so the data is still drawn. Raises LineError, with the text
+        Line.error holds, for anything else.
 
         Kept by settings, so linked panels (a data panel and its FFT, say) with
         the same line do the work once."""
         cached = self.cache.get(self._data_key(l))
         if cached:
-            result, span, l.fit_values, l.despiked = cached
-            if l.smooth and l.in_x and l.span is None:
-                l.span = span  # as working it out would have set it
+            result, steps, l.found = cached
+            l.steps = steps  # with any span working it out would have filled in
             return result
         key = self._data_key(l)  # before a missing span is filled in below
         stage = "Function"
-        l.fit_values, l.despiked = (), 0
+        found, curves, fit_error = [None] * len(l.steps), {}, ""
         try:
             df = self._load(l)
             x, x_label = self._axis(df, l.x, l.x_fn)
             y, y_label = self._axis(df, l.y, l.y_fn)
-            # The cut first: everything after sees only what's left.
-            stage = "Splicing"
-            if l.cutting:
-                x, y = splicing.cut(x, y, *l.cutting)
-            # Then the spikes, before they can pull the fit.
-            stage = "Despike"
-            if l.despiking:
-                x, y, l.despiked = despike.despike(x, y, *l.despiking)
-            # Background next, so the fit sees the unsmoothed data and
-            # smoothing then works on what's left.
-            stage = "Fit"
-            first = l.first_fit if l.fits_drawn else l.fitting
-            if first:
-                y, values = background.apply(x, y, *first)
-                if not l.fits_drawn:
-                    l.fit_values = values
-                if first[0] == "subtract":
+            for j, step in enumerate(l.steps):
+                if not step.active:
+                    continue
+                stage = self.STAGES[step.kind]
+                if step.kind == "cut":
+                    x, y = splicing.cut(x, y, *step.cutting)
+                elif step.kind == "despike":
+                    x, y, found[j] = despike.despike(x, y, *step.despiking)
+                elif step.kind == "subtract":
+                    y, found[j] = background.apply(x, y, *step.fitting)
                     y_label = tuple(f"{t} − fit" for t in y_label)
-            stage = "Smoothing"
-            if l.smooth and l.in_x and l.span is None:
-                l.span = smoothing.span_for(x, l.window)
-            if l.smoothing:
-                y = smoothing.smooth(x, y, *l.smoothing)
-            # Fit as new line's own fit, of the line as it was drawn.
-            stage = "Fit"
-            if l.fits_drawn and l.fitting:
-                y, l.fit_values = background.apply(x, y, *l.fitting)
+                elif step.kind == "smooth":
+                    if step.in_x and step.span is None:
+                        step = replace(step, span=smoothing.span_for(x, step.window))
+                        l.steps = l.steps[:j] + (step,) + l.steps[j + 1:]
+                    y = smoothing.smooth(x, y, *step.smoothing)
+                elif not fit_error:  # a fit curve; after one fails, the rest wait
+                    try:
+                        fitted, found[j] = background.apply(x, y, *step.fitting)
+                    except Exception as err:
+                        fit_error = f"Fit error: {err}"
+                    else:
+                        curves[j] = (x, fitted)
         except Exception as err:  # bad file or function shouldn't kill the window
             raise LineError(f"{stage} error: {err}" if l.run in self.frames else str(err))
-        result = x, y, x_label, y_label
-        self.cache[key] = self.cache[self._data_key(l)] = (result, l.span, l.fit_values,
-                                                           l.despiked)
+        l.found = tuple(found)
+        result = x, y, x_label, y_label, curves, fit_error
+        self.cache[key] = self.cache[self._data_key(l)] = (result, l.steps, l.found)
         return result
 
     @staticmethod
     def _data_key(l):
-        """What a line's data depends on: its settings through smoothing, and
-        the fit after it for a line made by Fit as new line."""
-        return (l.run, l.x, l.x_fn, l.y, l.y_fn, l.smoothing, l.fitting, l.cutting, l.despiking,
-                (l.fits_drawn, l.first_fit))
+        """What a line's data depends on: its columns and steps."""
+        return l.run, l.x, l.x_fn, l.y, l.y_fn, l.steps
 
     def _prune_cache(self):
         """Keep only the data of lines still in the panels."""
@@ -1700,15 +1773,18 @@ class Plotter(tk.Tk):
         derived, fft = p.derived, p.operation == "fft"
         ax.clear()
         self.artists[cell] = {}
+        self.curves[cell] = {}  # fit curves' artists, kept apart from the lines'
         self.marks[cell] = []  # cleared with the axes
         drawn, indices, x_labels, y_labels, errors, resolutions = [], [], [], [], [], []
         self.auto_text[cell], self.auto_names[cell] = {}, {}
-        for i, (l, colour) in enumerate(zip(p.lines, self._colours(p))):
+        colours, curve_colours = self._curve_colours(p)
+        curves = []  # (line index, step index, x, y) for each fit curve, drawn after the lines
+        for i, (l, colour) in enumerate(zip(p.lines, colours)):
             l.shown, l.error = None, ""
             if not l.run:
                 continue
             try:
-                x, y, x_label, y_label = self._line_data(l)
+                x, y, x_label, y_label, fits, fit_error = self._line_data(l)
             except LineError as err:
                 l.error = str(err)
                 errors.append(l.error)
@@ -1748,6 +1824,9 @@ class Plotter(tk.Tk):
             l.shown = self._data_key(l)
             (artist,) = ax.plot(x, y, color=colour, **l.plot_style())
             self.artists[cell][artist] = i
+            if not derived:  # fit curves are of the data, not its spectrum or slope
+                curves += [(i, j, *fits[j]) for j in sorted(fits)]
+                l.error = fit_error
             drawn.append(l)
             indices.append(i)
             x_labels.append(x_label)
@@ -1764,6 +1843,10 @@ class Plotter(tk.Tk):
             auto = self.auto_text[cell] = {"title": heading, "x_label": shared(x_labels),
                                            "y_label": shared(y_labels)}
             self.auto_names[cell] = dict(zip(indices, legend_labels(drawn)))
+            # After every line, so ax.lines starts with the lines, one each.
+            for i, j, x, y in curves:
+                (artist,) = ax.plot(x, y, color=curve_colours[i, j], ls="--", lw=1.0)
+                self.curves[cell][artist] = (i, j)
             ax.set_title(auto["title"] if p.title is None else p.title)
             ax.set_xlabel(auto["x_label"] if p.x_label is None else p.x_label)
             ax.set_ylabel(auto["y_label"] if p.y_label is None else p.y_label)
@@ -1777,9 +1860,11 @@ class Plotter(tk.Tk):
                         lw=0.4, alpha=0.8)
             if self.settings.get("ticks_in") is True:  # a preference for every panel
                 ax.tick_params(which="both", direction="in")
-            if p.legend != "off" and (p.legend != "auto" or len(drawn) > 1):
+            if p.legend != "off" and (p.legend != "auto" or len(drawn) + len(curves) > 1):
                 for artist, l, i in zip(ax.lines, drawn, indices):  # "": left out
                     artist.set_label(self.auto_names[cell][i] if l.label is None else l.label)
+                for artist, (i, j) in self.curves[cell].items():
+                    artist.set_label(f"fit: {p.lines[i].steps[j].describe()}")
                 if p.legend == "outside":  # constrained layout makes room for it
                     ax.legend(fontsize=8, loc="center left", bbox_to_anchor=(1.02, 0.5))
                 else:
@@ -2238,20 +2323,22 @@ class Plotter(tk.Tk):
         """Copy `cell`'s lines' settings that `link` shares to `other`'s, line by line."""
         lines = self.panels[other].lines
         keys = [k for k in SYNC if k in link.synced]
+        def subtracted(l):
+            return [s for s in l.steps if s.active and s.kind == "subtract"]
         for mine, theirs in zip(lines, self.panels[cell].lines):
-            old_x, old_y = (mine.x, mine.x_fn), (mine.y, mine.y_fn, mine.background)
+            old_x, old_y = (mine.x, mine.x_fn), (mine.y, mine.y_fn, subtracted(mine))
             for key in keys:
                 for attr in SYNC[key]:
+                    value = getattr(theirs, attr)
                     # A value in the plotted x only means the same with the same x.
-                    if attr in X_UNITS and (mine.x, mine.x_fn) != (theirs.x, theirs.x_fn):
-                        continue
-                    setattr(mine, attr, getattr(theirs, attr))
+                    if attr == "steps" and (mine.x, mine.x_fn) != (theirs.x, theirs.x_fn):
+                        value = without_x_units(value)
+                    setattr(mine, attr, value)
                 if key in ("x", "x_fn") and (mine.x, mine.x_fn) != old_x:
                     # In the old x; x comes before the keys that could set them.
                     mine.clear_x_units()
                     self._clear_ranges(lines, "x")
-            new_y = (mine.y, mine.y_fn, mine.background)
-            if new_y[:2] != old_y[:2] or (new_y[2] == "subtract") != (old_y[2] == "subtract"):
+            if (mine.y, mine.y_fn, subtracted(mine)) != old_y:
                 self._clear_ranges(lines, "y")
 
     def _chosen_link(self):
@@ -2787,6 +2874,9 @@ class Plotter(tk.Tk):
     def _colours(self, panel):
         return line_colours(panel, self.profile.samples, self.colour_map)
 
+    def _curve_colours(self, panel):
+        return curve_colours(panel, self.profile.samples, self.colour_map)
+
     def _show_colour(self, move_picker=True, cells=None):
         """Recolour the lines without a redraw, so zoom survives: in `cells`,
         else the selected panel and those tied to it."""
@@ -2797,9 +2887,11 @@ class Plotter(tk.Tk):
         for cell in self._tied(self.selected) if cells is None else cells:
             # Linked panels' lines pair with these, but each panel's own
             # colours are worked out, as its picks can differ.
-            colours_here = self._colours(self.panels[cell])
+            colours_here, curves_here = self._curve_colours(self.panels[cell])
             for artist, i in self.artists.get(cell, {}).items():
                 artist.set_color(colours_here[i])
+            for artist, key in self.curves.get(cell, {}).items():
+                artist.set_color(curves_here[key])
             ax = self.axes.get(cell)
             if ax and ax.get_legend():  # the legend keeps its own copy of each colour
                 for handle, artist in zip(ax.get_legend().legend_handles, ax.lines):
@@ -3187,11 +3279,8 @@ class Plotter(tk.Tk):
         first = self.panels[0, 0].lines[0]
         if not first.shown:
             return ""
-        run, y, x, smoothed, fitted, cut, despiked = first.parts()
-        tail = f"_{splicing.file_part(*cut)}" if cut else ""
-        tail += f"_{despike.file_part(*despiked)}" if despiked else ""
-        tail += f"_{background.file_part(*fitted)}" if fitted else ""
-        tail += f"_{smoothing.file_part(*smoothed)}" if smoothed else ""
+        run, y, x, steps = first.parts()
+        tail = "".join(f"_{s.file_part()}" for s in steps)  # in the order they're done
         corner = self.panels[0, 0]
         tail += f"_{corner.operation}" if corner.derived else ""  # _fft, _d1 or _d2
         return f"{describe(run).replace(' ', '_')}_{y}_vs_{x}{tail}.png"

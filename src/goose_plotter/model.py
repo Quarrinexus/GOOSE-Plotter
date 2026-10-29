@@ -11,22 +11,15 @@ from goose_plotter import colourmaps
 from goose_plotter.axis_functions import file_part
 from goose_plotter.columns import sample_of
 from goose_plotter.datasets import describe
-from goose_plotter.background import describe as describe_background
-from goose_plotter.despike import describe as describe_despike
-from goose_plotter.splicing import describe as describe_cut
-from goose_plotter.smoothing import describe as describe_smoothing
+from goose_plotter import background, despike, smoothing, splicing
 
 # What a link between two panels can share, line by line: a Link's `sync`
 # names the keys it shares.
 SYNC = {"run": ("run",), "x": ("x",), "x_fn": ("x_fn",), "y": ("y",), "y_fn": ("y_fn",),
-        "colour": ("colour",), "cut": ("cut", "cuts"),
-        "despike": ("despike", "despike_window", "despike_threshold"),
-        "smoothing": ("smooth", "window", "in_x", "span", "order"),
-        "background": ("background", "degree", "advanced", "fit_function", "fit_start",
-                       "fits_drawn", "first_fit"),
+        "colour": ("colour",), "steps": ("steps",),
         "style": ("style", "width", "marker", "marker_size")}
 SYNC_DEFAULT = "run x x_fn y y_fn colour style"
-X_UNITS = ("span", "cuts")  # settings in the plotted x
+X_UNITS = ("span", "cuts")  # Step settings in the plotted x
 
 AUTO_MARKER_SIZE = 3.0  # matplotlib's markersize, in points
 
@@ -37,6 +30,92 @@ PALETTE = ("#2464d6", "#eb6834", "#2e9e5b", "#8e5bd1", "#c23b6e", "#1a9aa0",
            "#b58900", "#52514e")
 
 
+# Step kind -> its name in the list and the Add step menu.
+KINDS = {"cut": "Cut", "despike": "Despike", "subtract": "Subtract", "smooth": "Smooth",
+         "fit": "Fit curve"}
+
+
+@dataclass(frozen=True)
+class Step:
+    """One step of a line's processing, done in the line's order. Frozen, so a
+    line's steps are a tuple that can key the data cache; change one with
+    `dataclasses.replace`. It holds every kind's settings, only its own used.
+
+    "subtract" takes its fit off the data for the steps after it; "fit" draws
+    its fit of the data as it is there, over the line, leaving the data as it was."""
+    kind: str = "smooth"  # a key of KINDS
+    on: bool = True
+    cut: str = "keep"  # cut: a key of splicing.MODES (not ""), for all the ranges
+    cuts: tuple = ()  # cut: x ranges, (start, end) pairs as splicing.tidy makes them
+    spike_window: int = 21  # despike: points around each one, for its median
+    threshold: float = 5.0  # despike: how many local spreads off it makes a spike
+    degree: int = 5  # subtract, fit: of the polynomial
+    advanced: bool = False  # subtract, fit: fit `function` instead of the polynomial
+    function: str = ""  # with capital-letter unknowns, e.g. "A * sin(B * x) + C"
+    start: str = ""  # start values for its unknowns, e.g. "B=314"; 1 for any not given
+    method: str = "savgol"  # smooth: a key of smoothing.METHODS other than ""
+    window: int = 21  # smooth: in points
+    in_x: bool = False  # smooth: window counted in the plotted x (span) instead
+    span: float | None = None  # smooth: window in x; None: estimated from `window`
+    order: int = 2  # smooth: Savitzky–Golay polynomial order
+    colour: str | None = None  # fit: its curve's; None: picked automatically
+
+    @property
+    def cutting(self):
+        """(mode, ranges), or None while it has no ranges."""
+        return (self.cut, self.cuts) if self.kind == "cut" and self.cut and self.cuts else None
+
+    @property
+    def despiking(self):
+        return (self.spike_window, self.threshold) if self.kind == "despike" else None
+
+    @property
+    def fitting(self):
+        """(mode, degree, function, start), as background.apply takes it, the
+        mode "subtract" or "fit" by kind; the function and start "" for the
+        polynomial, the degree None for a function."""
+        if self.kind not in ("subtract", "fit"):
+            return None
+        if self.advanced:
+            return (self.kind, None, self.function, self.start)
+        return (self.kind, self.degree, "", "")
+
+    @property
+    def smoothing(self):
+        """(method, window or span, order, in_x), as smoothing.smooth takes it."""
+        if self.kind != "smooth" or not self.method:
+            return None
+        return (self.method, self.span if self.in_x else self.window, self.order, self.in_x)
+
+    @property
+    def active(self):
+        """Whether it does anything: on, and a cut with ranges to cut by."""
+        return self.on and (self.kind != "cut" or self.cutting is not None)
+
+    def describe(self):
+        """Its settings in short, for the step list, the legend and the line list."""
+        if self.cutting:
+            return splicing.describe(*self.cutting)
+        if self.kind == "cut":
+            return "no ranges"
+        if self.despiking:
+            return despike.describe(*self.despiking)
+        if self.fitting:
+            fitted = background.describe(*self.fitting)
+            return fitted if self.kind == "subtract" else fitted.removeprefix("fit ")
+        return smoothing.describe(*self.smoothing) if self.smoothing else ""
+
+    def file_part(self):
+        """Its piece of a figure's filename."""
+        if self.cutting:
+            return splicing.file_part(*self.cutting)
+        if self.despiking:
+            return despike.file_part(*self.despiking)
+        if self.fitting:
+            return background.file_part(*self.fitting)
+        return smoothing.file_part(*self.smoothing) if self.smoothing else ""
+
+
 @dataclass
 class Line:
     """One plotted line. x and y are column names."""
@@ -45,27 +124,11 @@ class Line:
     x_fn: str = "x"
     y: str = ""
     y_fn: str = "y"
-    smooth: str = ""  # a key of smoothing.METHODS; "" for none
-    window: int = 21  # smoothing window, in points
-    in_x: bool = False  # window counted in the plotted x (span) instead of points
-    span: float | None = None  # window in x; None: estimated from `window` when drawn
-    background: str = ""  # a key of background.MODES; "" for off
-    degree: int = 5  # of the background polynomial
-    advanced: bool = False  # fit `fit_function` instead of the polynomial
-    fit_function: str = ""  # a function of x with capital-letter unknowns, e.g. "A * sin(B * x) + C"
-    fit_start: str = ""  # start values for its unknowns, e.g. "B=314"; 1 for any not given
-    fit_values: tuple = ()  # ((name, value), ...) the last fit found; not saved
-    # Made by Fit as new line: its fit is of the line as drawn, after smoothing,
-    # and `first_fit` is the `fitting` of the line it copied, done before it.
-    fits_drawn: bool = False
-    first_fit: tuple = ()  # () for none
-    order: int = 2  # Savitzky–Golay polynomial order
-    cut: str = ""  # a key of splicing.MODES, for all the ranges; "" for off
-    cuts: tuple = ()  # the cut's x ranges, (start, end) pairs as splicing.tidy makes them
-    despike: bool = False  # spikes (see despike.spikes) turned to gaps
-    despike_window: int = 21  # points around each one, for its median
-    despike_threshold: float = 5.0  # how many local spreads off it makes a spike
-    despiked: int = 0  # how many the last draw found; not saved
+    steps: tuple = ()  # its processing, Steps in the order they're done
+    step: int = 0  # the step the Process tab shows; not saved, like Panel.selected
+    # What the last draw found, per step: spikes removed, or a fit's
+    # ((name, value), ...); None for the rest. Not saved.
+    found: tuple = ()
     colour: str | None = None  # None: picked automatically, see line_colours
     # How it's drawn; not in `shown`, so changing them keeps the zoom.
     style: str = "-"  # a key of STYLES
@@ -73,18 +136,14 @@ class Line:
     marker: str = ""  # a key of MARKERS
     marker_size: float | None = None  # None: AUTO_MARKER_SIZE
     label: str | None = None  # its name in the legend; None: the automatic one, "": none
-    # (run, x, x_fn, y, y_fn, smoothing, fitting, cutting, despiking,
-    # (fits_drawn, first_fit)) as last drawn
+    # (run, x, x_fn, y, y_fn, steps) as last drawn
     shown: tuple | None = None
     error: str = ""  # why the last draw failed, if it did
 
     def copy(self):
-        return replace(self, shown=None, error="", fit_values=(), despiked=0)
+        return replace(self, shown=None, error="", found=())
 
-    @property
-    def auto_width(self):
-        """The width when none is set: a shown fit is a little heavier, to stand out."""
-        return 1.0 if self.background == "fit" else 0.7
+    auto_width = 0.7  # the width when none is set
 
     def plot_style(self):
         """matplotlib keywords for its line and markers (colour aside)."""
@@ -96,47 +155,25 @@ class Line:
         return kwargs
 
     @property
-    def smoothing(self):
-        """(method, window or span, order, in_x), or None when unsmoothed."""
-        if not self.smooth:
-            return None
-        return (self.smooth, self.span if self.in_x else self.window, self.order, self.in_x)
-
-    @property
-    def fitting(self):
-        """(mode, degree, function, start values), or None when the background
-        is off; the function and start values are "" for the polynomial, and
-        the degree None for a function."""
-        if not self.background:
-            return None
-        if self.advanced:
-            return (self.background, None, self.fit_function, self.fit_start)
-        return (self.background, self.degree, "", "")
-
-    @property
-    def cutting(self):
-        """(mode, ranges), or None when the line isn't cut."""
-        if not self.cut or not self.cuts:
-            return None
-        return (self.cut, self.cuts)
-
-    @property
-    def despiking(self):
-        """(window, threshold), or None when spikes are left in."""
-        if not self.despike:
-            return None
-        return (self.despike_window, self.despike_threshold)
+    def chosen(self):
+        """The step the Process tab shows, or None if it has none."""
+        return self.steps[min(self.step, len(self.steps) - 1)] if self.steps else None
 
     def clear_x_units(self):
-        """Forget the settings in the plotted x (X_UNITS), when x or its function changes."""
-        self.span = None
-        self.cuts = ()
+        """Forget the step settings in the plotted x (X_UNITS), when x or its function changes."""
+        self.steps = without_x_units(self.steps)
 
     def parts(self):
-        """(run, y part, x part, smoothing, fitting, cutting, despiking) as
-        they'd appear in a filename."""
-        run, x, x_fn, y, y_fn, smoothed, fitted, cut, despiked = self.shown[:9]
-        return run, file_part(y_fn, y), file_part(x_fn, x), smoothed, fitted, cut, despiked
+        """(run, y part, x part, the steps that do anything) as they'd appear
+        in a filename and the legend."""
+        run, x, x_fn, y, y_fn, steps = self.shown
+        return (run, file_part(y_fn, y), file_part(x_fn, x),
+                tuple(s for s in steps if s.active))
+
+
+def without_x_units(steps):
+    """`steps` with their settings in the plotted x (X_UNITS) forgotten."""
+    return tuple(replace(s, cuts=(), span=None) for s in steps)
 
 
 @dataclass
@@ -291,51 +328,70 @@ def near(colour, others, distance=0.25):
     return any(np.linalg.norm(rgb - to_rgb(o)) < distance for o in others)
 
 
-def line_colours(panel, samples, colour_map="classic"):
-    """Each line's colour: its pick, else from `colour_map` (a key of
-    colourmaps.MAPS) spread over the panel's lines, or with "classic" its
-    sample's, else an unused PALETTE one."""
+def fit_curves(panel):
+    """(line index, step index) of each fit curve the panel draws, in order:
+    the fit steps that are on, on a data panel only."""
+    if panel.derived:
+        return []
+    return [(i, j) for i, l in enumerate(panel.lines) for j, s in enumerate(l.steps)
+            if s.kind == "fit" and s.on]
+
+
+def curve_colours(panel, samples, colour_map="classic"):
+    """([each line's colour], {(line, step): each fit curve's colour}): a pick,
+    else from `colour_map` (a key of colourmaps.MAPS) spread over every curve
+    drawn, each line followed by its fit curves; or with "classic" a line's
+    sample's colour, else an unused PALETTE one, for lines and curves alike."""
     lines = panel.lines
-    colours = [l.colour for l in lines]
+    curves = fit_curves(panel)
+    order = sorted([(i, -1) for i in range(len(lines))] + curves)  # each line, then its fits
+    picked = {key: (lines[key[0]].colour if key[1] < 0 else lines[key[0]].steps[key[1]].colour)
+              for key in order}
+    colours = dict(picked)
     if colour_map == "classic":
-        used = [c for c in colours if c]
-        for i, l in enumerate(lines):
-            if colours[i]:
+        used = [c for c in picked.values() if c]
+        for key in order:
+            if colours[key]:
                 continue
-            wanted = samples.get(sample_of(samples, l.y, l.x), NEUTRAL)
+            wanted = NEUTRAL
+            if key[1] < 0:
+                l = lines[key[0]]
+                wanted = samples.get(sample_of(samples, l.y, l.x), NEUTRAL)
             if near(wanted, used):
                 wanted = next((c for c in PALETTE if not near(c, used)),
                               PALETTE[len(used) % len(PALETTE)])
-            colours[i] = wanted
+            colours[key] = wanted
             used.append(wanted)
     else:
-        # A picked colour keeps its line's place, so picking one moves no other.
-        for i, colour in enumerate(colourmaps.colours(colour_map, len(lines))):
-            colours[i] = colours[i] or colour
-    return colours
+        # A picked colour keeps its curve's place, so picking one moves no other.
+        for key, colour in zip(order, colourmaps.colours(colour_map, len(order))):
+            colours[key] = colours[key] or colour
+    return ([colours[(i, -1)] for i in range(len(lines))],
+            {key: colours[key] for key in curves})
+
+
+def line_colours(panel, samples, colour_map="classic"):
+    """Each line's colour, as `curve_colours` gives it."""
+    return curve_colours(panel, samples, colour_map)[0]
 
 
 def legend_labels(lines):
-    """Legend text naming only what differs between the lines."""
-    parts = [l.parts() for l in lines]
-    differs = [len({p[i] for p in parts}) > 1 for i in range(7)]
+    """Legend text naming only what differs between the lines. Fit curves
+    don't change a line's data, so they're left out of what's compared."""
+    parts = [l.parts()[:3] + (tuple(s for s in l.parts()[3] if s.kind != "fit"),)
+             for l in lines]
+    differs = [len({p[i] for p in parts}) > 1 for i in range(4)]
     if not any(differs[:3]):
         differs[1] = True  # identical, or only processed differently: say what's on y
     labels = []
-    for run, y, x, smoothed, fitted, cut, despiked in parts:
+    for run, y, x, steps in parts:
         bits = [describe(run)] if differs[0] else []
         if differs[1]:
             bits.append(y)
         if differs[2]:
             bits.append(f"vs {x}")
-        if differs[3] and smoothed:
-            bits.append(describe_smoothing(*smoothed))
-        if differs[4] and fitted:
-            bits.append(describe_background(*fitted))
-        if differs[5] and cut:
-            bits.append(describe_cut(*cut))
-        if differs[6] and despiked:
-            bits.append(describe_despike(*despiked))
+        if differs[3]:
+            bits += [s.describe() for s in steps]
         labels.append(" · ".join(bits))
     return labels
 

@@ -5,8 +5,8 @@ import json
 import numpy as np
 import pytest
 
-from goose_plotter import background, session, smoothing, splicing
-from conftest import B_HIGH, B_LOW, F, drawn, plot
+from goose_plotter import background, session, splicing
+from conftest import B_HIGH, B_LOW, F, add_step, cutting, drawn, plot, steps_of
 
 def test_plots_the_profile_default_axes(app):
     plot(app)
@@ -29,9 +29,7 @@ def test_a_bad_function_is_reported_under_the_axes(app):
 
 def test_fft_panel_finds_the_oscillation(app):
     plot(app, x_fn="1/x")
-    app.fit_mode.set("Subtract")
-    app.degree.set("10")  # 5, the default, leaves too much of the 1/x background
-    app.apply_controls()
+    add_step(app, "subtract", degree=10)  # 5, the default, leaves too much of the 1/x background
     app.new_derived_panel("fft")
     frequency, amplitude = drawn(app, (1, 0))
     assert frequency[np.argmax(amplitude)] == pytest.approx(F, rel=0.05)
@@ -40,6 +38,7 @@ def test_fft_panel_finds_the_oscillation(app):
 
 def test_splicing_keeps_and_removes_several_ranges(app):
     plot(app)
+    add_step(app, "cut")
     app.cut_mode.set(splicing.MODES["remove"])
     app.apply_controls()
     for start, end in (("10", "12"), ("20", "22")):
@@ -61,41 +60,43 @@ def test_splicing_keeps_and_removes_several_ranges(app):
 
 def test_a_kept_range_sets_the_fft_resolution(app):
     plot(app, x_fn="1/x")
+    add_step(app, "cut")  # keeps its ranges to start with
     app.cut_from.set("0.05")
     app.cut_to.set("0.15")
-    app.add_cut()  # off, so it switches to keeping the range
-    assert app.panel.line.cutting == ("keep", ((0.05, 0.15),))
+    app.add_cut()
+    assert cutting(app.panel.line) == ("keep", ((0.05, 0.15),))
     app.new_derived_panel("fft")
     assert app.axes[(1, 0)].get_title().endswith("ΔF 10")
 
 
 def test_splicing_an_fft_cuts_its_spectrum_in_f(app):
     plot(app, x_fn="1/x")
-    app.fit_mode.set("Subtract")
-    app.apply_controls()
+    add_step(app, "subtract")
     app.new_derived_panel("fft")
     fft = app.panels[(1, 0)]
+    assert app.step_list.list.get("end").startswith("Cut spectrum (F)")  # after the steps
+    app.choose_step(len(fft.line.steps))
+    assert app.editors["cut"].winfo_manager() and app.cut_mode.get() == splicing.MODES[""]
     app.axes[(1, 0)].set_xlim(0, 5000)  # zoomed out: the cut fits the view to it
     app.cut_from.set("30")
     app.cut_to.set("70")
-    app.add_cut()
+    app.add_cut()  # off, so it switches to keeping the range
     frequency, amplitude = drawn(app, (1, 0))
     assert frequency.min() >= 30 and frequency.max() <= 70
     assert frequency[np.argmax(amplitude)] == pytest.approx(F, rel=0.05)
     low, high = app.axes[(1, 0)].get_xlim()
     assert low > 25 and high < 75
     assert fft.cuts == ((30.0, 70.0),) and fft.cut == "keep"
-    assert all(not l.cuts for p in app.panels.values() for l in p.lines)  # the data isn't cut
-    assert app.cut_hint["text"].startswith("on an FFT")
+    assert all(not steps_of(l, "cut") for p in app.panels.values() for l in p.lines)  # data uncut
     saved = json.loads(json.dumps(session.dump(app.panels, app.rows, app.cols, app.links)))
     _, _, panels, _ = session.load(saved)  # as a session file gives it back
     assert (panels[(1, 0)].cut, panels[(1, 0)].cuts) == ("keep", ((30.0, 70.0),))
     app.pick_range("cut")  # picking works on an FFT panel
     assert app.picker is not None
     app.stop_picking()
-    app.selected = (0, 0)  # the data panel's Splicing is its line's again
+    app.selected = (0, 0)  # a data panel has no spectrum row
     app._load_controls()
-    assert app.cut_list.size() == 0 and app.cut_mode.get() == splicing.MODES[""]
+    assert app.step_list.list.size() == 1 and app.editors["fit"].winfo_manager()
     app.x_fn.set("x")  # F in 1/T, not T: the spectrum's cut goes
     app.apply_controls()
     assert fft.cuts == ()
@@ -103,18 +104,19 @@ def test_splicing_an_fft_cuts_its_spectrum_in_f(app):
 
 def test_editing_picking_and_deleting_ranges(app):
     plot(app)
+    add_step(app, "cut")
     app.cut_from.set("5")
     app.cut_to.set("6")
     app.add_cut()
     app.cut_from.set("5.5")
     app.add_cut(replace=True)  # Enter changes the chosen range
-    assert app.panel.line.cuts == ((5.5, 6.0),)
+    assert app.panel.line.chosen.cuts == ((5.5, 6.0),)
     app.pick_range("cut")
     app._use_range(20.0, 25.0)
-    assert app.panel.line.cuts == ((5.5, 6.0), (20.0, 25.0))
+    assert app.panel.line.chosen.cuts == ((5.5, 6.0), (20.0, 25.0))
     app.cut_index = 0
     app.delete_cut()
-    assert app.panel.line.cuts == ((20.0, 25.0),)
+    assert app.panel.line.chosen.cuts == ((20.0, 25.0),)
     app.cut_from.set("")
     app.cut_to.set("")
     app.add_cut()
@@ -123,21 +125,26 @@ def test_editing_picking_and_deleting_ranges(app):
 
 def test_a_cut_in_the_old_x_is_cleared(app):
     plot(app)
+    add_step(app, "cut")
     app.cut_from.set("5")
     app.cut_to.set("9")
     app.add_cut()
+    add_step(app, "smooth", in_x=True, span=0.5)
     app.x_fn.set("1/x")
     app.apply_controls()
-    assert app.panel.line.cuts == ()
+    cut, smooth = app.panel.line.steps
+    assert cut.cuts == () and smooth.span != 0.5  # estimated again, in 1/B
+    app.choose_step(0)
     app.cut_from.set("0.1")
     app.cut_to.set("0.2")
     app.add_cut()
     app.swap()
-    assert app.panel.line.cuts == ()
+    assert app.panel.line.steps[0].cuts == ()
 
 
 def test_a_cut_range_with_no_points_explains_itself(app):
     plot(app, x_fn="1/x")
+    add_step(app, "cut")
     app.cut_from.set("5")
     app.cut_to.set("9")  # in T, while x is 1/B
     app.add_cut()
@@ -151,16 +158,17 @@ def test_links_share_what_they_tick(app):
     app._link((0, 0), (0, 1))
     app.selected = (0, 0)
     app._load_controls()
-    app.smooth.set(smoothing.METHODS["mean"])
-    app.apply_controls()
+    add_step(app, "smooth", method="mean")
     other = app.panels[(0, 1)].lines[0]
-    assert other.smooth == ""  # Smoothing isn't ticked to start with
-    app.sync_vars["cut"].set(True)
-    app.set_sync("cut")
+    assert other.steps == ()  # Steps isn't ticked to start with
+    app.sync_vars["steps"].set(True)
+    app.set_sync("steps")
+    assert other.steps == app.panel.line.steps  # ticking sends them across
+    add_step(app, "cut")
     app.cut_from.set("5")
     app.cut_to.set("9")
     app.add_cut()
-    assert other.cutting == ("keep", ((5.0, 9.0),))
+    assert cutting(other) == ("keep", ((5.0, 9.0),))
     app.add_line()
     assert len(app.panels[(0, 1)].lines) == 2  # lines stay paired
 
@@ -170,13 +178,14 @@ def test_derived_panels_follow_every_setting(app):
     app.new_derived_panel("d1")
     app.selected = (0, 0)
     app._load_controls()
+    add_step(app, "cut")
     app.cut_from.set("5")
     app.cut_to.set("9")
     app.add_cut()
-    app.smooth.set(smoothing.METHODS["median"])
-    app.apply_controls()
+    add_step(app, "smooth", method="median")
     derived = app.panels[(1, 0)].lines[0]
-    assert derived.cutting == ("keep", ((5.0, 9.0),)) and derived.smooth == "median"
+    assert cutting(derived) == ("keep", ((5.0, 9.0),))
+    assert [s.method for s in steps_of(derived, "smooth")] == ["median"]
     x, _ = drawn(app, (1, 0))
     assert x.min() >= 5 and x.max() <= 9
 
@@ -194,9 +203,7 @@ def buttons(widget):
 
 def test_this_panel_turns_into_its_fft_and_undo_turns_it_back(app):
     plot(app, x_fn="1/x")
-    app.fit_mode.set("Subtract")
-    app.degree.set("10")
-    app.apply_controls()
+    add_step(app, "subtract", degree=10)  # the 1/x background needs more than 5
     panel = app.panel
     panel.x_min, panel.title = 0.05, "My data"
     app.in_place("fft")
@@ -314,9 +321,7 @@ def test_measure_reads_points_and_their_difference(app):
 
 def test_measure_lists_an_ffts_peaks(app, tmp_path):
     plot(app, x_fn="1/x")
-    app.fit_mode.set("Subtract")
-    app.degree.set("10")  # the made-up data's 1/x background needs more than 5
-    app.apply_controls()
+    add_step(app, "subtract", degree=10)  # the 1/x background needs more than 5
     app.in_place("fft")
     read = app.measured[(0, 0)]
     assert read["peaks"][0][0] == pytest.approx(F, rel=0.02)
@@ -413,11 +418,10 @@ def test_a_change_goes_down_a_chain_of_links(app):
     under it: a new y on top reaches the FFT, through both links."""
     plot(app, x_fn="1/x")
     app.set_layout(2, 1)  # panel 2 starts as a copy of 1
-    app._link((1, 0), (0, 0))  # linked 1-2, sharing the axes, not the background
+    app._link((1, 0), (0, 0))  # linked 1-2, sharing the axes, not the steps
     app.selected = (1, 0)
     app._load_controls()
-    app.fit_mode.set("Subtract")
-    app.apply_controls()
+    add_step(app, "subtract")
     app.new_derived_panel("fft")  # panel 3, the FFT of 2
     fft = app.panels[(2, 0)]
     app.selected = (0, 0)
@@ -425,39 +429,44 @@ def test_a_change_goes_down_a_chain_of_links(app):
     app.y.set(next(v for v in app.y.box["values"] if "M011" in v))
     app.apply_controls()
     assert app.panels[(1, 0)].line.y == "M011_AH"
-    assert fft.line.y == "M011_AH" and fft.line.background == "subtract"
-    assert app.panels[(0, 0)].line.background == ""  # 2-3 shares it, 1-2 doesn't
+    assert fft.line.y == "M011_AH" and [s.kind for s in fft.line.steps] == ["subtract"]
+    assert app.panels[(0, 0)].line.steps == ()  # 2-3 shares them, 1-2 doesn't
 
 
 def test_undo_one_step(app):
     plot(app)
+    add_step(app, "cut")
     app.cut_from.set("5")
     app.cut_to.set("9")
     app.add_cut()
     app.cut_index = 0
     app.delete_cut()
     app.undo()
-    assert app.panel.line.cuts == ((5.0, 9.0),)
+    assert cutting(app.panel.line) == ("keep", ((5.0, 9.0),))
     app.undo()
     assert app.status["text"] == "Nothing to undo."
 
 
 def test_session_save_and_open(app, tmp_path):
     plot(app)
+    add_step(app, "cut")
     app.cut_from.set("5")
     app.cut_to.set("9")
     app.add_cut()
+    add_step(app, "fit", advanced=True, function="A + B * x")
     app.set_layout(1, 2)
     path = tmp_path / "s.json"
     app.save_session(path)
     saved = json.loads(path.read_text())
     assert saved["format"] == session.FORMAT and saved["cols"] == 2
+    assert [s["kind"] for s in saved["panels"]["0,0"]["lines"][0]["steps"]] == ["cut", "fit"]
     app.set_layout(1, 1)
-    app.cut_mode.set(splicing.MODES[""])
-    app.apply_controls()
+    app.remove_step()
     app.open_session(path)
     assert app.cols == 2
-    assert app.panels[(0, 0)].lines[0].cutting == ("keep", ((5.0, 9.0),))
+    line = app.panels[(0, 0)].lines[0]
+    assert cutting(line) == ("keep", ((5.0, 9.0),))
+    assert line.steps[1].fitting == ("fit", None, "A + B * x", "")
 
 
 def test_save_figure(app, tmp_path):
@@ -478,17 +487,16 @@ def test_clicking_a_tab_shows_it(app):
 
 
 def test_tab_order(app):
-    assert [name for name, _ in app.tab_strip.tabs] == [
-        "Splicing", "Process", "Derive", "Linking", "Measure"]
-    assert app.tab.get() == "Splicing"
+    assert [name for name, _ in app.tab_strip.tabs] == ["Process", "Derive", "Linking", "Measure"]
+    assert app.tab.get() == "Process"
 
 
 def test_advanced_fitting_fits_the_typed_function(app):
     plot(app, x_fn="1/x")
-    app.fit_mode.set("Subtract")
-    app.apply_controls()
+    add_step(app, "subtract")
     assert entry_states(app) == ["disabled", "disabled"]  # greyed out until ticked
-    shown_default = background.polynomial_text(app.panel.line.degree)
+    step = lambda: app.panel.line.chosen
+    shown_default = background.polynomial_text(step().degree)
     assert app.fit_function.get() == shown_default and app.fit_start.get() == ""
     app.advanced.set(True)
     app.apply_controls()
@@ -496,10 +504,10 @@ def test_advanced_fitting_fits_the_typed_function(app):
     app.apply_controls()
     assert entry_states(app) == ["normal", "normal"]
     line = app.panel.line
-    assert line.fitting == ("subtract", None, "A + B / x", "")
-    assert [name for name, _ in line.fit_values] == ["A", "B"]
-    assert dict(line.fit_values)["B"] == pytest.approx(1e-3, rel=0.05)  # conftest's 0.001 B
-    assert app.fit_result["text"].startswith("A = ") and app.fit_result.winfo_manager()
+    assert step().fitting == ("subtract", None, "A + B / x", "")
+    assert [name for name, _ in line.found[0]] == ["A", "B"]
+    assert dict(line.found[0])["B"] == pytest.approx(1e-3, rel=0.05)  # conftest's 0.001 B
+    assert app.fit_result["text"].startswith("A = ")
     assert app.error_label["text"] == ""
     assert "_bg_A_+_B_-over-_x" in app.filename.get()
     app.fit_function.set("A * sin(y)")
@@ -507,13 +515,14 @@ def test_advanced_fitting_fits_the_typed_function(app):
     assert app.error_label["text"].startswith("Fit error: 'y'")
     app.advanced.set(False)  # the polynomial again, the function kept for later
     app.apply_controls()
-    assert line.fitting == ("subtract", line.degree, "", "") and line.fit_function == "A * sin(y)"
-    assert entry_states(app) == ["disabled", "disabled"] and not app.fit_result.winfo_manager()
+    assert step().fitting == ("subtract", step().degree, "", "")
+    assert step().function == "A * sin(y)"
+    assert entry_states(app) == ["disabled", "disabled"] and not app.fit_result["text"]
     assert app.fit_function.get() == shown_default  # showing the polynomial, not the kept one
     app.degree.set("3")
     app.apply_controls()
     assert app.fit_function.get() == "A*x**3 + B*x**2 + C*x + D"
-    assert line.fit_function == "A * sin(y)"
+    assert step().function == "A * sin(y)"
     app.advanced.set(True)  # ticked again: the kept function is back
     app.apply_controls()
     assert app.fit_function.get() == "A * sin(y)"
@@ -521,14 +530,13 @@ def test_advanced_fitting_fits_the_typed_function(app):
 
 def test_ticking_advanced_fitting_starts_from_the_polynomial(app):
     plot(app, x_fn="1/x")
-    app.fit_mode.set("Subtract")
-    app.apply_controls()
+    add_step(app, "subtract")
     x, polynomial = drawn(app)
     app.advanced.set(True)
     app.apply_controls()
-    line = app.panel.line
-    assert line.fit_function == background.polynomial_text(line.degree)
-    assert app.fit_function.get() == line.fit_function
+    step = app.panel.line.chosen
+    assert step.function == background.polynomial_text(step.degree)
+    assert app.fit_function.get() == step.function
     _, typed = drawn(app)
     assert np.allclose(typed, polynomial, rtol=0, atol=1e-7)  # the oscillation is 1e-4
     app.fit_function.set("")  # cleared: it says what's missing
@@ -537,93 +545,110 @@ def test_ticking_advanced_fitting_starts_from_the_polynomial(app):
     assert "custom" in app.line_list.get(0) and "None" not in app.line_list.get(0)
 
 
-def test_show_fit_dashes_the_line_unless_its_style_was_picked(app):
-    plot(app)
-    line = app.panel.line
-    app.fit_mode.set("Show fit")
-    app.apply_controls()
-    assert line.style == "--"
-    app.fit_mode.set("Subtract")
-    app.apply_controls()
-    assert line.style == "-"
-    line.style = ":"  # picked in the line editor: kept either way
-    app.fit_mode.set("Show fit")
-    app.apply_controls()
-    assert line.style == ":"
-
-
-def test_fit_as_new_line_fits_the_line_as_drawn(app):
-    """Subtract the background, then fit the oscillation left, on a new line."""
+def test_steps_are_done_in_their_order_and_can_be_moved(app):
+    """Subtract then smooth is not smooth then subtract with a function that
+    fits only part: moving a step changes what's drawn, and the order is kept."""
     plot(app, x_fn="1/x")
-    app.fit_mode.set("Subtract")
-    app.advanced.set(True)
+    add_step(app, "subtract", degree=1)
+    add_step(app, "smooth", method="mean", window=301)
+    _, first = drawn(app)
+    app.move_step(1, 0)  # as a drag in the list does
+    assert [s.kind for s in app.panel.line.steps] == ["smooth", "subtract"]
+    assert app.panel.line.step == 0  # the moved step stays chosen
+    assert app.step_list.list.get(0).startswith("1  Smooth")
+    _, second = drawn(app)
+    assert not np.allclose(first, second, equal_nan=True)
+    app.choose_step(0)
+    app.step_on.set(False)  # turned off: drawn as if it weren't there
+    app.toggle_step()
+    assert not app.panel.line.steps[0].on and "(off)" in app.step_list.list.get(0)
+    _, off = drawn(app)
+    app.remove_step()
+    _, removed = drawn(app)
+    assert np.allclose(off, removed, equal_nan=True)
+    # Any kind, any number of times.
+    add_step(app, "subtract", degree=3)
+    assert [s.kind for s in app.panel.line.steps] == ["subtract", "subtract"]
+    assert app.panel.line.step == 1 and app.step_title["text"] == "Step 2: Subtract"
+
+
+def test_dragging_a_step_moves_it(app):
+    plot(app)
+    add_step(app, "cut")
+    add_step(app, "smooth")
+    app.update()
+    rows = app.step_list.list
+    first, second = rows.bbox(0), rows.bbox(1)
+    rows.event_generate("<Button-1>", x=5, y=first[1] + 2)
+    assert app.panel.line.step == 0
+    rows.event_generate("<B1-Motion>", x=5, y=second[1] + 2)
+    rows.event_generate("<ButtonRelease-1>", x=5, y=second[1] + 2)
+    assert [s.kind for s in app.panel.line.steps] == ["smooth", "cut"]
+    assert app.panel.line.step == 1
+
+
+def test_a_fit_curve_is_drawn_over_the_line(app):
+    """Subtract the background, then fit the oscillation left as a curve."""
+    plot(app, x_fn="1/x")
+    add_step(app, "subtract", advanced=True, function="A + B / x")  # conftest's background
+    add_step(app, "fit")
+    line = app.panel.line
+    assert [s.kind for s in line.steps] == ["subtract", "fit"]
+    # The polynomial to start with, drawn at once, as an extra artist.
+    assert app.error_label["text"] == "" and len(app.curves[app.selected]) == 1
+    assert app.fit_hint["text"].startswith("Draws its fit over the line")
+    app.advanced.set(True)  # ticked: from that polynomial
     app.apply_controls()
-    app.fit_function.set("A + B / x")  # conftest's background, in 1/B
-    app.apply_controls()
-    app.fit_as_line()
-    p = app.panel
-    data, fit = p.lines
-    assert p.selected == 1 and fit.fits_drawn
-    assert fit.first_fit == ("subtract", None, "A + B / x", "") and fit.background == "fit"
-    assert data.fits_drawn is False and data.fitting == fit.first_fit  # the original as it was
-    # The polynomial to start with, drawn at once.
-    assert fit.fitting == ("fit", data.degree, "", "") and app.error_label["text"] == ""
-    assert not app.advanced.get() and 1 in app.artists[app.selected].values()
-    assert app.fit_hint["text"] == "Fits the line as drawn, after - A + B / x."
-    app.advanced.set(True)  # ticked: from that polynomial, as in the Fit section
-    app.apply_controls()
-    assert fit.fit_function == background.polynomial_text(fit.degree)
+    assert line.chosen.function == background.polynomial_text(line.chosen.degree)
     app.fit_function.set("A * sin(B * x + C)")
     app.fit_start.set("A=1e-4, B=314, C=0")
     app.apply_controls()
     assert app.error_label["text"] == ""
-    values = dict(fit.fit_values)
+    values = dict(line.found[1])
     assert values["B"] == pytest.approx(2 * np.pi * F, rel=1e-3)
     assert abs(values["A"]) == pytest.approx(1e-4, rel=0.02)
-    # Drawn over the subtracted line, dashed, in a colour of its own.
-    x, y = drawn(app, index=0)
-    fx, fy = drawn(app, index=1)
-    assert np.allclose(fx, x) and np.nanmax(abs(fy - y)) < 1e-5
-    assert len({app.line_list.itemcget(i, "foreground") for i in (0, 1)}) == 2
-    app.add_line()  # + on a fit line: another colour again
-    assert len({app.line_list.itemcget(i, "foreground") for i in (0, 1, 2)}) == 3
-    app.remove_line()
-    artist = next(a for a, i in app.artists[app.selected].items() if i == 1)
-    assert artist.get_linestyle() == "--"
-    assert data.style == "-" and fit.style == "--"  # the editor shows it as Dashed
-    app.open_style()
-    assert "auto" not in app.style_popup.style_buttons
-    assert app.style_popup.style.get() == "--"
-    app.style_popup.destroy()
-    # Smoothing the copy smooths before its fit; the original isn't touched.
-    app.smooth.set(smoothing.METHODS["median"])
+    assert app.fit_result["text"].startswith("A = ")
+    # The line is the subtracted data, unchanged by the fit; the curve follows it.
+    x, y = drawn(app)
+    (curve, key), = app.curves[app.selected].items()
+    assert key == (0, 1) and np.allclose(curve.get_xdata(), x)
+    assert np.nanmax(abs(curve.get_ydata() - y)) < 1e-5
+    assert curve.get_linestyle() == "--" and curve.get_color() != app.line_list.itemcget(0, "foreground")
+    assert len(app.axes[app.selected].lines) == 2 and len(app.artists[app.selected]) == 1
+    legend = [t.get_text() for t in app.axes[app.selected].get_legend().get_texts()]
+    assert legend[1] == "fit: A * sin(B * x + C)"
+    # A bad function shows its error, but the data is still drawn.
+    app.fit_function.set("A * sin(y)")
     app.apply_controls()
-    assert fit.smooth == "median" and data.smooth == ""
-    assert dict(fit.fit_values)["B"] == pytest.approx(2 * np.pi * F, rel=1e-3)
-    # Its own fit's controls replace the mode and the button.
-    app._select_line(0)
-    assert app.fit_mode.get() == "Subtract" and not app.fit_hint.winfo_manager()
-
-
-def test_fit_as_new_line_without_a_fit_and_in_sessions(app, tmp_path):
-    plot(app)
+    assert app.error_label["text"].startswith("Fit error") and app.artists[app.selected]
+    assert not app.curves[app.selected]
+    # Not on an FFT of the line.
+    app.fit_function.set("A * sin(B * x + C)")
+    app.apply_controls()
     app.new_derived_panel("fft")
-    app.selected = (0, 0)
-    app._load_controls()
-    app.fit_as_line()
-    assert app.fit_hint["text"] == "Fits the line as drawn."
-    fit = app.panel.lines[1]
-    assert fit.fitting == ("fit", 5, "", "") and fit.first_fit == ()
-    assert app.panels[(1, 0)].lines[1].fits_drawn  # in the linked FFT panel too
-    path = tmp_path / "s.json"
-    app.save_session(path)
-    app.remove_line()
+    assert not app.curves[(1, 0)] and len(app.axes[(1, 0)].lines) == 1
+
+
+def test_fit_lines_and_old_settings_load_as_steps(app, tmp_path):
+    """A format 9 session: a line's fixed settings, and a Fit as new line line."""
+    old = {"goose_plotter_session": 8, "format": 9, "rows": 1, "cols": 1, "panels": {"0,0": {"lines": [
+        {"run": "Cambridge_Sep_26.005", "x_fn": "1/x", "cut": "keep", "cuts": [[0.05, 0.2]],
+         "despike": True, "despike_window": 31, "background": "subtract", "degree": 4,
+         "smooth": "median", "window": 41},
+        {"run": "Cambridge_Sep_26.005", "x_fn": "1/x", "background": "fit", "fits_drawn": True,
+         "first_fit": ["subtract", 4, "", ""], "advanced": True,
+         "fit_function": "A * sin(B * x + C)", "fit_start": "B=314", "smooth": "mean"}]}},
+        "links": []}
+    path = tmp_path / "old.json"
+    path.write_text(json.dumps(old))
     app.open_session(path)
-    loaded = app.panels[(0, 0)].lines[1]
-    assert loaded.fits_drawn and loaded.first_fit == () and loaded.fitting == fit.fitting
-    assert background.tidy_fitting(["subtract", None, "A*x", ""]) == ("subtract", None, "A*x", "")
-    assert background.tidy_fitting(["subtract", None, "", ""]) == ()  # no function
-    assert background.tidy_fitting(["nonsense", 5, "", ""]) == ()
+    data, fit = app.panel.lines
+    assert [s.kind for s in data.steps] == ["cut", "despike", "subtract", "smooth"]
+    assert data.steps[0].cutting == ("keep", ((0.05, 0.2),)) and data.steps[1].spike_window == 31
+    assert data.steps[2].fitting == ("subtract", 4, "", "") and data.steps[3].method == "median"
+    assert [s.kind for s in fit.steps] == ["subtract", "smooth", "fit"]
+    assert fit.steps[2].fitting == ("fit", None, "A * sin(B * x + C)", "B=314")
+    assert app.curves[(0, 0)] and app.error_label["text"] == ""
 
 
 def test_colour_maps_colour_every_panel_and_are_remembered(app, settings_file):
@@ -656,28 +681,24 @@ def test_despike_turns_spikes_into_gaps(app):
     column = next(c for c in df.columns if c.startswith("M006_AH"))
     df.loc[df.index[[1000, 3000]], column] += 0.05
     app.cache.clear()
-    app.apply_controls()
-    assert spinbox_states(app) == ["disabled", "disabled"]  # greyed out until ticked
-    app.despike_on.set(True)
-    app.apply_controls()
-    assert spinbox_states(app) == ["normal", "normal"]
+    add_step(app, "despike")
     line = app.panel.line
     _, y = drawn(app)
     assert np.isnan(y[[1000, 3000]]).all() and np.isfinite(y).sum() == len(y) - 2
-    assert line.despiked == 2 and app.despike_found["text"] == "2 points removed"
+    assert line.found == (2,) and app.despike_found["text"] == "2 points removed"
     assert app.filename.get().endswith("_ds5-21.png")
     assert "despiked" in app.line_list.get(0)
     app.despike_threshold.set("0")  # refused: the last good one stays
     app.apply_controls()
-    assert line.despike_threshold == 5
-    app.new_derived_panel("fft")  # its line follows the data panel's despiking
-    assert app.panels[(1, 0)].lines[0].despiking == (21, 5.0)
+    assert line.chosen.threshold == 5
+    app.new_derived_panel("fft")  # its line follows the data panel's steps
+    assert app.panels[(1, 0)].lines[0].steps[0].despiking == (21, 5.0)
     app.selected = (0, 0)
     app._load_controls()
-    app.despike_on.set(False)
-    app.apply_controls()
-    assert np.isfinite(drawn(app)[1]).all() and not app.despike_found.winfo_manager()
-    assert app.panels[(1, 0)].lines[0].despiking is None
+    app.step_on.set(False)
+    app.toggle_step()
+    assert np.isfinite(drawn(app)[1]).all()
+    assert not app.panels[(1, 0)].lines[0].steps[0].on
 
 
 def spinbox_states(app):
@@ -718,8 +739,7 @@ def test_advanced_fitting_goes_along_the_chain_to_the_fft(app):
     app._link((0, 0), (1, 0))
     app.selected = (1, 0)
     app._load_controls()
-    app.fit_mode.set("Subtract")
-    app.apply_controls()
+    add_step(app, "subtract")
     app.new_derived_panel("fft")
     fft = next(p for p in app.panels.values() if p.operation == "fft")
     app.selected = (1, 0)
@@ -728,17 +748,21 @@ def test_advanced_fitting_goes_along_the_chain_to_the_fft(app):
     app.apply_controls()
     app.fit_function.set("A + B / x")  # conftest's background, exactly
     app.apply_controls()
-    assert fft.lines[0].fitting == app.panels[(1, 0)].lines[0].fitting
-    assert fft.lines[0].fit_values == app.panels[(1, 0)].lines[0].fit_values
-    assert not app.panels[(0, 0)].lines[0].background  # Background isn't ticked on 1-2
+    assert fft.lines[0].steps == app.panels[(1, 0)].lines[0].steps
+    assert fft.lines[0].found == app.panels[(1, 0)].lines[0].found
+    assert app.panels[(0, 0)].lines[0].steps == ()  # Steps isn't ticked on 1-2
     cell = next(c for c, p in app.panels.items() if p is fft)
     frequency, amplitude = drawn(app, cell)
     assert frequency[np.argmax(amplitude)] == pytest.approx(F, rel=0.05)
 
 
-def test_only_the_splicing_tab_cuts(app):
-    assert "Pick" not in buttons(app.tabs["Process"])
-    assert "Pick" in buttons(app.tabs["Splicing"])
+def test_only_a_cut_step_shows_the_cut_boxes(app):
+    plot(app)
+    assert app.no_steps.winfo_manager() and "Pick" not in buttons(app.tabs["Process"])
+    add_step(app, "smooth")
+    assert "Pick" not in buttons(app.tabs["Process"]) and not app.no_steps.winfo_manager()
+    add_step(app, "cut")
+    assert "Pick" in buttons(app.tabs["Process"])
 
 
 @pytest.mark.parametrize("language", ["en", "zh"])
@@ -746,15 +770,29 @@ def test_no_tab_widens_the_controls_column(app):
     """Every tab leaves the column as wide as the controls above the tabs make
     it, so switching tabs never pushes the plot over."""
     plot(app)
-    app.cut_from.set("5")
-    app.cut_to.set("9")
-    app.add_cut()  # a range in the Splicing list
     widths = {}
     for tab in app.tabs:
         app.tab.set(tab)
         app._show_tab()
         app.update_idletasks()
         widths[tab] = app.side_inner.winfo_reqwidth()
+    # The Process tab with each kind's settings shown, a long fit function
+    # and the values it found included.
+    app.tab.set("Process")
+    app._show_tab()
+    for kind in ("cut", "despike", "subtract", "smooth", "fit"):
+        add_step(app, kind)
+        app.update_idletasks()
+        widths[f"Steps, {kind}"] = app.side_inner.winfo_reqwidth()
+    app.choose_step(0)
+    app.cut_from.set("5")
+    app.cut_to.set("9")
+    app.add_cut()  # a range in the cut list
+    app.choose_step(4)
+    app.advanced.set(True)
+    app.apply_controls()
+    app.update_idletasks()
+    widths["Steps, a fit's values"] = app.side_inner.winfo_reqwidth()
     # The Measure tab filled in: a region, two points, an FFT's peaks.
     app.tab.set("Measure")
     app._show_tab()

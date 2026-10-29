@@ -1,6 +1,7 @@
 """Shared fixtures: a made-up data folder laid out like the real runs, and the
 window built on it with its settings kept out of the user's own."""
 
+from dataclasses import replace
 import json
 import tkinter as tk
 
@@ -108,3 +109,26 @@ def drawn(app, cell=None, index=0):
     artist = artists[index]
     return (np.asarray(artist.get_xdata(), dtype=float),
             np.asarray(artist.get_ydata(), dtype=float))
+
+
+def add_step(app, kind, **settings):
+    """Add a `kind` step to the selected line after the chosen one, as Add
+    step does, with `settings` (Step fields) set; it's then the chosen one."""
+    app.add_step(kind)
+    if settings:
+        line = app.panel.line
+        before = line.steps
+        app._set_step(line, line.step, replace(line.chosen, **settings))
+        app._steps_changed(before)
+    return app.panel.line.chosen
+
+
+def steps_of(line, kind):
+    """`line`'s steps of `kind` that do anything."""
+    return [s for s in line.steps if s.kind == kind and s.active]
+
+
+def cutting(line):
+    """(mode, ranges) of `line`'s first Cut step that cuts, or None."""
+    cuts = steps_of(line, "cut")
+    return cuts[0].cutting if cuts else None

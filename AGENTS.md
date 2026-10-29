@@ -46,7 +46,7 @@ mirror. If that folder isn't around this repo, use whatever data folder
 | File | What's in it |
 |---|---|
 | `plotter.py` | the window: controls, drawing, zoom, saving |
-| `model.py` | `Line` and `Panel`, colours, legend text, shared axis labels |
+| `model.py` | `Step`, `Line` and `Panel`, colours, legend text, shared axis labels |
 | `smoothing.py` | moving average, median, Savitzky–Golay; windows in points or x |
 | `background.py` | polynomial fit in x, or a typed function (Advanced Fitting, a numpy Levenberg–Marquardt), shown or subtracted |
 | `splicing.py` | cutting a line to x ranges, or those ranges out of it |
@@ -57,7 +57,7 @@ mirror. If that folder isn't around this repo, use whatever data folder
 | `colourmaps.py` | the Colour Maps menu's maps (the nanoanalysis ones copied from igtz-hub/nanoanalysis_cm), spread over a panel's lines or stepped |
 | `axis_functions.py` | the Function boxes (`1/x`, `exp(y)`, ...) |
 | `datasets.py`, `format_dialog.py`, `profile.py`, `columns.py` | reading files and per-folder profiles |
-| `widgets.py` | the line and axes editors, colour picker, layout grid, overwrite question, `TabStrip` |
+| `widgets.py` | the line and axes editors, colour picker, layout grid, overwrite question, `TabStrip`, `StepList` |
 | `session.py` | panels and lines to and from JSON-ready data, for session files and undo |
 | `theme.py` | the window's colours and ttk styling; use its names, not hex codes, in Tk widgets |
 | `i18n.py` | the window's language: `tr`, the menu helpers and the Chinese texts (`ZH`) |
@@ -67,67 +67,82 @@ mirror. If that folder isn't around this repo, use whatever data folder
 `Plotter._draw_panel`, per `Line`, via `_line_data`:
 
 1. read the columns, apply the axis functions (`_axis`)
-2. the cut (`splicing.cut`): `Line.cuts` is a tuple of (start, end)
-   ranges, and `Line.cut` one mode for them all. Kept, the rows in none of
-   them are dropped; removed, the rows in any turn to NaN in x and y, so it's drawn as a
-   gap and fits and x-unit windows leave it out (SG in points still
-   interpolates across it, as across any NaN)
-3. despiking (`despike.despike`): spikes turn to NaN in x and y, like a
-   removed cut, so the fit never sees them; `Line.despiked` counts them
-   (not saved, cached like `fit_values`)
-4. background (`background.apply`): fit on the unsmoothed data (the
-   polynomial, or with `Line.advanced` the typed `fit_function`), over the
-   whole line as cut. Only the cut drops or blanks rows: the background had
-   an x range of its own before session format 7, and `session._line` turns
-   it into a Keep cut
-5. smoothing (`smoothing.smooth`), on what's left
-   - a line made by **Fit as new line** (`Line.fits_drawn`) does step 4
-     with `Line.first_fit` (the copied line's `fitting`) and, after
-     smoothing, its own `fitting`, always in "fit" mode: a fit of the
-     line as drawn. The Fit section edits that one and hides the mode
-     box, so `fitting` keeps its one shape. `first_fit` rides in
-     `_data_key`'s last item, so `parts()` takes the first nine.
-     It takes its own colour, like any line.
-6. in a derived panel only, `spectrum.spectrum` or `derivative.derivative` of
-   that against x
-7. one `ax.plot` call
+2. the line's **steps** (`Line.steps`, a tuple of frozen `model.Step`s), in
+   order, skipping those that aren't `active` (off, or a Cut with no
+   ranges). One `Step` class holds every kind's settings (`kind`: "cut",
+   "despike", "subtract", "smooth", "fit"), and gives the tuples the
+   calculation modules take (`cutting`, `despiking`, `fitting`, `smoothing`):
+   - cut (`splicing.cut`): Kept, the rows in none of its ranges are dropped;
+     removed, the rows in any turn to NaN in x and y, so it's drawn as a gap
+     and fits and x-unit windows leave it out (SG in points still
+     interpolates across it, as across any NaN)
+   - despike (`despike.despike`): spikes turn to NaN in x and y, like a
+     removed cut
+   - subtract (`background.apply` in "subtract" mode): the polynomial, or with
+     `advanced` the typed `function`, over the line as it is there; the y
+     label gets " − fit"
+   - smooth (`smoothing.smooth`); a missing x-unit `span` is estimated
+     (`smoothing.span_for`) and written back into the step
+   - fit (`background.apply` in "fit" mode): kept as a **curve**, the data
+     passing on unchanged. A fit that fails is returned as the "fit error"
+     rather than raised, so the line is still drawn and `Line.error` says why.
+   What steps found (spikes removed, fit values) is `Line.found`, one entry
+   per step, not saved.
+3. in a derived panel only, `spectrum.spectrum` or `derivative.derivative` of
+   that against x (and fit curves aren't drawn)
+4. one `ax.plot` call per line, then, after every line, one per fit curve,
+   kept in `self.curves[cell]` ({artist: (line index, step index)})
 
-`_line_data` caches steps 1–5 per line, keyed on the line's settings, so a
-data panel and its derived panels do the work once; `_reload_folder` clears it.
+`_line_data` caches all that per line, keyed on `_data_key` (run, axes and
+steps; steps are frozen, so the tuple hashes), so a data panel and its
+derived panels do the work once; `_reload_folder` clears it.
 
-Keep that order. Things that depend on it:
+Things that depend on it:
 
-- **One artist per `Line`.** The legend labels and `_show_colour` zip
-  `ax.lines` against the panel's lines, and `self.artists` maps each artist to
-  a line index. A second artist per line breaks all three; that's why "show
-  the fit" is a mode on a copied line, not an overlay.
-- **`Line.shown`** is the tuple of what was last drawn:
-  `(run, x, x_fn, y, y_fn, smoothing, fitting, cutting, despiking)`, which
-  is `_data_key`. `parts()`, `legend_labels`,
-  `_default_name` and the zoom logic in `apply_controls` all index into it, so
-  a new per-line setting means updating each of them.
-- **`Line.fitting`** is `(mode, degree, function, start)`, one shape for
+- **One artist per `Line`** in `self.artists`. The legend labels and
+  `_show_colour` zip `ax.lines` against the panel's lines, and
+  `self.artists` maps each artist to a line index; fit curves come after
+  every line in `ax.lines` and live in `self.curves`, never in
+  `self.artists`, so that zip still pairs lines with lines, and Measure
+  never reads a curve. Colours: `model.curve_colours` spreads the colour
+  map over lines and fit curves together (each line, then its curves);
+  `Step.colour` is a fit curve's pick.
+- **`Line.shown`** is `_data_key` as last drawn: `(run, x, x_fn, y, y_fn,
+  steps)`. `parts()` (filename and legend: the active steps' `describe` /
+  `file_part`), `legend_labels` (which leaves fit curves out of what it
+  compares) and `_default_name` read it.
+- **`Step.fitting`** is `(mode, degree, function, start)`, one shape for
   both kinds: `(mode, degree, "", "")` for the polynomial, `(mode, None,
-  function, start)` with Advanced Fitting, so the unused one doesn't split the
-  `_line_data` cache. `background.describe` / `file_part` take it as is.
-  What a function's fit found is `Line.fit_values`, in `session.SKIP` so
-  redraws make no undo steps; `_line_data` keeps it in the cache entry and
-  sets it on a hit, as for the span.
+  function, start)` with Advanced Fitting, the mode the step's kind.
+  `background.describe` / `file_part` take it as is.
 - Unticked, the function box shows `background.polynomial_text(degree)`,
-  not `Line.fit_function`, so `apply_controls` only reads the boxes when the
-  line was already advanced; ticking with no function stores that text.
+  not `Step.function`, so `_read_step` only reads the boxes when the step
+  was already advanced; ticking with no function stores that text.
+- **The Process tab** edits `Line.chosen` (`Line.step`, selection, not saved).
+  `apply_controls` writes the shown editor into it (`_read_step`, a
+  `dataclasses.replace`); `add_step`, `remove_step`, `move_step` (the
+  `widgets.StepList` drag) and `toggle_step` end in `_steps_changed`, which
+  syncs links and redraws, keeping the zoom as `_zoom_kept` says (only fit
+  curves changed: both axes; a cut changed: neither; else x). The editors
+  are frames per kind, one packed at a time; Subtract and Fit curve share
+  one. On an FFT panel the row after the steps (`_spectrum_row`, `l.step ==
+  len(l.steps)`) is the panel's own cut of its spectrum (`Panel.cut` /
+  `cuts`), edited with the Cut editor (`_cut_ranges`, `_set_cuts`).
 - **Style isn't in `shown`**, on purpose: `Line.style`, `width`, `marker`,
   `marker_size` and `label` go through `Line.plot_style()` and the legend only, so they
   don't touch the `_line_data` cache, the filename or the zoom logic. A
-  width of None means `auto_width` (heavier for a shown fit), and a
-  `marker_size` of None `AUTO_MARKER_SIZE`; `apply_controls` only stores the
-  box's number if it differs from the auto one it showed.
-- **Settings in x units** (`model.X_UNITS`: `Line.span`, `cuts`) are in the *plotted* x, after its function. They're
-  cleared (`Line.clear_x_units`) whenever x or its function changes, or on
-  ⇅, since a value in T means nothing in 1/B.
-- Errors are stored in `Line.error` as `"<Stage> error: message"`.
-  `_show_error` shows the selected line's under the axes boxes; it runs from
-  `_load_controls`, which every redraw path ends in, so there's no popup.
+  width of None means `auto_width`, and a `marker_size` of None
+  `AUTO_MARKER_SIZE`; `apply_style` only stores the box's number if it
+  differs from the auto one it showed.
+- **Settings in x units** (`model.X_UNITS`: a step's `span` and `cuts`) are
+  in the *plotted* x, after its function. They're cleared
+  (`Line.clear_x_units`, `model.without_x_units`) whenever x or its function
+  changes, or on ⇅, since a value in T means nothing in 1/B.
+- Errors are stored in `Line.error` as `"<Stage> error: message"`, the stage
+  named by the step's kind (`Plotter.STAGES`: "Splicing", "Despike", "Fit",
+  "Smoothing"). `_show_error` shows the selected line's under the axes boxes;
+  it runs from `_load_controls`, which every redraw path ends in, so there's
+  no popup.
 
 ## Derived panels are linked panels
 
@@ -141,12 +156,13 @@ them (unlinked, deleted, removed by the layout). So:
 
 - Check `derived` / `operation`, never `source`, for whether a panel is
   derived. `operation` only matters where FFTs and derivatives differ
-  (drawing, the Derive tab's boxes, `_default_name`).
+  (drawing, the Derive tab's boxes, `_default_name`, the spectrum row).
 - Derived panels are only made from data panels (no FFT of a derivative),
-  and there's no cut-range picking on derivative panels. On an FFT panel the Splicing tab edits `Panel.cut` /
-  `Panel.cuts` (`_cut_target`), a cut of the spectrum in F applied after F
-  max, not its lines' cuts, which stay the data's (and follow the data
-  panel through the link); `clear_ranges` clears it with x. Putting one on a panel already
+  and there's no cut-range picking on derivative panels. On an FFT panel the
+  Process tab's last row edits `Panel.cut` / `Panel.cuts`, a cut of the
+  spectrum in F applied after F max, not its lines' Cut steps, which stay
+  the data's (and follow the data panel through the link); `clear_ranges`
+  clears it with x. Putting one on a panel already
   derived from the same data just changes its `operation`. **Back to data**
   (`back_to_data`) sets it to "".
 - **This panel** (`in_place`) is the exception: it turns a data panel into
@@ -156,8 +172,7 @@ them (unlinked, deleted, removed by the layout). So:
   it's saved in sessions (a tuple, via `session.TIDY`), and so it survives
   the global undo. Such a panel has Undo in place of Back to data; the other
   section's This panel changes its operation and keeps `data_view`.
-- `_line_data` caches by `_data_key` (the settings through smoothing), not
-  by line, so a data panel and its derived panels do the work once; a hit
+- `_line_data` caches by `_data_key` (axes and steps), not by line, so a data panel and its derived panels do the work once; a hit
   also fills in an x-unit span the line hasn't got yet. `_changed` prunes it
   to the lines still in the panels.
 - `spectrum.even_grid` bins at bin centres for FFTs; derivatives pass
@@ -202,9 +217,11 @@ objects, and axis ranges and zoom are each panel's own. So:
   (`_sync_across`: clearing its x-unit settings if its x changes, and never
   copying `X_UNITS` between different x), and each panel reached passes on
   in turn, once. So data → subtracted copy → its FFT stays in step though
-  only 1-2 and 2-3 are linked. `apply_controls`, `swap`, the line editor
-  and the colour picker call it. Keep `SYNC`'s "x" before the keys holding
-  x-unit settings: that clearing runs after x is copied.
+  only 1-2 and 2-3 are linked. `apply_controls`, `_steps_changed`, `swap`,
+  the line editor and the colour picker call it. "steps" shares the whole
+  list; between panels with different x it goes across with its x-unit
+  settings cleared. Keep `SYNC`'s "x" before "steps": that clearing runs
+  after x is copied.
 - Lines stay paired across whole chains: `_tied(cell)` is every panel
   joined to `cell` through links, one after another, and `add_line` /
   `remove_line` change every list in `_group_lists` (those panels'). `_link`
@@ -217,10 +234,12 @@ objects, and axis ranges and zoom are each panel's own. So:
   selected panel's settings across it.
 - `_tidy_links`, run by `_build_axes`, drops links to panels that are gone
   and clears a derived panel's `source` once no link joins them.
-- Sessions before format 5 have no "cut" in their links' `sync`, and before
-  8 no "despike"; `load` (`_share_new`) adds them to links that shared
-  everything else (derived panels' included), so an FFT still follows its
-  data panel. A new SYNC key needs the same.
+- Before format 10, links shared "cut", "despike", "smoothing" and
+  "background" separately; `_new_words` makes any of them "steps". Before 5
+  there was no cut to share, and before 8 no despiking, so `load`
+  (`_share_new`) adds "steps" to links that shared everything else (derived
+  panels' included), so an FFT still follows its data panel. A new SYNC key
+  needs the same.
 - `session.dump` / `load` carry the links (sorted, so undo compares equal
   states equal); sessions before format 4 had groups (`link_group`, and
   `sync` / `frozen` on each panel), which `load` turns into a link between
@@ -258,8 +277,14 @@ aren't keys, and raises ValueError for anything that isn't a session, before
 anything changes. A new `Line` or `Panel` field is saved automatically unless
 it's in `session.SKIP`; one whose value must be a menu key goes in
 `session.CHOICES` too, and one holding a list (JSON gives lists, undo
-tuples) in `session.TIDY`, with what checks it. `Line.cuts` is one; a
-format 5 line's single `cut_from` / `cut_to` becomes a one-range `cuts`.
+tuples) in `session.TIDY`, with what checks it: `Line.steps` (`_steps`,
+each a `Step` built field by field) and `Step.cuts`. `dump` writes steps as
+a list of objects. Before format 10 a line had fixed fields (`cut`, `cuts`,
+`despike*`, `background`, `degree`, `advanced`, `fit_*`, `smooth`, `window`,
+`in_x`, `span`, `order`, and Fit as new line's `fits_drawn` / `first_fit`);
+`_old_steps` turns them into steps in the order they were done. Session
+files' own marker (`KEY`, `VERSION`) went to 9 with steps, so an older
+plotter refuses them instead of misreading them.
 
 ## Undo
 
@@ -369,7 +394,8 @@ from goose_plotter.i18n import shown
 P.messagebox.askyesno = lambda *a, **k: True  # the only popup questions left
 app = P.Plotter()                      # uses ~/.config/goose-plotter/settings.json
 app.run.set(next(n for n in app.datasets if "005" in n)); app.apply_controls()
-app.smooth.set(shown(smoothing.METHODS, "savgol")); app.apply_controls()
+app.add_step("smooth")                 # a step, chosen, its editor shown
+app.smooth.set(shown(smoothing.METHODS, "median")); app.apply_controls()
 print(app.panel.line.shown, app.error_label["text"])
 app.fig.savefig("/some/scratch/dir/check.png")
 app.destroy()

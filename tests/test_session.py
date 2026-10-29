@@ -5,13 +5,17 @@ import json
 import pytest
 
 from goose_plotter import session
-from goose_plotter.model import (SYNC, Line, Link, Panel, legend_labels, line_colours)
+from goose_plotter.model import (SYNC, Line, Link, Panel, Step, curve_colours, legend_labels,
+                                 line_colours)
+
+STEPS = (Step("cut", cut="remove", cuts=((0.1, 0.2), (0.3, None))),
+         Step("subtract", degree=4), Step("smooth", window=31),
+         Step("fit", advanced=True, function="A * sin(B * x)", start="B=314", on=False))
 
 
 def state(**panel_kw):
-    """A 2 x 1 layout: a data panel with a cut line, and its FFT linked to it."""
-    line = Line(run="r.005", x="B", x_fn="1/x", y="M006_AH", smooth="savgol", window=31,
-                background="subtract", degree=4, cut="remove", cuts=((0.1, 0.2), (0.3, None)),
+    """A 2 x 1 layout: a data panel with a line with steps, and its FFT linked to it."""
+    line = Line(run="r.005", x="B", x_fn="1/x", y="M006_AH", steps=STEPS,
                 colour="#123456", label="mine")
     data = Panel([line, Line(run="r.003")], **panel_kw)
     fft = Panel([l.copy() for l in data.lines], source=(0, 0), operation="fft", pad=4)
@@ -24,7 +28,7 @@ def test_round_trip_through_json():
     dumped = session.dump(panels, 2, 1, links)
     rows, cols, loaded, loaded_links = session.load(json.loads(json.dumps(dumped)))
     assert (rows, cols) == (2, 1)
-    assert loaded[(0, 0)].lines[0].cuts == ((0.1, 0.2), (0.3, None))
+    assert loaded[(0, 0)].lines[0].steps == STEPS
     assert loaded[(0, 0)].title == "$B$ sweep" and loaded[(0, 0)].x_min == 0.1
     assert loaded[(1, 0)].operation == "fft" and loaded[(1, 0)].source == (0, 0)
     assert loaded_links == links
@@ -36,11 +40,15 @@ def test_bad_values_are_dropped_not_fatal():
     panels, links = state()
     dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
     line = dumped["panels"]["0,0"]["lines"][0]
-    line.update(smooth="wobble", window=-3, width="thick", cut="sometimes", colour=None)
+    line.update(width="thick", colour=None)
+    line["steps"][2].update(method="wobble", window=-3)
+    line["steps"][0].update(cut="sometimes")
+    line["steps"] += [{"kind": "teleport"}, "not a step"]
     dumped["panels"]["0,0"]["legend"] = "centre stage"
     loaded = session.load(dumped)[2][(0, 0)]
-    assert (loaded.lines[0].smooth, loaded.lines[0].window, loaded.lines[0].cut) == ("", 21, "")
-    assert loaded.legend == "auto"
+    cut, _, smooth, _ = loaded.lines[0].steps
+    assert (smooth.method, smooth.window, cut.cut) == ("savgol", 21, "keep")
+    assert len(loaded.lines[0].steps) == 4 and loaded.legend == "auto"
 
 
 def test_not_a_session():
@@ -59,14 +67,19 @@ def test_duplicate_ids_are_made_distinct():
     assert loaded[(0, 0)].id != loaded[(1, 0)].id
 
 
+def old(fmt, **line):
+    """A session from before format 10: a data panel whose line has `line`'s
+    old fields, and its FFT, linked sharing everything there was then."""
+    words = "run x x_fn y y_fn colour smoothing background style cut despike"
+    return {"format": fmt, "rows": 2, "cols": 1, "links": [{"a": "d", "b": "f", "sync": words}],
+            "panels": {"0,0": {"id": "d", "lines": [{"run": "r.005", **line}]},
+                       "1,0": {"id": "f", "operation": "fft", "source": "0,0",
+                               "lines": [{"run": "r.005", **line}]}}}
+
+
 def test_format_5_single_cut_becomes_one_range():
-    panels, links = state()
-    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
-    dumped["format"] = 5
-    line = dumped["panels"]["0,0"]["lines"][0]
-    del line["cuts"]
-    line.update(cut="keep", cut_from=0.5, cut_to=0.2)
-    assert session.load(dumped)[2][(0, 0)].lines[0].cuts == ((0.2, 0.5),)
+    loaded = session.load(old(5, cut="keep", cut_from=0.5, cut_to=0.2))[2][(0, 0)].lines[0]
+    assert loaded.steps == (Step("cut", cut="keep", cuts=((0.2, 0.5),)),)
 
 
 @pytest.mark.parametrize("cut, cuts, wanted", [
@@ -75,31 +88,39 @@ def test_format_5_single_cut_becomes_one_range():
     ("remove", [[0.3, 0.4]], ((0.2, 0.3), (0.4, 0.5))),
 ])
 def test_format_6_fit_range_becomes_a_cut(cut, cuts, wanted):
-    panels, links = state()
-    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
-    dumped["format"] = 6
-    line = dumped["panels"]["0,0"]["lines"][0]
-    line.update(background="subtract", fit_from=0.5, fit_to=0.2, cut=cut, cuts=cuts)
-    loaded = session.load(dumped)[2][(0, 0)].lines[0]
-    assert (loaded.cut, loaded.cuts) == ("keep", wanted)
+    loaded = session.load(old(6, background="subtract", fit_from=0.5, fit_to=0.2, cut=cut,
+                              cuts=cuts))[2][(0, 0)].lines[0]
+    assert loaded.steps == (Step("cut", cut="keep", cuts=wanted), Step("subtract"))
 
 
 def test_format_6_fit_range_is_ignored_with_the_background_off():
-    panels, links = state()
-    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
-    dumped["format"] = 6
-    dumped["panels"]["0,0"]["lines"][0].update(background="", fit_from=0.2, fit_to=0.5)
-    assert session.load(dumped)[2][(0, 0)].lines[0].cutting == panels[(0, 0)].lines[0].cutting
+    loaded = session.load(old(6, background="", fit_from=0.2, fit_to=0.5, cut="remove",
+                              cuts=[[1, 2]]))[2][(0, 0)].lines[0]
+    assert loaded.steps == (Step("cut", cut="remove", cuts=((1.0, 2.0),)),)
+
+
+def test_before_format_10_settings_become_steps_in_the_old_order():
+    line = dict(cut="keep", cuts=[[0.1, 0.2]], despike=True, despike_window=31,
+                despike_threshold=4.5, despiked=7, background="subtract", advanced=True,
+                fit_function="A + B * x", fit_start="B=2", fit_values=[["A", 1]],
+                smooth="median", window=41, in_x=True, span=0.01)
+    loaded = session.load(old(9, **line))[2][(0, 0)].lines[0]
+    assert loaded.steps == (Step("cut", cuts=((0.1, 0.2),)),
+                            Step("despike", spike_window=31, threshold=4.5),
+                            Step("subtract", advanced=True, function="A + B * x", start="B=2"),
+                            Step("smooth", method="median", window=41, in_x=True, span=0.01))
+    assert loaded.found == ()
+    # Show fit: a fit curve where the background was; nothing on: no steps.
+    shown = session.load(old(8, background="fit", degree=3))[2][(0, 0)].lines[0]
+    assert shown.steps == (Step("fit", degree=3),)
+    assert session.load(old(8, cut="", smooth=""))[2][(0, 0)].lines[0].steps == ()
 
 
 def test_before_format_5_derived_links_share_the_cut():
-    panels, links = state()
-    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
-    dumped["format"] = 4
-    for link in dumped["links"]:
-        link["sync"] = " ".join(k for k in link["sync"].split() if k != "cut")
+    dumped = old(4)
+    dumped["links"][0]["sync"] = "run x x_fn y y_fn colour style"  # nothing of the steps
     loaded_links = session.load(dumped)[3]
-    assert all("cut" in link.synced for link in loaded_links.values())
+    assert all("steps" in link.synced for link in loaded_links.values())
 
 
 def test_before_format_5_partial_links_between_data_panels_stay_partial():
@@ -142,15 +163,16 @@ def test_format_8_auto_style_is_solid_or_dashed_for_a_shown_fit():
 # --- model ------------------------------------------------------------------
 
 def test_legend_names_only_what_differs():
-    base = dict(run="r.005", x="B", x_fn="x", y="M006_AH", y_fn="y", smoothing=None,
-                fitting=None, cutting=None, despiking=None)
-    lines = [Line(shown=tuple(base.values())),
-             Line(shown=tuple({**base, "cutting": ("keep", ((1.0, 2.0),))}.values()))]
+    base = ("r.005", "B", "x", "M006_AH", "y")
+    cut = Step("cut", cuts=((1.0, 2.0),))
+    lines = [Line(shown=base + ((),)), Line(shown=base + ((cut,),))]
     assert legend_labels(lines) == ["M006_AH", "M006_AH · x 1–2"]
-    lines[1].shown = tuple({**base, "run": "r.003"}.values())
+    lines[1].shown = ("r.003",) + base[1:] + ((),)
     assert legend_labels(lines) == ["run 005", "run 003"]
-    lines[1].shown = tuple({**base, "despiking": (21, 5.0)}.values())
+    lines[1].shown = base + ((Step("despike"),),)
     assert legend_labels(lines) == ["M006_AH", "M006_AH · despiked 5σ/21"]
+    lines[1].shown = base + ((Step("fit"), Step("cut")),)  # a fit leaves the data; a cut
+    assert legend_labels(lines) == ["M006_AH", "M006_AH"]  # without ranges does nothing
 
 
 def test_line_colours_avoid_clashes():
@@ -161,59 +183,56 @@ def test_line_colours_avoid_clashes():
 
 
 def test_line_colours_from_a_colour_map():
-    lines = [Line(), Line(), Line(fits_drawn=True), Line()]
-    colours = line_colours(Panel(lines), {}, "nanoanalysis_muted")
-    # Every line, the fit line too, a colour of its own, from one end of the
-    # map to the other.
-    assert colours[0] == "#2f95ac" and colours[3] == "#2fac55"  # its ends: from its blue
-    assert len(set(colours)) == 4
+    lines = [Line(), Line(steps=(Step("fit"),)), Line()]
+    colours, curves = curve_colours(Panel(lines), {}, "nanoanalysis_muted")
+    # Every curve, a fit curve too, a colour of its own, from one end of the
+    # map to the other: each line, then its fits.
+    assert colours[0] == "#2f95ac" and colours[2] == "#2fac55"  # its ends: from its blue
+    assert len(set(colours) | set(curves.values())) == 4 and list(curves) == [(1, 0)]
     lines[1].colour = "#000000"  # picked: keeps its place, so no other moves
-    assert line_colours(Panel(lines), {}, "nanoanalysis_muted") == [
-        colours[0], "#000000", colours[2], colours[3]]
+    again, _ = curve_colours(Panel(lines), {}, "nanoanalysis_muted")
+    assert again == [colours[0], "#000000", colours[2]]
+    lines[1].steps = (Step("fit", colour="#ff0000"),)
+    assert curve_colours(Panel(lines), {}, "viridis")[1] == {(1, 0): "#ff0000"}
+    derived = Panel(lines, operation="fft")  # no fit curves on an FFT
+    assert curve_colours(derived, {}, "viridis")[1] == {}
     assert line_colours(Panel([Line()]), {}, "viridis") == ["#440154"]  # one line: the start
     stepped = line_colours(Panel([Line() for _ in range(11)]), {}, "tab10")
     assert stepped[0] == stepped[10] == "#1f77b4" and len(set(stepped)) == 10
-    # Classic: the sample's colour, as before.
-    assert line_colours(Panel([Line(y="M006_AH")]), {"M006": "#2a78d6"}) == ["#2a78d6"]
+    # Classic: the sample's colour, as before; a fit curve an unused palette one.
+    colours, curves = curve_colours(Panel([Line(y="M006_AH", steps=(Step("fit"),))]),
+                                    {"M006": "#2a78d6"})
+    assert colours == ["#2a78d6"] and curves[(0, 0)] not in colours
 
 
-def test_fit_values_are_not_saved_but_the_function_is():
+def test_what_a_draw_found_and_the_chosen_step_are_not_saved():
     panels, links = state()
     line = panels[(0, 0)].lines[0]
-    line.advanced, line.fit_function, line.fit_start = True, "A * sin(B * x)", "B=314"
-    line.fit_values = (("A", 1.0), ("B", 314.0))
+    line.found, line.step = (None, (("A", 1.0),), None, None), 2
     dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
-    assert "fit_values" not in dumped["panels"]["0,0"]["lines"][0]
+    saved = dumped["panels"]["0,0"]["lines"][0]
+    assert "found" not in saved and "step" not in saved
     loaded = session.load(dumped)[2][(0, 0)].lines[0]
-    assert (loaded.advanced, loaded.fit_function, loaded.fit_start) == (True, "A * sin(B * x)", "B=314")
-    assert loaded.fit_values == () and line.copy().fit_values == ()
+    assert loaded.found == () and loaded.step == 0 and line.copy().found == ()
 
 
-def test_despiking_is_saved_but_not_what_it_found():
-    panels, links = state()
-    line = panels[(0, 0)].lines[0]
-    line.despike, line.despike_window, line.despike_threshold, line.despiked = True, 31, 4.5, 7
-    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
-    assert "despiked" not in dumped["panels"]["0,0"]["lines"][0]
-    loaded = session.load(dumped)[2][(0, 0)].lines[0]
-    assert loaded.despiking == (31, 4.5) and loaded.despiked == 0
 
 
-def test_before_format_8_links_that_shared_everything_share_despiking():
-    panels, links = state()
-    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
-    dumped["format"] = 7
-    everything = " ".join(k for k in SYNC if k != "despike")
-    dumped["links"][0]["sync"] = everything
-    loaded = session.load(dumped)[3]
-    assert "despike" in next(iter(loaded.values())).synced
+def test_old_link_keys_for_steps_share_steps():
+    dumped = old(8)
+    dumped["links"][0]["sync"] = "run x smoothing"
+    assert session.load(dumped)[3][frozenset("df")].synced == {"run", "x", "steps"}
+    dumped = old(7)
     del dumped["panels"]["1,0"]["source"]  # not known as derived: judged by what it shares
+    dumped["links"][0]["sync"] = "run x x_fn y y_fn colour style"  # all but the steps
+    assert "steps" in session.load(dumped)[3][frozenset("df")].synced
     dumped["links"][0]["sync"] = "run x y"  # partial links stay partial
-    assert "despike" not in next(iter(session.load(dumped)[3].values())).synced
+    assert "steps" not in session.load(dumped)[3][frozenset("df")].synced
 
 
 def test_changing_x_clears_every_x_unit_setting():
-    line = Line(span=0.1, cut="keep", cuts=((1.0, 2.0),))
+    line = Line(steps=(Step("smooth", in_x=True, span=0.1), Step("cut", cuts=((1.0, 2.0),))))
     line.clear_x_units()
-    assert (line.span, line.cuts) == (None, ())
-    assert line.cutting is None and line.cut == "keep"  # the mode stays for new ranges
+    smooth, cut = line.steps
+    assert (smooth.span, cut.cuts) == (None, ())
+    assert cut.cutting is None and cut.cut == "keep"  # the mode stays for new ranges
