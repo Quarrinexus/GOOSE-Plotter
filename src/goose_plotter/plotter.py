@@ -1559,7 +1559,7 @@ class Plotter(tk.Tk):
 
     def fit_as_line(self):
         """Add a line under the selected one showing a fit of it as drawn (after
-        its cut, fit and smoothing), dashed in its colour. It's a copy, starting
+        its cut, fit and smoothing), dashed, in a colour of its own. It's a copy, starting
         from the polynomial of the line's degree, so it draws at once.
 
         Linked panels get one too, as with + (add_line)."""
@@ -1568,7 +1568,7 @@ class Plotter(tk.Tk):
             p = self.panels[cell]
             old = p.lines[at - 1]
             new = old.copy()
-            new.colour, new.label, new.style = None, None, "--"  # None: its line's, see line_colours
+            new.colour, new.label, new.style = None, None, "--"  # its own colour, as with +
             new.fits_drawn, new.first_fit = True, old.fitting or ()
             # Ticking Advanced Fitting then starts from that polynomial's function.
             new.background, new.advanced, new.fit_function, new.fit_start = "fit", False, "", ""

@@ -560,7 +560,6 @@ def test_fit_as_new_line_fits_the_line_as_drawn(app):
     app.apply_controls()
     app.fit_function.set("A + B / x")  # conftest's background, in 1/B
     app.apply_controls()
-    colour = app.line_list.itemcget(0, "foreground")
     app.fit_as_line()
     p = app.panel
     data, fit = p.lines
@@ -581,11 +580,14 @@ def test_fit_as_new_line_fits_the_line_as_drawn(app):
     values = dict(fit.fit_values)
     assert values["B"] == pytest.approx(2 * np.pi * F, rel=1e-3)
     assert abs(values["A"]) == pytest.approx(1e-4, rel=0.02)
-    # Drawn over the subtracted line, dashed, in its colour, which it keeps.
+    # Drawn over the subtracted line, dashed, in a colour of its own.
     x, y = drawn(app, index=0)
     fx, fy = drawn(app, index=1)
     assert np.allclose(fx, x) and np.nanmax(abs(fy - y)) < 1e-5
-    assert {app.line_list.itemcget(i, "foreground") for i in (0, 1)} == {colour}
+    assert len({app.line_list.itemcget(i, "foreground") for i in (0, 1)}) == 2
+    app.add_line()  # + on a fit line: another colour again
+    assert len({app.line_list.itemcget(i, "foreground") for i in (0, 1, 2)}) == 3
+    app.remove_line()
     artist = next(a for a, i in app.artists[app.selected].items() if i == 1)
     assert artist.get_linestyle() == "--"
     assert data.style == "-" and fit.style == "--"  # the editor shows it as Dashed

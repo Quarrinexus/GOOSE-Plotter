@@ -163,13 +163,13 @@ def test_line_colours_avoid_clashes():
 def test_line_colours_from_a_colour_map():
     lines = [Line(), Line(), Line(fits_drawn=True), Line()]
     colours = line_colours(Panel(lines), {}, "nanoanalysis_muted")
-    # The three data lines run from one end of the map to the other; the fit
-    # line takes its line's colour and no place of its own.
+    # Every line, the fit line too, a colour of its own, from one end of the
+    # map to the other.
     assert colours[0] == "#2f95ac" and colours[3] == "#2fac55"  # its ends: from its blue
-    assert colours[1] == colours[2] not in (colours[0], colours[3])
+    assert len(set(colours)) == 4
     lines[1].colour = "#000000"  # picked: keeps its place, so no other moves
     assert line_colours(Panel(lines), {}, "nanoanalysis_muted") == [
-        colours[0], "#000000", "#000000", colours[3]]
+        colours[0], "#000000", colours[2], colours[3]]
     assert line_colours(Panel([Line()]), {}, "viridis") == ["#440154"]  # one line: the start
     stepped = line_colours(Panel([Line() for _ in range(11)]), {}, "tab10")
     assert stepped[0] == stepped[10] == "#1f77b4" and len(set(stepped)) == 10

@@ -160,7 +160,7 @@ stay until it's done or cancelled.
 
   **Fit as new line** fits the selected line *as it's drawn* (after its
   cut, despiking, fit and smoothing) on a new line under it, dashed in
-  its colour (following it): e.g. Subtract the background, then fit `A * sin(B * x + C)`
+  a colour of its own: e.g. Subtract the background, then fit `A * sin(B * x + C)`
   to the oscillation left. The new line starts as a polynomial fit of
   the line's Polynomial degree; tick Advanced Fitting to type a function
   instead. It's a copy, so changing the original
@@ -196,8 +196,8 @@ stay until it's done or cancelled.
   from its blue round to its green), viridis,
   plasma or coolwarm spread a panel's lines evenly from one end of the map
   to the other; tab10 takes its ten colours in turn; Classic is the
-  profile's sample colours, else a fixed palette. A line made by Fit as new
-  line takes its line's colour), **Line**
+  profile's sample colours, else a fixed palette. Every line, a fit line
+  too, gets its own), **Line**
   (Solid to start with, Dashed for a shown fit or a line made by Fit as
   new line; None
   leaves only the markers),

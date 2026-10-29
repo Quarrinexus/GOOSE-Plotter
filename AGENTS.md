@@ -87,9 +87,7 @@ mirror. If that folder isn't around this repo, use whatever data folder
      line as drawn. The Fit section edits that one and hides the mode
      box, so `fitting` keeps its one shape. `first_fit` rides in
      `_data_key`'s last item, so `parts()` takes the first nine.
-     Unpicked (`colour` None), such a line takes the colour of the line
-     above it that isn't one (`line_colours`), and has no place in the
-     colour map's spread.
+     It takes its own colour, like any line.
 6. in a derived panel only, `spectrum.spectrum` or `derivative.derivative` of
    that against x
 7. one `ax.plot` call
