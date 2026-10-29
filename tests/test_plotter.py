@@ -490,6 +490,9 @@ def test_clicking_a_tab_shows_it(app):
 def test_tab_order(app):
     assert [name for name, _ in app.tab_strip.tabs] == ["Process", "Derive", "Linking", "Measure"]
     assert app.tab.get() == "Process"
+    menu = app.add_menu
+    assert [menu.entrycget(i, "label") for i in range(menu.index("end") + 1)] == [
+        "Cut", "Despike", "Smooth", "Fit curve", "Subtract"]
 
 
 def test_advanced_fitting_fits_the_typed_function(app):

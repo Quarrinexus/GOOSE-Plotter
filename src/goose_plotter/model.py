@@ -31,8 +31,8 @@ PALETTE = ("#2464d6", "#eb6834", "#2e9e5b", "#8e5bd1", "#c23b6e", "#1a9aa0",
 
 
 # Step kind -> its name in the list and the Add step menu.
-KINDS = {"cut": "Cut", "despike": "Despike", "subtract": "Subtract", "smooth": "Smooth",
-         "fit": "Fit curve"}
+KINDS = {"cut": "Cut", "despike": "Despike", "smooth": "Smooth", "fit": "Fit curve",
+         "subtract": "Subtract"}
 
 
 @dataclass(frozen=True)
