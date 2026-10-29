@@ -23,8 +23,8 @@ KEY = "goose_plotter_session"  # the session file's marker, holding VERSION
 # the automatic text; before 4, links were groups, each panel with its ticks;
 # before 5, there was no cut to share; in 5, a line had one cut range;
 # before 7, a line's background had an x range of its own; before 8, there
-# was no despiking to share.
-FORMAT = 8
+# was no despiking to share; before 9, a line's style could be "auto".
+FORMAT = 9
 TEXTS = {Panel: ("title", "x_label", "y_label"), Line: ("label",)}
 
 # Not saved: what the last draw found (fit values too), and which line the controls edit.
@@ -120,9 +120,13 @@ def _build(cls, data, **extra):
 
 def _line(data):
     """A Line from `dump`'s data; before format 6 its cut was one range,
-    `cut_from` to `cut_to`, and before 7 its fit had its own range."""
+    `cut_from` to `cut_to`, before 7 its fit had its own range, and before
+    9 its style could be "auto"."""
     if isinstance(data, dict) and "cuts" not in data:
         data = {**data, "cuts": [[data.get("cut_from"), data.get("cut_to")]]}
+    if isinstance(data, dict) and data.get("style") == "auto":
+        # The old automatic style: dashed for a shown fit, else solid.
+        data = {**data, "style": "--" if data.get("background") == "fit" else "-"}
     line = _build(Line, data)
     if isinstance(data, dict) and line.background:
         fit_range = splicing.tidy([[data.get("fit_from"), data.get("fit_to")]])

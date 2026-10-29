@@ -130,6 +130,15 @@ def test_format_2_blank_text_was_automatic():
     assert panel.title is None and panel.lines[0].label is None
 
 
+def test_format_8_auto_style_is_solid_or_dashed_for_a_shown_fit():
+    old = {"format": 8, "rows": 1, "cols": 1,
+           "panels": {"0,0": {"lines": [{"style": "auto"},
+                                        {"style": "auto", "background": "fit"},
+                                        {"style": ":", "background": "fit"}]}}}
+    lines = session.load(old)[2][(0, 0)].lines
+    assert [l.style for l in lines] == ["-", "--", ":"]
+
+
 # --- model ------------------------------------------------------------------
 
 def test_legend_names_only_what_differs():

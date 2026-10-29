@@ -1442,7 +1442,12 @@ class Plotter(tk.Tk):
                 l.despike_threshold = threshold
         except ValueError:
             pass
-        l.background = key_of(background.MODES, self.fit_mode.get())
+        was_fit, l.background = l.background == "fit", key_of(background.MODES, self.fit_mode.get())
+        # A shown fit is dashed, to read as a fit; a style the user picked stays.
+        if l.background == "fit" and not was_fit and l.style == "-":
+            l.style = "--"
+        elif was_fit and l.background != "fit" and l.style == "--":
+            l.style = "-"
         try:
             l.degree = int(self.degree.get())
         except ValueError:
@@ -1560,7 +1565,7 @@ class Plotter(tk.Tk):
             colour = line_colours(p, self.profile.samples)[at - 1]
             old = p.lines[at - 1]
             new = old.copy()
-            new.colour, new.label = colour, None
+            new.colour, new.label, new.style = colour, None, "--"
             new.fits_drawn, new.first_fit = True, old.fitting or ()
             # Ticking Advanced Fitting then starts from that polynomial's function.
             new.background, new.advanced, new.fit_function, new.fit_start = "fit", False, "", ""

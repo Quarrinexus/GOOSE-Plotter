@@ -537,6 +537,21 @@ def test_ticking_advanced_fitting_starts_from_the_polynomial(app):
     assert "custom" in app.line_list.get(0) and "None" not in app.line_list.get(0)
 
 
+def test_show_fit_dashes_the_line_unless_its_style_was_picked(app):
+    plot(app)
+    line = app.panel.line
+    app.fit_mode.set("Show fit")
+    app.apply_controls()
+    assert line.style == "--"
+    app.fit_mode.set("Subtract")
+    app.apply_controls()
+    assert line.style == "-"
+    line.style = ":"  # picked in the line editor: kept either way
+    app.fit_mode.set("Show fit")
+    app.apply_controls()
+    assert line.style == ":"
+
+
 def test_fit_as_new_line_fits_the_line_as_drawn(app):
     """Subtract the background, then fit the oscillation left, on a new line."""
     plot(app, x_fn="1/x")
@@ -573,6 +588,11 @@ def test_fit_as_new_line_fits_the_line_as_drawn(app):
     assert {app.line_list.itemcget(i, "foreground") for i in (0, 1)} == {colour}
     artist = next(a for a, i in app.artists[app.selected].items() if i == 1)
     assert artist.get_linestyle() == "--"
+    assert data.style == "-" and fit.style == "--"  # the editor shows it as Dashed
+    app.open_style()
+    assert "auto" not in app.style_popup.style_buttons
+    assert app.style_popup.style.get() == "--"
+    app.style_popup.destroy()
     # Smoothing the copy smooths before its fit; the original isn't touched.
     app.smooth.set(smoothing.METHODS["median"])
     app.apply_controls()

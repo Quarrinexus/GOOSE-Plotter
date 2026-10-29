@@ -136,7 +136,8 @@ stay until it's done or cancelled.
 - **Fit**: per line, under Smoothing. Fits a polynomial of the chosen
   **Polynomial degree** (5 to start with) to the plotted y against the
   plotted x (so in 1/B with a `1/x` function) and either **Subtract**s it, leaving the oscillations, or
-  **Show fit**, which draws the fit dashed in place of the data; copy a line
+  **Show fit**, which draws the fit dashed in place of the data (Solid
+  again when you switch away, unless you picked another style); copy a line
   with + to lay its fit over it. It fits the whole line as cut: to fit only
   part of it (leaving out the parked ends of a sweep), keep that part in
   the Splicing tab. The fit comes before smoothing.
@@ -189,7 +190,9 @@ stay until it's done or cancelled.
 - **Line editor**: the box under + and -, which shows the selected line's
   look, opens it. **Colour** (drag in the field and the brightness strip;
   **Automatic** goes back to the sample's colour or a free one), **Line**
-  (Auto is solid, or dashed for a shown fit; None leaves only the markers),
+  (Solid to start with, Dashed for a shown fit or a line made by Fit as
+  new line; None
+  leaves only the markers),
   **Width** (**Auto** undoes a set width), **Marker** with its **Size**
   (for any marker but None; **Auto** is 3), and **Name in the
   legend**, also shown in the Lines list: the box shows the automatic name

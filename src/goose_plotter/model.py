@@ -67,7 +67,7 @@ class Line:
     despiked: int = 0  # how many the last draw found; not saved
     colour: str | None = None  # None: picked automatically, see line_colours
     # How it's drawn; not in `shown`, so changing them keeps the zoom.
-    style: str = "auto"  # a key of STYLES
+    style: str = "-"  # a key of STYLES
     width: float | None = None  # None: auto_width
     marker: str = ""  # a key of MARKERS
     marker_size: float | None = None  # None: AUTO_MARKER_SIZE
@@ -82,14 +82,12 @@ class Line:
 
     @property
     def auto_width(self):
-        """The width when none is set: a shown fit is a little heavier, as it's dashed."""
+        """The width when none is set: a shown fit is a little heavier, to stand out."""
         return 1.0 if self.background == "fit" else 0.7
 
     def plot_style(self):
         """matplotlib keywords for its line and markers (colour aside)."""
-        dashed = self.background == "fit"  # a shown fit reads as a fit laid over the data
-        style = ("--" if dashed else "-") if self.style == "auto" else self.style
-        kwargs = {"ls": "None" if style == "none" else style,
+        kwargs = {"ls": "None" if self.style == "none" else self.style,
                   "lw": self.auto_width if self.width is None else self.width}
         if self.marker:
             kwargs |= {"marker": self.marker,
@@ -218,7 +216,7 @@ class Panel:
 
 
 # Line style and marker -> the text in their menus.
-STYLES = {"auto": "Auto", "-": "Solid", "--": "Dashed", ":": "Dotted", "-.": "Dash-dot",
+STYLES = {"-": "Solid", "--": "Dashed", ":": "Dotted", "-.": "Dash-dot",
           "none": "None"}
 MARKERS = {"": "None", ".": "Dots", "o": "Circles", "s": "Squares", "^": "Triangles",
            "x": "Crosses"}

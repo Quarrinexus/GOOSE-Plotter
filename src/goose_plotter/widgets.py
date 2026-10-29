@@ -309,8 +309,8 @@ DASHES = {"-": None, "--": (3.7, 1.6), ":": (1, 1.65), "-.": (6.4, 1.6, 1, 1.6)}
 
 
 def line_sample(style, marker, colour, width=1.0, size=(44, 16)):
-    """A small picture of a line: its style (a key of STYLES, "auto" drawn
-    solid), marker (a key of MARKERS) and colour. Drawn 4x and shrunk, for
+    """A small picture of a line: its style (a key of STYLES), marker (a key
+    of MARKERS) and colour. Drawn 4x and shrunk, for
     smooth edges."""
     k = 4
     w, h = size[0] * k, size[1] * k
@@ -318,7 +318,7 @@ def line_sample(style, marker, colour, width=1.0, size=(44, 16)):
     draw = ImageDraw.Draw(image)
     lw = max(1.0, width * 1.6) * k  # a little heavier than on the plot, to read at this size
     y = h / 2
-    pattern = DASHES.get("-" if style == "auto" else style)
+    pattern = DASHES.get(style)
     if style != "none":
         if pattern is None:
             draw.line((0, y, w, y), fill=colour, width=round(lw))
