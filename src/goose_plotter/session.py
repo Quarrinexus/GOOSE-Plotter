@@ -157,7 +157,7 @@ def load(state):
         raise ValueError(f"a {rows} x {cols} layout is bigger than the plotter allows")
     grid = [(r, c) for r in range(rows) for c in range(cols)]
     fmt = state.get("format")
-    if fmt not in (2, 3, 4, 5, 6, 7, FORMAT):
+    if fmt not in (2, 3, 4, 5, 6, 7, 8, FORMAT):
         panels, groups = _load_old(saved, grid)
         return rows, cols, _blank_is_auto(panels), _group_links(panels, groups)
     panels = {}
@@ -173,7 +173,7 @@ def load(state):
         if p.id in seen:
             p.id = Panel().id
         seen.add(p.id)
-    if fmt == FORMAT:
+    if fmt in (8, FORMAT):  # 8 could share all there is; 9 only changed the style
         return rows, cols, panels, _links(state.get("links"), panels)
     new = {"despike"} if fmt in (5, 6, 7) else {"cut", "despike"}  # keys it hadn't
     if fmt in (4, 5, 6, 7):

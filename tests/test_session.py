@@ -139,6 +139,19 @@ def test_format_8_auto_style_is_solid_or_dashed_for_a_shown_fit():
     assert [l.style for l in lines] == ["-", "--", ":"]
 
 
+def test_format_8_keeps_its_settings_and_links():
+    """Format 9 only changed the line style; a format 8 session isn't the old
+    version 1 layout, which reads no links and takes a blank title for the
+    automatic one."""
+    a, b = Panel([Line(run="r", despike=True)], title=""), Panel([Line(run="r")])
+    dumped = json.loads(json.dumps(session.dump(
+        {(0, 0): a, (0, 1): b}, 1, 2, {frozenset((a.id, b.id)): Link("run x y")})))
+    dumped["format"] = 8
+    _, _, loaded, links = session.load(dumped)
+    assert links == {frozenset((a.id, b.id)): Link("run x y")}
+    assert loaded[(0, 0)].title == "" and loaded[(0, 0)].lines[0].despiking == (21, 5.0)
+
+
 # --- model ------------------------------------------------------------------
 
 def test_legend_names_only_what_differs():
