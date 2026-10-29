@@ -665,3 +665,13 @@ def test_no_tab_widens_the_controls_column(app):
         app.update_idletasks()
         widths[f"Derive, {operation} here"] = app.side_inner.winfo_reqwidth()
     assert len(set(widths.values())) == 1, widths
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_save_area_does_not_widen_the_column(app):
+    """The Save area below fits the controls and the scrollbar's slot, leaving
+    no gap between the scrollbar and the plot."""
+    app.update_idletasks()
+    side = app.side.master
+    slot = app.side_scroll.master
+    assert side.winfo_reqwidth() == app.side.winfo_reqwidth() + slot.winfo_reqwidth()

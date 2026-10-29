@@ -351,9 +351,11 @@ class Plotter(tk.Tk):
         self.delete_button = ttk.Button(buttons, text=tr("Delete panel"),
                                         command=self.delete_panel)
         # Layout shares its cell with a square language button before it, which
-        # shows the language's flag and opens a menu of the others.
+        # shows the language's flag and opens a menu of the others. Width 0: just
+        # its text, as at a button's usual width the pair would widen both
+        # columns, and so the Save area past the controls.
         layout_cell = ttk.Frame(buttons)
-        layout = ttk.Button(layout_cell, text=tr("Layout"), command=self.choose_layout)
+        layout = ttk.Button(layout_cell, text=tr("Layout"), command=self.choose_layout, width=0)
         side = layout.winfo_reqheight()
         language = ttk.Frame(layout_cell, width=side, height=side)
         language.pack_propagate(False)
