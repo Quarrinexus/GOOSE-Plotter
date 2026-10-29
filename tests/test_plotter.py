@@ -624,6 +624,30 @@ def test_fit_as_new_line_without_a_fit_and_in_sessions(app, tmp_path):
     assert background.tidy_fitting(["nonsense", 5, "", ""]) == ()
 
 
+def test_colour_maps_colour_every_panel_and_are_remembered(app, settings_file):
+    from goose_plotter import colourmaps
+    plot(app)
+    app.add_line()
+    app.set_layout(1, 2)
+    app.selected = (0, 1)
+    plot(app)
+    assert app.colour_map == colourmaps.DEFAULT == "nanoanalysis_muted"
+    assert app.line_list.itemcget(0, "foreground") == "#bd2020"  # the map's start
+    app.open_style()
+    popup = app.style_popup
+    assert popup.colour_map.get() == "nanoanalysis_muted"
+    assert popup.map_menu.index("end") + 1 == len(colourmaps.MAPS)
+    app.axes[(0, 0)].set_xlim(10, 20)  # a zoom, which recolouring keeps
+    popup.map_menu.invoke(list(colourmaps.MAPS).index("viridis"))
+    assert app.colour_map == "viridis" and popup.colour_map.get() == "viridis"
+    assert json.loads(settings_file.read_text())["colour_map"] == "viridis"
+    first = [a.get_color() for a, _ in sorted(app.artists[(0, 0)].items(), key=lambda kv: kv[1])]
+    assert first == ["#440154", "#fde725"]  # both ends of viridis
+    assert app.artists[(0, 1)] and next(iter(app.artists[(0, 1)])).get_color() == "#440154"
+    assert app.axes[(0, 0)].get_xlim() == (10, 20)
+    popup.destroy()
+
+
 def test_despike_turns_spikes_into_gaps(app):
     plot(app)
     df = app.frames[app.panel.line.run]

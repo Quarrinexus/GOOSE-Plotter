@@ -7,6 +7,7 @@ from uuid import uuid4
 from matplotlib.colors import to_rgb
 import numpy as np
 
+from goose_plotter import colourmaps
 from goose_plotter.axis_functions import file_part
 from goose_plotter.columns import sample_of
 from goose_plotter.datasets import describe
@@ -290,21 +291,36 @@ def near(colour, others, distance=0.25):
     return any(np.linalg.norm(rgb - to_rgb(o)) < distance for o in others)
 
 
-def line_colours(panel, samples):
-    """Each line's colour: its pick, else its sample's, else an unused PALETTE one."""
-    colours = [l.colour for l in panel.lines]
-    # A fit made by Fit as new line takes its line's colour, so it doesn't
-    # move that line, if automatic, onto another.
-    used = [c for l, c in zip(panel.lines, colours) if c and not l.fits_drawn]
-    for i, l in enumerate(panel.lines):
-        if colours[i]:
-            continue
-        wanted = samples.get(sample_of(samples, l.y, l.x), NEUTRAL)
-        if near(wanted, used):
-            wanted = next((c for c in PALETTE if not near(c, used)),
-                          PALETTE[len(used) % len(PALETTE)])
-        colours[i] = wanted
-        used.append(wanted)
+def line_colours(panel, samples, colour_map="classic"):
+    """Each line's colour: its pick, else from `colour_map` (a key of
+    colourmaps.MAPS) spread over the panel's lines, or with "classic" its
+    sample's, else an unused PALETTE one.
+
+    A line made by Fit as new line, unpicked, takes the colour of the line
+    above it that isn't one, so it's left out of the spreading and of the
+    colours taken."""
+    lines = panel.lines
+    colours = [l.colour for l in lines]
+    if colour_map == "classic":
+        used = [c for l, c in zip(lines, colours) if c and not l.fits_drawn]
+        for i, l in enumerate(lines):
+            if colours[i] or l.fits_drawn:
+                continue
+            wanted = samples.get(sample_of(samples, l.y, l.x), NEUTRAL)
+            if near(wanted, used):
+                wanted = next((c for c in PALETTE if not near(c, used)),
+                              PALETTE[len(used) % len(PALETTE)])
+            colours[i] = wanted
+            used.append(wanted)
+    else:
+        # A picked colour keeps its line's place, so picking one moves no other.
+        data = [i for i, l in enumerate(lines) if not l.fits_drawn]
+        for i, colour in zip(data, colourmaps.colours(colour_map, len(data))):
+            colours[i] = colours[i] or colour
+    for i, l in enumerate(lines):
+        if not colours[i]:
+            colours[i] = next((colours[j] for j in range(i - 1, -1, -1)
+                               if not lines[j].fits_drawn), NEUTRAL)
     return colours
 
 

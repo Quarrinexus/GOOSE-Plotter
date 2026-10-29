@@ -54,6 +54,7 @@ mirror. If that folder isn't around this repo, use whatever data folder
 | `spectrum.py` | FFT of a line against its plotted x, for FFT panels; `even_grid`, the binning it shares |
 | `derivative.py` | first and second derivatives on `even_grid`, for derivative panels |
 | `measure.py` | the Measure tab's reading: extremes in a region, peaks, parabola refining, snapping to a drawn point |
+| `colourmaps.py` | the Colour Maps menu's maps (the nanoanalysis ones copied from igtz-hub/nanoanalysis_cm), spread over a panel's lines or stepped |
 | `axis_functions.py` | the Function boxes (`1/x`, `exp(y)`, ...) |
 | `datasets.py`, `format_dialog.py`, `profile.py`, `columns.py` | reading files and per-folder profiles |
 | `widgets.py` | the line and axes editors, colour picker, layout grid, overwrite question, `TabStrip` |
@@ -86,8 +87,9 @@ mirror. If that folder isn't around this repo, use whatever data folder
      line as drawn. The Fit section edits that one and hides the mode
      box, so `fitting` keeps its one shape. `first_fit` rides in
      `_data_key`'s last item, so `parts()` takes the first nine.
-     `line_colours` leaves such lines' colours out of those taken, as
-     each starts in its line's colour.
+     Unpicked (`colour` None), such a line takes the colour of the line
+     above it that isn't one (`line_colours`), and has no place in the
+     colour map's spread.
 6. in a derived panel only, `spectrum.spectrum` or `derivative.derivative` of
    that against x
 7. one `ax.plot` call

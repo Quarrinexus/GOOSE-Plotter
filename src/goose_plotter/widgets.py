@@ -8,10 +8,10 @@ from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb
 import numpy as np
 from PIL import Image, ImageDraw, ImageTk
 
-from goose_plotter import theme
+from goose_plotter import colourmaps, theme
 from goose_plotter.i18n import tr
 from goose_plotter.model import (AUTO_MARKER_SIZE, GRID_AXES, GRID_STYLES, GRIDS, LEGENDS,
-                                 MARKERS, RANGES, STYLES)
+                                 MARKERS, PALETTE, RANGES, STYLES)
 
 SELECTED = "#e8a33d"  # frame around the selected panel
 MAX_GRID = 6  # the layout picker offers up to MAX_GRID x MAX_GRID panels
@@ -346,16 +346,34 @@ def line_sample(style, marker, colour, width=1.0, size=(44, 16)):
     return ImageTk.PhotoImage(image.resize(size, Image.LANCZOS))
 
 
+def map_sample(name, ticked=False, size=(64, 12), tick=16):
+    """A small picture of colour map `name`: a strip from end to end, or for
+    a stepped map (and Classic's palette) its colours side by side, with room
+    before it for a tick. Tk menus draw no indicator beside an image, so the
+    chosen map's picture has the tick drawn in."""
+    colours = list(PALETTE) if name == "classic" else colourmaps.strip(name)
+    image = Image.new("RGBA", (tick + size[0], size[1]))
+    draw = ImageDraw.Draw(image)
+    if ticked:
+        draw.line(((2, 6), (5, 10), (11, 2)), fill=theme.TEXT, width=2)
+    step = size[0] / len(colours)
+    for i, colour in enumerate(colours):
+        draw.rectangle((tick + round(i * step), 0, tick + round((i + 1) * step), size[1]),
+                       fill=colour)
+    return ImageTk.PhotoImage(image)
+
+
 class LineStylePopup(tk.Toplevel):
     """Colour, line style, width, marker and its size, and legend name for the selected line,
     in its own window. Changes apply as they're made: `on_colour('#rrggbb')`,
-    `on_reset()` for the automatic colour, and `on_change(merge, **settings)`
-    for the rest, with `merge` true while a slider is being dragged."""
+    `on_reset()` for the automatic colour, `on_map(name)` for the colour map
+    automatic colours come from (every panel's), and `on_change(merge,
+    **settings)` for the rest, with `merge` true while a slider is being dragged."""
 
     WIDTHS = (0.2, 5.0)
     SIZES = (1.0, 12.0)
 
-    def __init__(self, parent, on_change, on_colour, on_reset):
+    def __init__(self, parent, on_change, on_colour, on_reset, on_map):
         super().__init__(parent)
         self.title(tr("Line"))
         self.resizable(False, False)
@@ -381,6 +399,20 @@ class LineStylePopup(tk.Toplevel):
         self.hex = ttk.Label(side, font="TkFixedFont")
         self.hex.pack(anchor=tk.W, pady=(4, 0))
         ttk.Button(side, text=tr("Automatic"), command=on_reset).pack(anchor=tk.W, pady=(8, 0))
+        # Where Automatic's colours come from: a menu of maps, each with its picture.
+        self.colour_map = tk.StringVar()
+        self.map_menu = tk.Menu(self, tearoff=0)
+        for key, name in colourmaps.MAPS.items():
+            self.images["map", key] = map_sample(key)
+            self.images["map ticked", key] = map_sample(key, ticked=True)
+            self.map_menu.add_radiobutton(
+                label=" " + tr(name), value=key, variable=self.colour_map,
+                image=self.images["map", key], selectimage=self.images["map ticked", key],
+                compound=tk.LEFT, indicatoron=False, command=lambda key=key: on_map(key))
+        maps = ttk.Button(side, text=tr("Colour Maps"))
+        maps.configure(command=lambda: self.map_menu.tk_popup(
+            maps.winfo_rootx(), maps.winfo_rooty() + maps.winfo_height()))
+        maps.pack(anchor=tk.W, pady=(4, 0))
 
         ttk.Label(body, text=tr("Line"), foreground=theme.MUTED).pack(anchor=tk.W)
         row = ttk.Frame(body)
@@ -455,9 +487,10 @@ class LineStylePopup(tk.Toplevel):
         if not self.loading:
             self.on_change(merge, **settings)
 
-    def show(self, line, colour, move_picker=True, auto_name=""):
+    def show(self, line, colour, move_picker=True, auto_name="", colour_map=colourmaps.DEFAULT):
         """Show `line`'s settings, its previews in `colour`, without calling back;
-        `auto_name` is its automatic legend name, shown when it has no name of its own.
+        `auto_name` is its automatic legend name, shown when it has no name of its
+        own, and `colour_map` the map ticked in Colour Maps.
 
         `move_picker` false: the colour came from the picker, which already shows
         it; moving it would round-trip through hex."""
@@ -468,6 +501,7 @@ class LineStylePopup(tk.Toplevel):
             if move_picker:
                 self.picker.set(colour)
             self.style.set(line.style)
+            self.colour_map.set(colour_map)
             self.marker.set(line.marker)
             width = line.auto_width if line.width is None else line.width
             self.width.set(width)

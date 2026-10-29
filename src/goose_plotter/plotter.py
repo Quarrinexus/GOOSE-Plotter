@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageTk
 
 from goose_plotter.axis_functions import apply_function, is_identity, rename
-from goose_plotter import (background, derivative, despike, i18n, measure, session,
+from goose_plotter import (background, colourmaps, derivative, despike, i18n, measure, session,
                            smoothing, spectrum, splicing, theme)
 from goose_plotter.i18n import key_of, menu, shown, tr
 from goose_plotter.columns import label, lookup, with_unit, without_unit
@@ -195,6 +195,10 @@ class Plotter(tk.Tk):
         if i18n.language in i18n.FONTS:
             theme.use_font(self, *i18n.FONTS[i18n.language])
         self.relaunch = None  # set when closing only to open again, see set_language
+        # Where automatic line colours come from, for every panel; see set_colour_map.
+        self.colour_map = self.settings.get("colour_map")
+        if self.colour_map not in colourmaps.MAPS:
+            self.colour_map = colourmaps.DEFAULT
         self.profile, profile_error = load_profile(self.data_dir)
 
         # The controls column scrolls, with a scrollbar only when it's taller
@@ -1391,7 +1395,7 @@ class Plotter(tk.Tk):
         self._show_colour()
 
     def _fill_line_list(self):
-        p, colours = self.panel, line_colours(self.panel, self.profile.samples)
+        p, colours = self.panel, self._colours(self.panel)
         self.line_list.delete(0, tk.END)
         for l, colour in zip(p.lines, colours):
             name = f"{l.y} · {run_number(l.run) or l.run}" if l.run else "(no dataset)"
@@ -1562,10 +1566,9 @@ class Plotter(tk.Tk):
         at = self.panel.selected + 1
         for cell in self._tied(self.selected):
             p = self.panels[cell]
-            colour = line_colours(p, self.profile.samples)[at - 1]
             old = p.lines[at - 1]
             new = old.copy()
-            new.colour, new.label, new.style = colour, None, "--"
+            new.colour, new.label, new.style = None, None, "--"  # None: its line's, see line_colours
             new.fits_drawn, new.first_fit = True, old.fitting or ()
             # Ticking Advanced Fitting then starts from that polynomial's function.
             new.background, new.advanced, new.fit_function, new.fit_start = "fit", False, "", ""
@@ -1700,7 +1703,7 @@ class Plotter(tk.Tk):
         self.marks[cell] = []  # cleared with the axes
         drawn, indices, x_labels, y_labels, errors, resolutions = [], [], [], [], [], []
         self.auto_text[cell], self.auto_names[cell] = {}, {}
-        for i, (l, colour) in enumerate(zip(p.lines, line_colours(p, self.profile.samples))):
+        for i, (l, colour) in enumerate(zip(p.lines, self._colours(p))):
             l.shown, l.error = None, ""
             if not l.run:
                 continue
@@ -2781,15 +2784,22 @@ class Plotter(tk.Tk):
 
     # --- colour -----------------------------------------------------------
 
-    def _show_colour(self, move_picker=True):
-        """Recolour the lines without a redraw, so zoom survives."""
+    def _colours(self, panel):
+        return line_colours(panel, self.profile.samples, self.colour_map)
+
+    def _show_colour(self, move_picker=True, cells=None):
+        """Recolour the lines without a redraw, so zoom survives: in `cells`,
+        else the selected panel and those tied to it."""
         p = self.panel
-        colours = line_colours(p, self.profile.samples)
+        colours = self._colours(p)
         for i, colour in enumerate(colours):
             self.line_list.itemconfigure(i, foreground=colour, selectforeground=colour)
-        for cell in self._tied(self.selected):  # locked and linked panels: same colours
+        for cell in self._tied(self.selected) if cells is None else cells:
+            # Linked panels' lines pair with these, but each panel's own
+            # colours are worked out, as its picks can differ.
+            colours_here = self._colours(self.panels[cell])
             for artist, i in self.artists.get(cell, {}).items():
-                artist.set_color(colours[i])
+                artist.set_color(colours_here[i])
             ax = self.axes.get(cell)
             if ax and ax.get_legend():  # the legend keeps its own copy of each colour
                 for handle, artist in zip(ax.get_legend().legend_handles, ax.lines):
@@ -2805,6 +2815,18 @@ class Plotter(tk.Tk):
         # The picker already shows it; moving it would round-trip through hex.
         self._show_colour(move_picker=False)
         self._changed(merge=True)  # a drag through the picker is one step
+
+    def set_colour_map(self, name):
+        """Take automatic line colours from colour map `name` (a key of
+        colourmaps.MAPS) in every panel, and remember it."""
+        self.colour_map = name
+        self.settings["colour_map"] = name
+        try:
+            save_settings(self.settings)
+        except OSError as err:
+            self._say(tr("Couldn't remember that: {err}", err=err), error=True)
+        self._show_colour(cells=list(self.axes))
+        self.canvas.draw()
 
     def reset_colour(self):
         self.panel.line.colour = None
@@ -3101,14 +3123,14 @@ class Plotter(tk.Tk):
         self.style_button["image"] = self.style_image
         if self.style_popup and self.style_popup.winfo_exists():
             auto = plain(self.auto_names.get(self.selected, {}).get(self.panel.selected, ""))
-            self.style_popup.show(line, colour, move_picker, auto)
+            self.style_popup.show(line, colour, move_picker, auto, self.colour_map)
 
     def open_style(self):
         if self.style_popup and self.style_popup.winfo_exists():
             self.style_popup.lift()
         else:
             self.style_popup = LineStylePopup(self, self.apply_style, self.pick_colour,
-                                              self.reset_colour)
+                                              self.reset_colour, self.set_colour_map)
             self._undo_keys(self.style_popup)
         self._show_colour()  # fills the editor, in the line's colour
 

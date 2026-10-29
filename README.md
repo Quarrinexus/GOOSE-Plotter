@@ -160,7 +160,7 @@ stay until it's done or cancelled.
 
   **Fit as new line** fits the selected line *as it's drawn* (after its
   cut, despiking, fit and smoothing) on a new line under it, dashed in
-  its colour: e.g. Subtract the background, then fit `A * sin(B * x + C)`
+  its colour (following it): e.g. Subtract the background, then fit `A * sin(B * x + C)`
   to the oscillation left. The new line starts as a polynomial fit of
   the line's Polynomial degree; tick Advanced Fitting to type a function
   instead. It's a copy, so changing the original
@@ -189,7 +189,14 @@ stay until it's done or cancelled.
   the data panel). Changing x or its function clears it.
 - **Line editor**: the box under + and -, which shows the selected line's
   look, opens it. **Colour** (drag in the field and the brightness strip;
-  **Automatic** goes back to the sample's colour or a free one), **Line**
+  **Automatic** goes back to the colour map's; **Colour Maps** picks the map
+  automatic colours come from, for every panel and remembered in
+  `settings.json`: nanoanalysis muted (the default), bright or hazy (from
+  [nanoanalysis_cm](https://github.com/igtz-hub/nanoanalysis_cm)), viridis,
+  plasma or coolwarm spread a panel's lines evenly from one end of the map
+  to the other; tab10 takes its ten colours in turn; Classic is the
+  profile's sample colours, else a fixed palette. A line made by Fit as new
+  line takes its line's colour), **Line**
   (Solid to start with, Dashed for a shown fit or a line made by Fit as
   new line; None
   leaves only the markers),
@@ -381,7 +388,7 @@ raw names. See [examples/goose-plotter.json](examples/goose-plotter.json).
 - **units**: shown beside the column in the X and Y lists.
 - A key in labels or units also matches sample columns: `AH` covers `M006_AH`
   and `M011_AH`, labelled "M006 capacitance ...".
-- **samples**: colour for each sample's lines; a column belongs to a sample if
+- **samples**: colour for each sample's lines, with the Classic colour map; a column belongs to a sample if
   it starts with its name and `_`.
 - **defaults**: the axes a new line starts on.
 - **format**: written by Data format...; lines count from 1, `header_line` 0
