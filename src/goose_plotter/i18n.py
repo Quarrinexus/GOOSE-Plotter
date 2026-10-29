@@ -89,7 +89,7 @@ ZH = {
     "(off)": "（关）",
     "Cut spectrum (F)": "截取频谱（F）",
     "Step {n}: {kind}": "第 {n} 步：{kind}",
-    "done top to bottom; drag one to reorder": "从上到下进行；拖动可调整顺序",
+    "done top to bottom; drag to reorder": "从上到下进行；拖动可调整顺序",
     "No steps: Add step cuts, despikes, subtracts, smooths or fits a curve to the line.":
         "尚无步骤：用“添加步骤”对曲线截取、去尖峰、扣除、平滑或拟合曲线。",
     "Takes its fit off the line; the steps after it get what's left.":
@@ -165,7 +165,6 @@ ZH = {
     "{kind} of {source}": "{kind}，来自{source}",
     "First": "一阶",
     "Second": "二阶",
-    "use 1/x on B for F in T": "对 B 使用 1/x，F 的单位为 T",
     "Hann": "Hann",
     "Padding": "补零",
     "F max": "F 上限",

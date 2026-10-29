@@ -662,8 +662,9 @@ class Plotter(tk.Tk):
         self.step_on_box = ttk.Checkbutton(row, text=tr("On"), variable=self.step_on,
                                            command=self.toggle_step)
         self.step_on_box.grid(row=0, column=2, sticky=tk.W)
-        ttk.Label(parent, text=tr("done top to bottom; drag one to reorder"),
-                  foreground=theme.HINT, wraplength=STEP_WRAP).pack(anchor=tk.W, pady=(2, 0))
+        # Not wrapped: one line, short enough for the column in both languages.
+        ttk.Label(parent, text=tr("done top to bottom; drag to reorder"),
+                  foreground=theme.HINT).pack(anchor=tk.W, pady=(2, 0))
         ttk.Separator(parent).pack(fill=tk.X, pady=(8, 0))
         self.step_title = ttk.Label(parent, foreground=theme.MUTED)
         self.step_title.pack(anchor=tk.W, pady=(6, 0))
@@ -1139,8 +1140,6 @@ class Plotter(tk.Tk):
         # For a data panel: the two ways to make its FFT.
         make = ttk.Frame(body)
         self._make_buttons(make, lambda: "fft")
-        ttk.Label(make, text=tr("use 1/x on B for F in T"), foreground=theme.HINT).pack(
-            anchor=tk.W)
         # For an FFT panel: its settings.
         settings = ttk.Frame(body)
         source_label = ttk.Label(settings, foreground=theme.MUTED, wraplength=230)
