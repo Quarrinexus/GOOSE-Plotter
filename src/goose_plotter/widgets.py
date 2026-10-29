@@ -681,6 +681,7 @@ class StepList(ttk.Frame):
         return i if box and event.y <= box[1] + box[3] + 2 else None
 
     def _press(self, event):
+        self.list.focus_set()  # so Delete removes the chosen step
         i = self._row(event)
         if i is None:
             return "break"  # a click below the rows chooses nothing

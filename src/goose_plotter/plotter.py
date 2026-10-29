@@ -444,7 +444,7 @@ class Plotter(tk.Tk):
         for cls in ("TEntry", "TSpinbox", "TCombobox"):
             for key in ("d", "D"):
                 self.bind_class(cls, f"<Control-{key}>", lambda _: None)
-        self.bind("<Delete>", lambda e: self._typing(e) or self.remove_line())
+        self.bind("<Delete>", self._delete_key)
         # Up/Down step through lines; the Lines list and the boxes (a combobox
         # opens on Down) do their own thing with them.
         for key, step in (("<Up>", -1), ("<Down>", 1)):
@@ -455,6 +455,16 @@ class Plotter(tk.Tk):
                           ("Down", (1, 0))):
             self.bind(f"<Control-{key}>", lambda e, move=move: (
                 self._typing(e) or self._step_panel(*move)))
+
+    def _delete_key(self, event):
+        """Delete: the chosen step when the step list has the focus (a click
+        on it gives it), else the selected line; a text box keeps it."""
+        if self._typing(event):
+            return
+        if event.widget is self.step_list.list:
+            self.remove_step()
+        else:
+            self.remove_line()
 
     @staticmethod
     def _typing(event):

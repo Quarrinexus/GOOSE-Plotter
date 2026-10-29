@@ -115,7 +115,8 @@ stay until it's done or cancelled.
 - **Steps** (Process tab): each line has its own list of steps, done top to
   bottom on the plotted x and y (after their functions). **Add step** puts a
   step after the chosen one; **drag** a step up or down the list to change
-  the order; **Remove** deletes the chosen one, and unticking **On** leaves
+  the order; **Remove** (or Delete, after clicking the list) deletes the
+  chosen one, and unticking **On** leaves
   it out without losing its settings (it shows greyed, "(off)"). A step of
   any kind can be used any number of times, e.g. subtract a polynomial,
   smooth, then subtract again. The chosen step's settings show under the
@@ -358,7 +359,7 @@ stay until it's done or cancelled.
 | Ctrl+S | Save figure (Enter in Save as does too) |
 | Ctrl+Z | undo the last change (one step, for now) |
 | Ctrl+D | copy the selected line (+) |
-| Delete | remove the selected line (-) |
+| Delete | remove the selected line (-), or the chosen step after clicking the step list |
 | Up / Down | select the previous / next line |
 | Ctrl+arrow keys | select the panel beside the selected one |
 | Esc | stop picking a range or a panel |

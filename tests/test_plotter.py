@@ -1,6 +1,7 @@
 """The window, driven as a user would, on the made-up data in conftest."""
 
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -585,6 +586,25 @@ def test_dragging_a_step_moves_it(app):
     rows.event_generate("<ButtonRelease-1>", x=5, y=second[1] + 2)
     assert [s.kind for s in app.panel.line.steps] == ["smooth", "cut"]
     assert app.panel.line.step == 1
+
+
+
+def test_delete_removes_the_chosen_step_from_the_step_list(app):
+    plot(app)
+    app.add_line()
+    add_step(app, "cut")
+    add_step(app, "smooth")
+    app.update()
+    rows = app.step_list.list
+    rows.event_generate("<Button-1>", x=5, y=rows.bbox(0)[1] + 2)
+    # A hidden window never has the keyboard focus, so the key's handler is
+    # called as Tk would call it, with the widget the key went to.
+    key = lambda widget: app._delete_key(SimpleNamespace(widget=widget))
+    key(rows)
+    assert [s.kind for s in app.panel.line.steps] == ["smooth"]
+    assert len(app.panel.lines) == 2  # the line stays
+    key(app.line_list)  # anywhere else, Delete still removes the line
+    assert len(app.panel.lines) == 1
 
 
 def test_a_fit_curve_is_drawn_over_the_line(app):
