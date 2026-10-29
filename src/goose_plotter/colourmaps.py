@@ -21,7 +21,7 @@ FROM_BLUE = 3
 MAPS = {"nanoanalysis_bright": "nanoanalysis bright", "nanoanalysis_muted": "nanoanalysis muted",
         "nanoanalysis_hazy": "nanoanalysis hazy", "viridis": "viridis", "plasma": "plasma",
         "coolwarm": "coolwarm", "tab10": "tab10", "classic": "Classic"}
-DEFAULT = "nanoanalysis_bright"
+DEFAULT = "classic"
 STEPPED = {"tab10"}  # distinct colours, taken in turn rather than spread
 
 

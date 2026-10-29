@@ -190,12 +190,12 @@ stay until it's done or cancelled.
   look, opens it. **Colour** (drag in the field and the brightness strip;
   **Automatic** goes back to the colour map's; **Colour Maps** picks the map
   automatic colours come from, for every panel and remembered in
-  `settings.json`: nanoanalysis bright (the default), muted or hazy (from
+  `settings.json`: Classic (the default) is the profile's sample colours,
+  else a fixed palette; nanoanalysis bright, muted or hazy (from
   [nanoanalysis_cm](https://github.com/igtz-hub/nanoanalysis_cm), each taken
   from its blue round to its green), viridis,
   plasma or coolwarm spread a panel's lines evenly from one end of the map
-  to the other; tab10 takes its ten colours in turn; Classic is the
-  profile's sample colours, else a fixed palette. Every line and fit curve
+  to the other; tab10 takes its ten colours in turn. Every line and fit curve
   gets its own), **Line**
   (Solid to start with; None leaves only the markers),
   **Width** (**Auto** undoes a set width), **Marker** with its **Size**
