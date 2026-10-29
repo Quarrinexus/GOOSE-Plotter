@@ -189,7 +189,7 @@ stay until it's done or cancelled.
   look, opens it. **Colour** (drag in the field and the brightness strip;
   **Automatic** goes back to the colour map's; **Colour Maps** picks the map
   automatic colours come from, for every panel and remembered in
-  `settings.json`: nanoanalysis muted (the default), bright or hazy (from
+  `settings.json`: nanoanalysis bright (the default), muted or hazy (from
   [nanoanalysis_cm](https://github.com/igtz-hub/nanoanalysis_cm), each taken
   from its blue round to its green), viridis,
   plasma or coolwarm spread a panel's lines evenly from one end of the map

@@ -18,10 +18,10 @@ FROM_BLUE = 3
 
 # Map key -> name shown in the menu. "classic" is no map: the profile's sample
 # colours, else model.PALETTE.
-MAPS = {"nanoanalysis_muted": "nanoanalysis muted", "nanoanalysis_bright": "nanoanalysis bright",
+MAPS = {"nanoanalysis_bright": "nanoanalysis bright", "nanoanalysis_muted": "nanoanalysis muted",
         "nanoanalysis_hazy": "nanoanalysis hazy", "viridis": "viridis", "plasma": "plasma",
         "coolwarm": "coolwarm", "tab10": "tab10", "classic": "Classic"}
-DEFAULT = "nanoanalysis_muted"
+DEFAULT = "nanoanalysis_bright"
 STEPPED = {"tab10"}  # distinct colours, taken in turn rather than spread
 
 

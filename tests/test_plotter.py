@@ -658,11 +658,11 @@ def test_colour_maps_colour_every_panel_and_are_remembered(app, settings_file):
     app.set_layout(1, 2)
     app.selected = (0, 1)
     plot(app)
-    assert app.colour_map == colourmaps.DEFAULT == "nanoanalysis_muted"
-    assert app.line_list.itemcget(0, "foreground") == "#2f95ac"  # the map's start, its blue
+    assert app.colour_map == colourmaps.DEFAULT == "nanoanalysis_bright"
+    assert app.line_list.itemcget(0, "foreground") == "#0080ff"  # the map's start, its blue
     app.open_style()
     popup = app.style_popup
-    assert popup.colour_map.get() == "nanoanalysis_muted"
+    assert popup.colour_map.get() == "nanoanalysis_bright"
     assert popup.map_menu.index("end") + 1 == len(colourmaps.MAPS)
     app.axes[(0, 0)].set_xlim(10, 20)  # a zoom, which recolouring keeps
     popup.map_menu.invoke(list(colourmaps.MAPS).index("viridis"))
