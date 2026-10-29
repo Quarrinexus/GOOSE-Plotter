@@ -4,8 +4,9 @@ from dataclasses import fields
 import math
 
 from goose_plotter import background, measure, smoothing, spectrum, splicing
-from goose_plotter.model import (GRID_AXES, GRID_STYLES, GRIDS, LEGENDS, MARKERS, OPERATIONS,
-                                 STYLES, SYNC, Line, Link, Panel, tidy_data_view)
+from goose_plotter.model import (GRID_AXES, GRID_STYLES, GRIDS, KINDS, LEGENDS, MARKERS,
+                                 OPERATIONS, STYLES, SYNC, Line, Link, Panel, Step,
+                                 tidy_data_view)
 from goose_plotter.widgets import MAX_GRID
 
 # 2: derived panels have their own lines, in their data panel's link group.
@@ -15,7 +16,8 @@ from goose_plotter.widgets import MAX_GRID
 # 6: a line's cut is a list of ranges, all kept or all removed.
 # 7: the background fits the whole line; its old x range is a cut.
 # 8: lines can be despiked, and links can share it.
-VERSION = 8
+# 9: a line's processing is a list of steps, in any order (format 10).
+VERSION = 9
 KEY = "goose_plotter_session"  # the session file's marker, holding VERSION
 # `dump`'s own marker, so `load` reads undo snapshots and files alike; its
 # absence means the layout of version 1, where a derived panel shared its
@@ -23,32 +25,45 @@ KEY = "goose_plotter_session"  # the session file's marker, holding VERSION
 # the automatic text; before 4, links were groups, each panel with its ticks;
 # before 5, there was no cut to share; in 5, a line had one cut range;
 # before 7, a line's background had an x range of its own; before 8, there
-# was no despiking to share; before 9, a line's style could be "auto".
-FORMAT = 9
+# was no despiking to share; before 9, a line's style could be "auto"; before
+# 10, a line had a fixed cut, despiking, fit and smoothing instead of steps.
+FORMAT = 10
+OLD_FORMATS = (2, 3, 4, 5, 6, 7, 8, 9)  # read and brought up to date; others are version 1
 TEXTS = {Panel: ("title", "x_label", "y_label"), Line: ("label",)}
 
-# Not saved: what the last draw found (fit values too), and which line the controls edit.
-SKIP = {"shown", "error", "fit_values", "despiked", "lines", "selected", "source"}
+# Not saved: what the last draw found, and what the controls show.
+SKIP = {"shown", "error", "found", "step", "lines", "selected", "source"}
 # Settings that must be one of a menu's keys; anything else gets the default.
-# Per class: a Line's window is smoothing's, in points; a Panel's is the FFT's.
-CHOICES = {Line: {"smooth": smoothing.METHODS, "background": background.MODES,
-                  "cut": splicing.MODES, "style": STYLES, "marker": MARKERS},
+# Per class: a Panel's window is the FFT's.
+CHOICES = {Line: {"style": STYLES, "marker": MARKERS},
+           Step: {"kind": KINDS, "cut": {k: v for k, v in splicing.MODES.items() if k},
+                  "method": {k: v for k, v in smoothing.METHODS.items() if k}},
            Panel: {"legend": LEGENDS, "grid": GRIDS, "grid_axis": GRID_AXES,
                    "grid_style": GRID_STYLES, "operation": OPERATIONS, "window": spectrum.WINDOWS,
                    "cut": splicing.MODES,
                    "pad": spectrum.PADDING},
            Link: {}}
 
+
+def _steps(saved):
+    """`Line.steps` from a session: a Step from each object that is one."""
+    if not isinstance(saved, list):
+        return ()
+    return tuple(_build(Step, data) for data in saved
+                 if isinstance(data, dict) and data.get("kind") in KINDS)
+
+
 # Fields holding a list, and what makes the saved one fit, per class as for CHOICES.
-TIDY = {Line: {"cuts": splicing.tidy, "first_fit": background.tidy_fitting},
+TIDY = {Line: {"steps": _steps},
+        Step: {"cuts": splicing.tidy},
         Panel: {"data_view": tidy_data_view, "cuts": splicing.tidy, "region": measure.tidy_region,
                 "points": measure.tidy_points},
         Link: {}}
 
 # Numbers that only make sense above 0, per class as for CHOICES; the
 # controls refuse the rest too.
-POSITIVE = {Line: {"width", "marker_size", "window", "span", "despike_window",
-                   "despike_threshold"},
+POSITIVE = {Line: {"width", "marker_size"},
+            Step: {"spike_window", "threshold", "window", "span"},
             Panel: {"f_max", "derivative_window", "peak_count"}, Link: set()}
 
 
@@ -72,7 +87,7 @@ def dump(panels, rows, cols, links):
     out = {}
     for cell, p in sorted(panels.items()):
         data = _plain(p)
-        data["lines"] = [_plain(l) for l in p.lines]
+        data["lines"] = [{**_plain(l), "steps": [_plain(s) for s in l.steps]} for l in p.lines]
         if p.source is not None:
             data["source"] = cell_key(p.source)
         out[cell_key(cell)] = data
@@ -118,31 +133,84 @@ def _build(cls, data, **extra):
     return cls(**kwargs, **extra)
 
 
-def _line(data):
-    """A Line from `dump`'s data; before format 6 its cut was one range,
-    `cut_from` to `cut_to`, before 7 its fit had its own range, and before
-    9 its style could be "auto"."""
-    if isinstance(data, dict) and "cuts" not in data:
-        data = {**data, "cuts": [[data.get("cut_from"), data.get("cut_to")]]}
+def _line(data, fmt=FORMAT):
+    """A Line from `dump`'s data; before format 10 its processing was fixed
+    fields, made into steps by `_old_steps`. Before 9 its style could be "auto"."""
     if isinstance(data, dict) and data.get("style") == "auto":
         # The old automatic style: dashed for a shown fit, else solid.
         data = {**data, "style": "--" if data.get("background") == "fit" else "-"}
-    line = _build(Line, data)
-    if isinstance(data, dict) and line.background:
+    if fmt != FORMAT and isinstance(data, dict):
+        data = {**data, "steps": None}
+        line = _build(Line, data)
+        line.steps = _old_steps(data)
+        return line
+    return _build(Line, data)
+
+
+def _old(data, name, kinds, default, ok=lambda v: True):
+    """An old line field's value from `data`, if it's of `kinds` and `ok`, else `default`."""
+    value = data.get(name)
+    if isinstance(value, bool) != (bool in kinds) or not isinstance(value, kinds):
+        return default
+    if isinstance(value, float) and not math.isfinite(value):
+        return default
+    return value if ok(value) else default
+
+
+def _old_steps(data):
+    """Steps from a line saved before format 10, in the order it did them: its
+    cut, despiking, background fit, smoothing, and the fit a Fit as new line
+    line made of that. Before 6 the cut was one range, `cut_from` to `cut_to`;
+    before 7 a fit had an x range of its own, which only it saw, made a Keep
+    cut here as it was then."""
+    positive = lambda v: v > 0
+    mode = _old(data, "cut", (str,), "")
+    cuts = splicing.tidy(data["cuts"] if "cuts" in data
+                         else [[data.get("cut_from"), data.get("cut_to")]])
+    background_mode = _old(data, "background", (str,), "")
+    if background_mode in ("subtract", "fit"):
         fit_range = splicing.tidy([[data.get("fit_from"), data.get("fit_to")]])
         if fit_range:
-            _cut_to(line, *fit_range[0])
-    return line
+            start, end = fit_range[0]
+            if mode not in ("keep", "remove") or not cuts:
+                mode, cuts = "keep", ((start, end),)
+            else:
+                ranges = cuts if mode == "keep" else splicing.gaps(cuts, start, end)
+                mode, cuts = "keep", splicing.within(ranges, start, end)
+    steps = []
+    if mode in ("keep", "remove") and cuts:
+        steps.append(Step("cut", cut=mode, cuts=cuts))
+    if data.get("despike") is True:
+        steps.append(Step("despike", spike_window=_old(data, "despike_window", (int,), 21, positive),
+                          threshold=float(_old(data, "despike_threshold", (int, float), 5.0,
+                                               positive))))
 
-
-def _cut_to(line, start, end):
-    """Cut `line` to x from `start` to `end` as well as its own cut: the old
-    fit range, which left out the rest of the line."""
-    if not line.cutting:
-        line.cut, line.cuts = "keep", ((start, end),)
-        return
-    ranges = line.cuts if line.cut == "keep" else splicing.gaps(line.cuts, start, end)
-    line.cut, line.cuts = "keep", splicing.within(ranges, start, end)
+    def fit_step(kind, fitting):
+        """A Subtract or Fit curve step from an old (mode, degree, function, start)."""
+        _, degree, function, start = fitting
+        if degree is None:
+            return Step(kind, advanced=True, function=function, start=start)
+        return Step(kind, degree=degree)
+    own = (background_mode, _old(data, "degree", (int,), 5, lambda v: v >= 0),
+           _old(data, "fit_function", (str,), ""), _old(data, "fit_start", (str,), ""))
+    if data.get("advanced") is True:
+        own = (own[0], None) + own[2:]
+    fits_drawn = data.get("fits_drawn") is True and background_mode == "fit"
+    if fits_drawn:  # its copied line's fit, before the smoothing, then its own after
+        first = background.tidy_fitting(data.get("first_fit"))
+        if first:
+            steps.append(fit_step(first[0], first))
+    elif background_mode in ("subtract", "fit"):
+        steps.append(fit_step(background_mode, own))
+    method = _old(data, "smooth", (str,), "")
+    if method in smoothing.METHODS and method:
+        steps.append(Step("smooth", method=method, window=_old(data, "window", (int,), 21, positive),
+                          in_x=data.get("in_x") is True,
+                          span=_old(data, "span", (int, float), None, positive),
+                          order=_old(data, "order", (int,), 2)))
+    if fits_drawn:
+        steps.append(fit_step("fit", own))
+    return tuple(steps)
 
 
 def load(state):
@@ -157,7 +225,7 @@ def load(state):
         raise ValueError(f"a {rows} x {cols} layout is bigger than the plotter allows")
     grid = [(r, c) for r in range(rows) for c in range(cols)]
     fmt = state.get("format")
-    if fmt not in (2, 3, 4, 5, 6, 7, 8, FORMAT):
+    if fmt not in (*OLD_FORMATS, FORMAT):
         panels, groups = _load_old(saved, grid)
         return rows, cols, _blank_is_auto(panels), _group_links(panels, groups)
     panels = {}
@@ -166,16 +234,18 @@ def load(state):
         if data is None:
             panels[cell] = Panel()
             continue
-        lines = [_line(l) for l in data.get("lines") or []] or [Line()]
+        lines = [_line(l, fmt) for l in data.get("lines") or []] or [Line()]
         panels[cell] = _build(Panel, data, lines=lines, source=_source(data, grid))
     seen = set()
     for p in panels.values():  # ids must tell panels apart; a file edited by hand may not
         if p.id in seen:
             p.id = Panel().id
         seen.add(p.id)
-    if fmt in (8, FORMAT):  # 8 could share all there is; 9 only changed the style
+    if fmt in (8, 9, FORMAT):
         return rows, cols, panels, _links(state.get("links"), panels)
-    new = {"despike"} if fmt in (5, 6, 7) else {"cut", "despike"}  # keys it hadn't
+    # Before 8 some of what is now "steps" couldn't be shared (the cut before 5,
+    # despiking before 8), so a link that shared all the rest shares it.
+    new = {"steps"}
     if fmt in (4, 5, 6, 7):
         return rows, cols, panels, _share_new(_links(state.get("links"), panels), panels, new)
     groups = {cell: _group_of(saved.get(cell), old_ticks=False) for cell in panels}
@@ -185,10 +255,10 @@ def load(state):
 
 
 def _share_new(links, panels, new):
-    """Links saved before the SYNC keys in `new` existed (the cut before
-    format 5, despiking before 8). Those that shared everything else (a
-    derived panel's with its data panel, at least) share them too, so an FFT
-    or derivative still follows its data panel."""
+    """Links saved before all that the SYNC keys in `new` share could be
+    shared (the cut before format 5, despiking before 8, both now "steps").
+    Those that shared everything else (a derived panel's with its data panel,
+    at least) share them too, so an FFT or derivative still follows its data panel."""
     derived = {frozenset((p.id, panels[p.source].id)) for p in panels.values()
                if p.derived and p.source in panels}
     for pair, link in links.items():
@@ -207,8 +277,23 @@ def _links(saved, panels):
             continue
         pair = frozenset((data.get("a"), data.get("b")))
         if len(pair) == 2 and pair <= ids and pair not in links:
-            links[pair] = _build(Link, data)
+            link = _build(Link, data)
+            link.sync = _new_words(link.sync.split())
+            links[pair] = link
     return links
+
+
+# SYNC keys before format 10, each now part of "steps".
+STEP_WORDS = {"cut", "despike", "smoothing", "background"}
+
+
+def _new_words(words):
+    """A link's `sync` from its words, any of the old keys for what's now a
+    line's steps sharing "steps"."""
+    words = set(words)
+    if words & STEP_WORDS:
+        words.add("steps")
+    return " ".join(k for k in SYNC if k in words)
 
 
 def _group_of(data, old_ticks):
@@ -222,7 +307,7 @@ def _group_of(data, old_ticks):
     words = words.split()
     if old_ticks or not {"x_fn", "y_fn"} & set(words):
         words += [k for k, axis in (("x_fn", "x"), ("y_fn", "y")) if axis in words]
-    return data["link_group"], set(words) & set(SYNC), data.get("frozen") is True
+    return data["link_group"], set(_new_words(words).split()), data.get("frozen") is True
 
 
 def _group_links(panels, groups):
@@ -268,7 +353,7 @@ def _load_old(saved, grid):
         data = saved.get(cell)
         if data is None or (isinstance(data, dict) and "source" in data):
             continue
-        lines = [_line(l) for l in data.get("lines") or []] or [Line()]
+        lines = [_line(l, 1) for l in data.get("lines") or []] or [Line()]
         panels[cell] = _build(Panel, data, lines=lines)
         panels[cell].operation = ""
         groups[cell] = _group_of(data, old_ticks=True)

@@ -639,6 +639,76 @@ class AxesPopup(tk.Toplevel):
             var.set(getattr(panel, name))
 
 
+class StepList(ttk.Frame):
+    """A line's steps, a row each: a click chooses one, `on_choose(index)`, and
+    a drag moves it, `on_move(old, new)` when the button is let go. Rows from
+    `fixed` on (an FFT panel's spectrum cut, after the steps) can be chosen
+    but not moved, nor moved past. Width 1: it takes the column's width."""
+
+    def __init__(self, parent, on_choose, on_move, height=6):
+        super().__init__(parent)
+        self.on_choose, self.on_move = on_choose, on_move
+        self.list = tk.Listbox(self, height=height, width=1, exportselection=False,
+                               activestyle="none", foreground=theme.TEXT,
+                               selectbackground=theme.ACCENT_SOFT, selectforeground=theme.TEXT)
+        scroll = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.list.yview)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.list.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.list["yscrollcommand"] = scroll.set
+        self.fixed = 0
+        self.drag = self.target = None  # the row picked up, and where it's been moved to
+        self.list.bind("<Button-1>", self._press)
+        self.list.bind("<B1-Motion>", self._motion)
+        self.list.bind("<ButtonRelease-1>", self._release)
+
+    def show(self, rows, chosen, off=(), fixed=None):
+        """`rows`' texts, `chosen` selected, those in `off` greyed; rows from
+        `fixed` on can't be moved (None: all can)."""
+        self.list.delete(0, tk.END)
+        for i, text in enumerate(rows):
+            self.list.insert(tk.END, text)
+            if i in off:
+                self.list.itemconfigure(i, foreground=theme.HINT, selectforeground=theme.HINT)
+        self.fixed = len(rows) if fixed is None else fixed
+        if rows:
+            self.list.selection_set(chosen)
+            self.list.see(chosen)
+
+    def _row(self, event):
+        """The row under the pointer, or None below the last."""
+        i = self.list.nearest(event.y)
+        box = self.list.bbox(i)
+        return i if box and event.y <= box[1] + box[3] + 2 else None
+
+    def _press(self, event):
+        i = self._row(event)
+        if i is None:
+            return "break"  # a click below the rows chooses nothing
+        self.drag = self.target = i if i < self.fixed else None
+        self.on_choose(i)
+        return "break"  # on_choose shows the rows again, choice included
+
+    def _motion(self, event):
+        if self.drag is None:
+            return
+        i = min(max(self.list.nearest(event.y), 0), self.fixed - 1)
+        if i != self.target:  # move the row on screen; the steps move when it's let go
+            text = self.list.get(self.target)
+            colour = self.list.itemcget(self.target, "foreground")
+            self.list.delete(self.target)
+            self.list.insert(i, text)
+            if colour:
+                self.list.itemconfigure(i, foreground=colour, selectforeground=colour)
+            self.list.selection_clear(0, tk.END)
+            self.list.selection_set(i)
+            self.target = i
+
+    def _release(self, _):
+        drag, target, self.drag = self.drag, self.target, None
+        if drag is not None and target != drag:
+            self.on_move(drag, target)
+
+
 class TabStrip(tk.Canvas):
     """Tabs drawn as in a notebook: each as wide as its text, with slanted sides,
     the chosen one in front and open at the bottom onto what's below it (drawn
