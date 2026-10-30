@@ -138,8 +138,6 @@ ZH = {
     "x from {start}": "x 从 {start} 起",
     "x up to {end}": "x 到 {end} 为止",
     "x {start} to {end}": "x {start} 至 {end}",
-    "in the plotted x; a blank end: no limit": "按绘图的 x；端点留空：不限",
-    "click a range, then Enter changes it": "点击区间，再按回车修改",
     "cut before fits, smoothing and FFT": "在拟合、平滑和 FFT 之前截取",
     "on an FFT: cuts the spectrum, in F": "FFT 面板上：按 F 截取频谱",
     "'{text}' isn't a number.": "“{text}”不是数字。",

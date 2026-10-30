@@ -833,7 +833,7 @@ class Plotter(tk.Tk):
         row.pack(anchor=tk.W, fill=tk.X, pady=(6, 0))
         # Plain text, so the chosen row in the theme's colours (the Lines list
         # picks each row's own foreground instead).
-        self.cut_list = tk.Listbox(row, height=4, width=1, exportselection=False,
+        self.cut_list = tk.Listbox(row, height=3, width=1, exportselection=False,
                                    activestyle="none", foreground=theme.TEXT,
                                    selectbackground=theme.ACCENT_SOFT,
                                    selectforeground=theme.TEXT)
@@ -842,9 +842,6 @@ class Plotter(tk.Tk):
         self.cut_list.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.cut_list["yscrollcommand"] = scroll.set
         self.cut_list.bind("<<ListboxSelect>>", lambda _: self._choose_cut())
-        for text in ("in the plotted x; a blank end: no limit",
-                     "click a range, then Enter changes it"):
-            ttk.Label(body, text=tr(text), foreground=theme.HINT).pack(anchor=tk.W)
 
     def _spectrum_row(self):
         """Whether the Process tab shows an FFT panel's cut of its spectrum, the

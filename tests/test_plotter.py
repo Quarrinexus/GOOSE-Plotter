@@ -51,6 +51,7 @@ def test_splicing_keeps_and_removes_several_ranges(app):
     assert not np.any((finite >= 10) & (finite <= 12) | (finite >= 20) & (finite <= 22))
     assert np.isnan(x).any()  # gaps, not joins
     assert app.cut_list.get(0, "end") == ("x 10 to 12", "x 20 to 22")
+    assert app.cut_list["height"] == 3  # rows; more scroll
     # One mode for every range.
     app.cut_mode.set(splicing.MODES["keep"])
     app.apply_controls()
