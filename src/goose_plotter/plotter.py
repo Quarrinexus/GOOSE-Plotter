@@ -667,9 +667,8 @@ class Plotter(tk.Tk):
         ttk.Label(parent, text=tr("done top to bottom; drag to reorder"),
                   foreground=theme.HINT).pack(anchor=tk.W, pady=(2, 0))
         ttk.Separator(parent).pack(fill=tk.X, pady=(8, 0))
-        self.step_title = ttk.Label(parent, foreground=theme.MUTED)
-        self.step_title.pack(anchor=tk.W, pady=(6, 0))
-        holder = ttk.Frame(parent)
+        self.step_title = ttk.Label(parent, foreground=theme.MUTED)  # shown with a step
+        holder = self.step_holder = ttk.Frame(parent)
         holder.pack(anchor=tk.W, fill=tk.X)
         self.editors = {}
         for kind, build in (("cut", self._cut_editor), ("despike", self._despike_editor),
@@ -875,12 +874,14 @@ class Plotter(tk.Tk):
         if kind:
             self.editors[kind].pack(anchor=tk.W, fill=tk.X)
             self.no_steps.pack_forget()
+            self.step_title.pack(anchor=tk.W, pady=(6, 0), before=self.step_holder)
             self.step_title["text"] = (tr("Cut spectrum (F)") if step is None else
                                        tr("Step {n}: {kind}", n=l.step + 1, kind=tr(KINDS[kind])))
             self._show_step(step)
         else:
-            self.no_steps.pack(anchor=tk.W)
-            self.step_title["text"] = ""
+            # In the title's place, so no empty line above it.
+            self.no_steps.pack(anchor=tk.W, pady=(6, 0))
+            self.step_title.pack_forget()
 
     def _show_step(self, step):
         """Fill the chosen step's editor from it (None: the spectrum's cut)."""

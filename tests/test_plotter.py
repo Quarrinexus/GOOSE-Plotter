@@ -827,7 +827,9 @@ def test_advanced_fitting_goes_along_the_chain_to_the_fft(app):
 def test_only_a_cut_step_shows_the_cut_boxes(app):
     plot(app)
     assert app.no_steps.winfo_manager() and "Pick" not in buttons(app.tabs["Process"])
+    assert not app.step_title.winfo_manager()  # no empty title line above the note
     add_step(app, "smooth")
+    assert app.step_title.winfo_manager() and app.step_title["text"] == "Step 1: Smooth"
     assert "Pick" not in buttons(app.tabs["Process"]) and not app.no_steps.winfo_manager()
     add_step(app, "cut")
     assert "Pick" in buttons(app.tabs["Process"])
