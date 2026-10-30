@@ -49,6 +49,9 @@ def plain(text):
     return text.translate(PLAIN)
 
 
+# How long after a spinbox arrow's last step the change is applied, see _soon.
+SPIN_PAUSE = 250  # ms
+
 # Where the Process tab's notes wrap: inside the column in Chinese too, whose
 # 16 px song ti makes it narrower than in English.
 STEP_WRAP = 270
@@ -200,6 +203,7 @@ class Plotter(tk.Tk):
         self.merging = False  # the last change was a colour pick; see _changed
         self.restoring = False
         self.status_timer = None  # the pending clear of an info message, see _say
+        self.spin_pending = None  # a spinbox change waiting to be applied, see _soon
         self.settings = load_settings()
         i18n.set_language(self.settings.get("language"))  # before any text is made
         if i18n.language in i18n.FONTS:
@@ -688,14 +692,15 @@ class Plotter(tk.Tk):
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text=tr("Window")).pack(side=tk.LEFT)
         window = ttk.Spinbox(row, textvariable=self.despike_window, from_=3, to=100001,
-                             increment=2, width=6, command=self.apply_controls)
+                             increment=2, width=6, command=lambda: self._soon(self.apply_controls))
         window.pack(side=tk.LEFT, padx=(4, 4))
         ttk.Label(row, text=tr("points")).pack(side=tk.LEFT)
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text=tr("Threshold")).pack(side=tk.LEFT)
         threshold = ttk.Spinbox(row, textvariable=self.despike_threshold, from_=1, to=50,
-                                increment=0.5, width=4, command=self.apply_controls)
+                                increment=0.5, width=4,
+                                command=lambda: self._soon(self.apply_controls))
         threshold.pack(side=tk.LEFT, padx=(4, 4))
         ttk.Label(row, text=tr("× the local spread")).pack(side=tk.LEFT)
         for box in (window, threshold):
@@ -721,7 +726,7 @@ class Plotter(tk.Tk):
         sizes.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(sizes, text=tr("Window")).pack(side=tk.LEFT)
         window = ttk.Spinbox(sizes, textvariable=self.window, from_=3, to=100001,
-                             increment=2, width=6, command=self.apply_controls)
+                             increment=2, width=6, command=lambda: self._soon(self.apply_controls))
         window.pack(side=tk.LEFT, padx=(4, 4))
         unit = ttk.Combobox(sizes, textvariable=self.window_unit, state="readonly", width=7,
                             values=menu(smoothing.UNITS))
@@ -730,7 +735,7 @@ class Plotter(tk.Tk):
         self.orders = ttk.Frame(top)
         ttk.Label(self.orders, text=tr("Order")).pack(side=tk.LEFT)
         order = ttk.Spinbox(self.orders, textvariable=self.order, from_=0, to=10, width=2,
-                            command=self.apply_controls)
+                            command=lambda: self._soon(self.apply_controls))
         order.pack(side=tk.LEFT, padx=(4, 0))
         for box in (window, order):
             for key in ("<Return>", "<KP_Enter>"):
@@ -746,7 +751,7 @@ class Plotter(tk.Tk):
                     span = chosen.span
                 if span and span > 0:
                     self.window.set(f"{smoothing.step_nice(span, direction):g}")
-                    self.apply_controls()
+                    self._soon(self.apply_controls)
                 return "break"
             if self.smooth.get() != shown(smoothing.METHODS, "savgol"):
                 return None  # Tk's own stepping
@@ -758,7 +763,7 @@ class Plotter(tk.Tk):
             n += 2 * direction if n % 2 else direction
             # No lower than the smallest odd window the order allows (order < window - 1).
             self.window.set(max(n, 3, order + 2 if order % 2 else order + 3))
-            self.apply_controls()
+            self._soon(self.apply_controls)
             return "break"
         window.bind("<<Increment>>", lambda _: step(1))
         window.bind("<<Decrement>>", lambda _: step(-1))
@@ -773,7 +778,7 @@ class Plotter(tk.Tk):
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text=tr("Polynomial degree")).pack(side=tk.LEFT)
         self.degree_box = ttk.Spinbox(row, textvariable=self.degree, from_=0, to=30, width=3,
-                                      command=self.apply_controls)
+                                      command=lambda: self._soon(self.apply_controls))
         self.degree_box.pack(side=tk.LEFT, padx=(4, 0))
         ttk.Checkbutton(body, text=tr("Advanced Fitting"), variable=self.advanced,
                         command=self.apply_controls).pack(anchor=tk.W, pady=(4, 0))
@@ -1306,7 +1311,8 @@ class Plotter(tk.Tk):
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text=tr("Window")).pack(side=tk.LEFT)
         window = ttk.Spinbox(row, textvariable=self.derivative_window, from_=5, to=100001,
-                             increment=2, width=6, command=self.apply_derivative)
+                             increment=2, width=6,
+                             command=lambda: self._soon(self.apply_derivative))
         window.pack(side=tk.LEFT, padx=(4, 6))
         ttk.Label(row, text=tr("points, odd"), foreground=theme.HINT).pack(side=tk.LEFT)
         ttk.Label(settings, text=tr("wider for less noise; 2nd needs more"),
@@ -1576,6 +1582,18 @@ class Plotter(tk.Tk):
         self.line_list.selection_set(p.selected)
         self.line_list.see(p.selected)
         self.remove_button.state(["!disabled" if len(p.lines) > 1 else "disabled"])
+
+    def _soon(self, apply):
+        """Run `apply` once a spinbox's arrows have stopped for SPIN_PAUSE.
+        Run on every step, a redraw slower than Tk's auto-repeat (a fit of a
+        long run) lets the repeat keep stepping after the button is let go."""
+        if self.spin_pending:
+            self.after_cancel(self.spin_pending)
+
+        def run():
+            self.spin_pending = None
+            apply()
+        self.spin_pending = self.after(SPIN_PAUSE, run)
 
     def apply_controls(self):
         """Copy the controls into the selected line and redraw its panel."""
@@ -2615,7 +2633,7 @@ class Plotter(tk.Tk):
         row.pack(anchor=tk.W, pady=(2, 0))
         ttk.Label(row, text=tr("Up to")).pack(side=tk.LEFT)
         count = ttk.Spinbox(row, textvariable=self.peak_count, from_=1, to=50, width=3,
-                            command=self.apply_measure)
+                            command=lambda: self._soon(self.apply_measure))
         count.pack(side=tk.LEFT, padx=(4, 6))
         ttk.Label(row, text=tr("over")).pack(side=tk.LEFT)
         floor = ttk.Entry(row, textvariable=self.peak_floor, width=4)

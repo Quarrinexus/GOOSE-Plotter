@@ -368,6 +368,10 @@ window. So:
   text keeps them and anything Tk shows goes through `plain()` in
   `plotter.py`, or is written in ASCII (the "Savitzky-Golay" method name).
   `·` and `×` are fine.
+- **Spinbox arrows apply late** (`_soon`, `SPIN_PAUSE`): a redraw on every
+  step, slower than Tk's auto-repeat on a long run, let the repeat keep
+  stepping after the button was let go. Enter and other controls still
+  apply at once.
 - **Zoom survives redraws** only for limits the user set (zooming turns
   matplotlib's autoscale off). `_redraw_selected(keep)` restores those and
   pushes the full view first so the toolbar's Home still works.

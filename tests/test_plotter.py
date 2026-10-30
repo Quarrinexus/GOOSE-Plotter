@@ -533,6 +533,24 @@ def test_advanced_fitting_fits_the_typed_function(app):
     assert app.fit_function.get() == "A * sin(y)"
 
 
+def test_spinbox_arrows_apply_once_they_stop(app, monkeypatch):
+    """Redrawing on every arrow step let Tk's auto-repeat run the degree away
+    while a slow fit redrew; the change is applied once the steps stop."""
+    import time
+    from goose_plotter.plotter import SPIN_PAUSE
+    plot(app, x_fn="1/x")
+    add_step(app, "subtract")
+    redraws = []
+    real = app._redraw_selected
+    monkeypatch.setattr(app, "_redraw_selected", lambda *a, **k: (redraws.append(1), real(*a, **k)))
+    for _ in range(3):  # three clicks on the up arrow
+        app.tk.call("ttk::spinbox::Spin", str(app.degree_box), 1)
+    assert app.degree.get() == "8" and app.panel.line.chosen.degree == 5 and not redraws
+    time.sleep(SPIN_PAUSE / 1000 + 0.1)
+    app.update()
+    assert app.panel.line.chosen.degree == 8 and len(redraws) == 1
+
+
 def test_ticking_advanced_fitting_starts_from_the_polynomial(app):
     plot(app, x_fn="1/x")
     add_step(app, "subtract")
