@@ -619,7 +619,6 @@ def test_a_fit_curve_is_drawn_over_the_line(app):
     assert [s.kind for s in line.steps] == ["subtract", "fit"]
     # The polynomial to start with, drawn at once, as an extra artist.
     assert app.error_label["text"] == "" and len(app.curves[app.selected]) == 1
-    assert app.fit_hint["text"].startswith("Draws its fit over the line")
     app.advanced.set(True)  # ticked: from that polynomial
     app.apply_controls()
     assert line.chosen.function == background.polynomial_text(line.chosen.degree)

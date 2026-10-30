@@ -92,10 +92,6 @@ ZH = {
     "done top to bottom; drag to reorder": "从上到下进行；拖动可调整顺序",
     "No steps: Add step cuts, despikes, subtracts, smooths or fits a curve to the line.":
         "尚无步骤：用“添加步骤”对曲线截取、去尖峰、扣除、平滑或拟合曲线。",
-    "Takes its fit off the line; the steps after it get what's left.":
-        "从曲线中扣除其拟合；之后的步骤使用剩下的部分。",
-    "Draws its fit over the line, dashed; the line goes on unchanged.":
-        "在曲线上以虚线画出其拟合；曲线本身不变。",
     "Splicing": "截取",
     "Derive": "派生",
     "Linking": "联动",

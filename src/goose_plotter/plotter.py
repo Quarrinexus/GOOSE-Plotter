@@ -770,8 +770,6 @@ class Plotter(tk.Tk):
         self.degree = tk.StringVar(value="5")
         self.advanced = tk.BooleanVar(value=False)
         self.fit_function, self.fit_start = tk.StringVar(), tk.StringVar()
-        self.fit_hint = ttk.Label(body, foreground=theme.HINT, wraplength=STEP_WRAP, justify=tk.LEFT)
-        self.fit_hint.pack(anchor=tk.W, pady=(2, 0))
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text=tr("Polynomial degree")).pack(side=tk.LEFT)
@@ -908,10 +906,6 @@ class Plotter(tk.Tk):
             else:
                 self.orders.pack_forget()
         else:  # subtract or fit
-            self.fit_hint["text"] = tr(
-                "Takes its fit off the line; the steps after it get what's left."
-                if step.kind == "subtract" else
-                "Draws its fit over the line, dashed; the line goes on unchanged.")
             self.degree.set(step.degree)
             self.advanced.set(step.advanced)
             # Greyed out, the box shows the polynomial Degree fits, not the kept function.
