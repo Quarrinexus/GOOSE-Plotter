@@ -42,7 +42,8 @@ class Step:
     `dataclasses.replace`. It holds every kind's settings, only its own used.
 
     "subtract" takes its fit off the data for the steps after it; "fit" draws
-    its fit of the data as it is there, over the line, leaving the data as it was."""
+    its fit of the data as it is there, over the line, leaving the data as it
+    was, or with `only` puts the fit in the data's place, so the line is its fit."""
     kind: str = "smooth"  # a key of KINDS
     on: bool = True
     cut: str = "keep"  # cut: a key of splicing.MODES (not ""), for all the ranges
@@ -59,6 +60,7 @@ class Step:
     span: float | None = None  # smooth: window in x; None: estimated from `window`
     order: int = 2  # smooth: Savitzky–Golay polynomial order
     colour: str | None = None  # fit: its curve's; None: picked automatically
+    only: bool = False  # fit: the line becomes the fit, drawn instead of the data
 
     @property
     def cutting(self):
@@ -330,11 +332,17 @@ def near(colour, others, distance=0.25):
 
 def fit_curves(panel):
     """(line index, step index) of each fit curve the panel draws, in order:
-    the fit steps that are on, on a data panel only."""
+    the fit steps that are on and drawn over their line (not `only`), on a
+    data panel only."""
     if panel.derived:
         return []
     return [(i, j) for i, l in enumerate(panel.lines) for j, s in enumerate(l.steps)
-            if s.kind == "fit" and s.on]
+            if s.kind == "fit" and s.on and not s.only]
+
+
+def overlay(step):
+    """Whether `step` draws over its line rather than changing it: a fit curve not `only`."""
+    return step.kind == "fit" and not step.only
 
 
 def curve_colours(panel, samples, colour_map="classic"):
@@ -377,8 +385,8 @@ def line_colours(panel, samples, colour_map="classic"):
 
 def legend_labels(lines):
     """Legend text naming only what differs between the lines. Fit curves
-    don't change a line's data, so they're left out of what's compared."""
-    parts = [l.parts()[:3] + (tuple(s for s in l.parts()[3] if s.kind != "fit"),)
+    drawn over a line don't change its data, so they're left out of what's compared."""
+    parts = [l.parts()[:3] + (tuple(s for s in l.parts()[3] if not overlay(s)),)
              for l in lines]
     differs = [len({p[i] for p in parts}) > 1 for i in range(4)]
     if not any(differs[:3]):
@@ -391,7 +399,7 @@ def legend_labels(lines):
         if differs[2]:
             bits.append(f"vs {x}")
         if differs[3]:
-            bits += [s.describe() for s in steps]
+            bits += [("fit " if s.kind == "fit" else "") + s.describe() for s in steps]
         labels.append(" · ".join(bits))
     return labels
 

@@ -513,7 +513,6 @@ def test_advanced_fitting_fits_the_typed_function(app):
     assert step().fitting == ("subtract", None, "A + B / x", "")
     assert [name for name, _ in line.found[0]] == ["A", "B"]
     assert dict(line.found[0])["B"] == pytest.approx(1e-3, rel=0.05)  # conftest's 0.001 B
-    assert app.fit_result["text"].startswith("A = ")
     assert app.error_label["text"] == ""
     assert "_bg_A_+_B_-over-_x" in app.filename.get()
     app.fit_function.set("A * sin(y)")
@@ -523,7 +522,7 @@ def test_advanced_fitting_fits_the_typed_function(app):
     app.apply_controls()
     assert step().fitting == ("subtract", step().degree, "", "")
     assert step().function == "A * sin(y)"
-    assert entry_states(app) == ["disabled", "disabled"] and not app.fit_result["text"]
+    assert entry_states(app) == ["disabled", "disabled"]
     assert app.fit_function.get() == shown_default  # showing the polynomial, not the kept one
     app.degree.set("3")
     app.apply_controls()
@@ -631,7 +630,6 @@ def test_a_fit_curve_is_drawn_over_the_line(app):
     values = dict(line.found[1])
     assert values["B"] == pytest.approx(2 * np.pi * F, rel=1e-3)
     assert abs(values["A"]) == pytest.approx(1e-4, rel=0.02)
-    assert app.fit_result["text"].startswith("A = ")
     # The line is the subtracted data, unchanged by the fit; the curve follows it.
     x, y = drawn(app)
     (curve, key), = app.curves[app.selected].items()
@@ -653,6 +651,50 @@ def test_a_fit_curve_is_drawn_over_the_line(app):
     assert not app.curves[(1, 0)] and len(app.axes[(1, 0)].lines) == 1
 
 
+def test_show_only_fit_puts_the_fit_in_the_lines_place(app):
+    plot(app, x_fn="1/x")
+    add_step(app, "subtract", advanced=True, function="A + B / x")
+    add_step(app, "fit", advanced=True, function="A * sin(B * x + C)", start="A=1e-4, B=314")
+    _, data = drawn(app)
+    (curve,) = app.curves[app.selected]
+    fitted = curve.get_ydata()
+    assert app.fit_options.winfo_manager() and not app.fit_only.get()
+    app.fit_only.set(True)
+    app.apply_controls()
+    assert app.panel.line.chosen.only
+    _, y = drawn(app)
+    assert np.allclose(y, fitted, equal_nan=True) and not np.allclose(y, data, equal_nan=True)
+    assert not app.curves[app.selected]  # the line is the fit: no curve over it
+    assert "fit A * sin(B * x + C)" in app.line_list.get(0)
+    app.new_derived_panel("fft")  # its FFT is the fit's
+    frequency, amplitude = drawn(app, (1, 0))
+    assert frequency[np.argmax(amplitude)] == pytest.approx(F, rel=0.05)
+    app.selected = (0, 0)
+    app._load_controls()
+    app.choose_step(0)  # Subtract has neither
+    assert not app.fit_options.winfo_manager()
+
+
+def test_make_fit_new_line_moves_the_fit_to_its_own_line(app):
+    plot(app, x_fn="1/x")
+    add_step(app, "subtract", advanced=True, function="A + B / x")
+    add_step(app, "smooth")
+    add_step(app, "fit", advanced=True, function="A * sin(B * x + C)", start="A=1e-4, B=314")
+    (curve,) = app.curves[app.selected]
+    fitted = curve.get_ydata()
+    app.fit_to_line()
+    data, fit = app.panel.lines
+    assert app.panel.selected == 1
+    assert [s.kind for s in data.steps] == ["subtract", "smooth"]  # back to its data
+    assert [s.kind for s in fit.steps] == ["subtract", "smooth", "fit"] and fit.steps[2].only
+    assert fit.style == "--" and fit.step == 2 and app.fit_only.get()
+    assert not app.curves[app.selected]  # drawn once, as a line
+    _, y = drawn(app, index=1)
+    assert np.allclose(y, fitted, equal_nan=True)
+    colours = {app.line_list.itemcget(i, "foreground") for i in (0, 1)}
+    assert len(colours) == 2  # a colour of its own
+
+
 def test_fit_lines_and_old_settings_load_as_steps(app, tmp_path):
     """A format 9 session: a line's fixed settings, and a Fit as new line line."""
     old = {"goose_plotter_session": 8, "format": 9, "rows": 1, "cols": 1, "panels": {"0,0": {"lines": [
@@ -672,7 +714,8 @@ def test_fit_lines_and_old_settings_load_as_steps(app, tmp_path):
     assert data.steps[2].fitting == ("subtract", 4, "", "") and data.steps[3].method == "median"
     assert [s.kind for s in fit.steps] == ["subtract", "smooth", "fit"]
     assert fit.steps[2].fitting == ("fit", None, "A * sin(B * x + C)", "B=314")
-    assert app.curves[(0, 0)] and app.error_label["text"] == ""
+    assert fit.steps[2].only  # drawn instead of its data, as it was
+    assert not app.curves[(0, 0)] and app.error_label["text"] == ""
 
 
 def test_colour_maps_colour_every_panel_and_are_remembered(app, settings_file):

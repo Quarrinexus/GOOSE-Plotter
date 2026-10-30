@@ -25,7 +25,7 @@ from goose_plotter.i18n import key_of, menu, shown, tr
 from goose_plotter.columns import label, lookup, with_unit, without_unit
 from goose_plotter.model import (DATA_VIEW, GRID_AXES, GRID_STYLES, GRIDS, KINDS, LEGENDS,
                                RANGES, SYNC, Link, Panel, Step, clear_data_ranges, clear_ranges,
-                               curve_colours, legend_labels, line_colours, shared,
+                               curve_colours, legend_labels, line_colours, overlay, shared,
                                swap_data_view, without_x_units)
 from goose_plotter.profile import load_profile, save_format
 from goose_plotter.datasets import (FormatError, describe, detect_format, find_datasets,
@@ -766,8 +766,7 @@ class Plotter(tk.Tk):
 
     def _fit_editor(self, body):
         """A Subtract or Fit curve step: a polynomial of a degree, or with
-        Advanced Fitting a function of x and its start values; for a fit
-        curve, the values found too."""
+        Advanced Fitting a function of x and its start values."""
         self.degree = tk.StringVar(value="5")
         self.advanced = tk.BooleanVar(value=False)
         self.fit_function, self.fit_start = tk.StringVar(), tk.StringVar()
@@ -793,8 +792,13 @@ class Plotter(tk.Tk):
         for box in (self.degree_box, *self.fit_entries):
             for key in ("<Return>", "<KP_Enter>"):
                 box.bind(key, lambda _: self.apply_controls())
-        self.fit_result = ttk.Label(body, foreground=theme.HINT, wraplength=STEP_WRAP)
-        self.fit_result.pack(anchor=tk.W)
+        # A Fit curve's only: drawn instead of the data, or moved to a line of its own.
+        self.fit_options = ttk.Frame(body)
+        self.fit_only = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.fit_options, text=tr("Show only fit"), variable=self.fit_only,
+                        command=self.apply_controls).pack(side=tk.LEFT)
+        ttk.Button(self.fit_options, text=tr("Make fit new line"),
+                   command=self.fit_to_line).pack(side=tk.LEFT, padx=(10, 0))
 
     def _cut_editor(self, body):
         """A Cut step (or an FFT panel's cut of its spectrum): keep or remove
@@ -913,8 +917,11 @@ class Plotter(tk.Tk):
             for entry in self.fit_entries:
                 entry["state"] = "normal" if step.advanced else "disabled"
             self.degree_box["state"] = "disabled" if step.advanced else "normal"
-            values = ", ".join(f"{name} = {value:.6g}" for name, value in found or ())
-            self.fit_result["text"] = values if step.advanced else ""
+            self.fit_only.set(step.only)
+            if step.kind == "fit":
+                self.fit_options.pack(anchor=tk.W, pady=(6, 0))
+            else:
+                self.fit_options.pack_forget()
 
     def _read_step(self, step):
         """`step` with its editor's settings; boxes that don't hold a number keep the old one."""
@@ -948,7 +955,8 @@ class Plotter(tk.Tk):
             function, start = self.fit_function.get().strip(), self.fit_start.get().strip()
         elif advanced and not function:  # just ticked: from the polynomial shown
             function = background.polynomial_text(degree)
-        return replace(step, degree=degree, advanced=advanced, function=function, start=start)
+        return replace(step, degree=degree, advanced=advanced, function=function, start=start,
+                       only=self.fit_only.get() if step.kind == "fit" else step.only)
 
     def _set_step(self, l, index, step):
         l.steps = l.steps[:index] + (step,) + l.steps[index + 1:]
@@ -995,6 +1003,28 @@ class Plotter(tk.Tk):
         self._set_step(l, l.step, replace(l.chosen, on=self.step_on.get()))
         self._steps_changed(before)
 
+    def fit_to_line(self):
+        """Move the chosen Fit curve to a line of its own under this one: a copy
+        of the line with its steps up to the fit, the fit drawn instead of the
+        data, dashed. The line it came from goes back to its data.
+
+        Linked panels get a line too, as with + (add_line), the fit moved
+        wherever their line has the same steps."""
+        l = self.panel.line
+        if l.chosen is None or l.chosen.kind != "fit" or self._spectrum_row():
+            return
+        at, k, steps = self.panel.selected + 1, l.step, l.steps
+        for lines in self._group_lists(self.selected):
+            old = lines[at - 1]
+            new = old.copy()
+            new.colour, new.label, new.style = None, None, "--"
+            if old.steps == steps:
+                new.steps, new.step = steps[:k] + (replace(steps[k], only=True),), k
+                old.steps, old.step = steps[:k] + steps[k + 1:], max(0, k - 1)
+            lines.insert(at, new)
+        self._set_selected_line(self.selected, at)
+        self._redraw_selected("x", "x")
+
     def _steps_changed(self, before):
         """After the selected line's steps changed from `before`: pass them on
         through links and redraw, keeping the zoom where the data stays put."""
@@ -1016,7 +1046,7 @@ class Plotter(tk.Tk):
             return "", ""
         if self.panel.derived:  # any change reshapes a spectrum or derivative
             return "x", "x"
-        unfitted = lambda steps: [s for s in steps if s.kind != "fit"]
+        unfitted = lambda steps: [s for s in steps if not overlay(s)]
         return ("xy" if unfitted(before) == unfitted(after) else "x"), "x"
 
     def _show_cuts(self):
@@ -1741,6 +1771,8 @@ class Plotter(tk.Tk):
                         step = replace(step, span=smoothing.span_for(x, step.window))
                         l.steps = l.steps[:j] + (step,) + l.steps[j + 1:]
                     y = smoothing.smooth(x, y, *step.smoothing)
+                elif step.only:  # the line becomes the fit
+                    y, found[j] = background.apply(x, y, *step.fitting)
                 elif not fit_error:  # a fit curve; after one fails, the rest wait
                     try:
                         fitted, found[j] = background.apply(x, y, *step.fitting)

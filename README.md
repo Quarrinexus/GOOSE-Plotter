@@ -160,6 +160,12 @@ stay until it's done or cancelled.
     Smooth, then Fit curve `A * sin(B * x + C) + D` to the oscillation left.
     Fit curves are drawn on data panels only, not on their FFT or derivative.
     If its fit fails, the reason shows in red and the line is still drawn.
+    Tick **Show only fit** to draw the fit instead of the data: the line
+    then *is* its fit, in its FFT and Measure too, and the steps after it
+    work on the fit. **Make fit new line** moves the fit to a line of its
+    own under this one (a copy of it, with its steps up to the fit and Show
+    only fit ticked, dashed), and this line goes back to its data; the new
+    line is styled, named and linked like any other.
 
   Subtract and Fit curve have **Advanced Fitting**: tick it to fit a
   function of your own instead of the polynomial. Greyed out, the **y =**
@@ -170,8 +176,7 @@ stay until it's done or cancelled.
   is a power, and the Function boxes' functions (`exp`, `log`, `sin`, ...)
   and `pi` work. Every unknown starts at 1 unless **Start** gives it a
   value, e.g. `B=314, C=0`; a frequency or decay rate needs one close to the
-  answer, or the fit settles on the wrong one. The values found show under
-  the boxes. Untick it to go back to the polynomial; the function is kept
+  answer, or the fit settles on the wrong one. Untick it to go back to the polynomial; the function is kept
   for when it's ticked again. For a high-degree polynomial leave it
   unticked: typed out as powers of x, degree 15 or more can't be fitted as
   precisely as Polynomial degree fits it.
@@ -185,7 +190,7 @@ stay until it's done or cancelled.
 
   Sessions saved before steps open with each line's old settings as steps,
   in the order they were done: cut, despike, background, smoothing (a Show
-  fit becomes a Fit curve).
+  fit becomes a Fit curve with Show only fit ticked).
 - **Line editor**: the box under + and -, which shows the selected line's
   look, opens it. **Colour** (drag in the field and the brightness strip;
   **Automatic** goes back to the colour map's; **Colour Maps** picks the map

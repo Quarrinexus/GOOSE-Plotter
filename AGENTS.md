@@ -86,6 +86,13 @@ mirror. If that folder isn't around this repo, use whatever data folder
    - fit (`background.apply` in "fit" mode): kept as a **curve**, the data
      passing on unchanged. A fit that fails is returned as the "fit error"
      rather than raised, so the line is still drawn and `Line.error` says why.
+     With `Step.only` (Show only fit) the fit replaces the data instead, like
+     a subtract (and fails like one): the line is its fit everywhere, FFT and
+     Measure included, and draws no curve. `model.overlay(step)` is "a fit
+     curve drawn over its line", what `fit_curves`, `legend_labels` and
+     `_zoom_kept` leave out of the line's data. `fit_to_line` (Make fit new
+     line) moves the chosen fit to a copy of the line, steps up to the fit,
+     `only` ticked, as `add_line` does across linked panels.
    What steps found (spikes removed, fit values) is `Line.found`, one entry
    per step, not saved.
 3. in a derived panel only, `spectrum.spectrum` or `derivative.derivative` of
@@ -282,7 +289,8 @@ each a `Step` built field by field) and `Step.cuts`. `dump` writes steps as
 a list of objects. Before format 10 a line had fixed fields (`cut`, `cuts`,
 `despike*`, `background`, `degree`, `advanced`, `fit_*`, `smooth`, `window`,
 `in_x`, `span`, `order`, and Fit as new line's `fits_drawn` / `first_fit`);
-`_old_steps` turns them into steps in the order they were done. Session
+`_old_steps` turns them into steps in the order they were done, an old fit
+(Show fit, or a fit line's) as a Fit curve with `only`, as it drew. Session
 files' own marker (`KEY`, `VERSION`) went to 9 with steps, so an older
 plotter refuses them instead of misreading them.
 

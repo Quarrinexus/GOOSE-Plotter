@@ -186,11 +186,14 @@ def _old_steps(data):
                                                positive))))
 
     def fit_step(kind, fitting):
-        """A Subtract or Fit curve step from an old (mode, degree, function, start)."""
+        """A Subtract or Fit curve step from an old (mode, degree, function, start).
+        An old fit (Show fit, or a Fit as new line line's) was drawn instead of
+        the data, so it's `only`."""
         _, degree, function, start = fitting
+        only = kind == "fit"
         if degree is None:
-            return Step(kind, advanced=True, function=function, start=start)
-        return Step(kind, degree=degree)
+            return Step(kind, advanced=True, function=function, start=start, only=only)
+        return Step(kind, degree=degree, only=only)
     own = (background_mode, _old(data, "degree", (int,), 5, lambda v: v >= 0),
            _old(data, "fit_function", (str,), ""), _old(data, "fit_start", (str,), ""))
     if data.get("advanced") is True:

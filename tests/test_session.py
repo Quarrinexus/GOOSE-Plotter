@@ -110,9 +110,10 @@ def test_before_format_10_settings_become_steps_in_the_old_order():
                             Step("subtract", advanced=True, function="A + B * x", start="B=2"),
                             Step("smooth", method="median", window=41, in_x=True, span=0.01))
     assert loaded.found == ()
-    # Show fit: a fit curve where the background was; nothing on: no steps.
+    # Show fit: a fit drawn instead of the data, where the background was;
+    # nothing on: no steps.
     shown = session.load(old(8, background="fit", degree=3))[2][(0, 0)].lines[0]
-    assert shown.steps == (Step("fit", degree=3),)
+    assert shown.steps == (Step("fit", degree=3, only=True),)
     assert session.load(old(8, cut="", smooth=""))[2][(0, 0)].lines[0].steps == ()
 
 

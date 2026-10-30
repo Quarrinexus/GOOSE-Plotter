@@ -88,6 +88,8 @@ ZH = {
     "none": "无",
     "(off)": "（关）",
     "Cut spectrum (F)": "截取频谱（F）",
+    "Show only fit": "只显示拟合",
+    "Make fit new line": "将拟合设为新曲线",
     "Step {n}: {kind}": "第 {n} 步：{kind}",
     "done top to bottom; drag to reorder": "从上到下进行；拖动可调整顺序",
     "No steps: Add step cuts, despikes, subtracts, smooths or fits a curve to the line.":
