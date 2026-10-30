@@ -493,6 +493,7 @@ def test_tab_order(app):
     menu = app.add_menu
     assert [menu.entrycget(i, "label") for i in range(menu.index("end") + 1)] == [
         "Cut", "Despike", "Smooth", "Fit curve", "Subtract"]
+    assert app.step_list.list["height"] == 4  # rows; more scroll
 
 
 def test_advanced_fitting_fits_the_typed_function(app):
@@ -709,7 +710,8 @@ def test_despike_turns_spikes_into_gaps(app):
     assert np.isnan(y[[1000, 3000]]).all() and np.isfinite(y).sum() == len(y) - 2
     assert line.found == (2,) and app.despike_found["text"] == "2 points removed"
     assert app.filename.get().endswith("_ds5-21.png")
-    assert "despiked" in app.line_list.get(0)
+    assert "despiked 5 sigma/21" in app.line_list.get(0)  # Tk's fonts can't draw σ
+    assert app.step_list.list.get(0).endswith("despiked 5 sigma/21")
     app.despike_threshold.set("0")  # refused: the last good one stays
     app.apply_controls()
     assert line.chosen.threshold == 5

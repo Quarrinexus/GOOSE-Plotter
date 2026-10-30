@@ -356,7 +356,7 @@ window. So:
   as a product, by request; capital-letter names are the unknowns.
 - **Drawn icons and triangles**, not Unicode arrows: Tk's X core fonts can
   show them as '®'. The same goes for text: in Tk widgets − (minus), – (en
-  dash) and → show as '®' and Δ as '∈'. matplotlib draws them fine, so plot
+  dash) and → show as '®', Δ as '∈' and σ as '¢'. matplotlib draws them fine, so plot
   text keeps them and anything Tk shows goes through `plain()` in
   `plotter.py`, or is written in ASCII (the "Savitzky-Golay" method name).
   `·` and `×` are fine.

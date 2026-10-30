@@ -645,7 +645,7 @@ class StepList(ttk.Frame):
     `fixed` on (an FFT panel's spectrum cut, after the steps) can be chosen
     but not moved, nor moved past. Width 1: it takes the column's width."""
 
-    def __init__(self, parent, on_choose, on_move, height=6):
+    def __init__(self, parent, on_choose, on_move, height=4):
         super().__init__(parent)
         self.on_choose, self.on_move = on_choose, on_move
         self.list = tk.Listbox(self, height=height, width=1, exportselection=False,

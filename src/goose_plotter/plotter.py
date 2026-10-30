@@ -41,7 +41,8 @@ PARTNER = "#f0c987"  # frame around the panel locked to the selected one
 
 # Tk's X core fonts show these as '®' or the wrong symbol, though matplotlib
 # draws them fine; plain() swaps them for ASCII in text Tk shows.
-PLAIN = str.maketrans({"\u2212": "-", "\u2013": "-", "\u0394": "d", "\u2192": "->"})
+PLAIN = str.maketrans({"\u2212": "-", "\u2013": "-", "\u0394": "d", "\u2192": "->",
+                       "\u03c3": " sigma"})
 
 
 def plain(text):
