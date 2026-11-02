@@ -37,36 +37,29 @@ def test_fft_panel_finds_the_oscillation(app):
     assert app.panels[(1, 0)].source == (0, 0)
 
 
-def test_splicing_keeps_and_removes_several_ranges(app):
+def test_cut_steps_each_remove_one_range(app):
     plot(app)
-    add_step(app, "cut")
-    app.cut_mode.set(splicing.MODES["remove"])
-    app.apply_controls()
     for start, end in (("10", "12"), ("20", "22")):
+        add_step(app, "cut")
         app.cut_from.set(start)
         app.cut_to.set(end)
-        app.add_cut()
+        app.add_cut()  # as Enter in the boxes does
     x, _ = drawn(app)
     finite = x[np.isfinite(x)]
     assert not np.any((finite >= 10) & (finite <= 12) | (finite >= 20) & (finite <= 22))
     assert np.isnan(x).any()  # gaps, not joins
-    assert app.cut_list.get(0, "end") == ("x 10 to 12", "x 20 to 22")
-    assert app.cut_list["height"] == 3  # rows; more scroll
-    # One mode for every range.
-    app.cut_mode.set(splicing.MODES["keep"])
-    app.apply_controls()
-    x, _ = drawn(app)
-    assert np.all((x >= 10) & (x <= 12) | (x >= 20) & (x <= 22))
-    assert app.filename.get().endswith("_x10-12_20-22.png")
+    assert [s.cuts for s in app.panel.line.steps] == [((10.0, 12.0),), ((20.0, 22.0),)]
+    assert app.step_list.list.get(0) == "1  Cut  without x 10-12"
+    assert app.filename.get().endswith("_no10-12_no20-22.png")
+    # Just the boxes and Pick: no mode, no list of ranges.
+    assert not app.cut_mode_box.winfo_manager() and not app.cut_list_row.winfo_manager()
+    assert buttons(app.editors["cut"]) == ["Pick"]
 
 
-def test_a_kept_range_sets_the_fft_resolution(app):
+def test_cutting_both_ends_sets_the_fft_resolution(app):
     plot(app, x_fn="1/x")
-    add_step(app, "cut")  # keeps its ranges to start with
-    app.cut_from.set("0.05")
-    app.cut_to.set("0.15")
-    app.add_cut()
-    assert cutting(app.panel.line) == ("keep", ((0.05, 0.15),))
+    add_step(app, "cut", cuts=((None, 0.05),))
+    add_step(app, "cut", cuts=((0.15, None),))  # left: 0.05 to 0.15
     app.new_derived_panel("fft")
     assert app.axes[(1, 0)].get_title().endswith("ΔF 10")
 
@@ -104,25 +97,27 @@ def test_splicing_an_fft_cuts_its_spectrum_in_f(app):
     assert fft.cuts == ()
 
 
-def test_editing_picking_and_deleting_ranges(app):
+def test_typing_picking_and_clearing_a_cut(app):
     plot(app)
     add_step(app, "cut")
     app.cut_from.set("5")
     app.cut_to.set("6")
     app.add_cut()
+    assert app.panel.line.chosen.cuts == ((5.0, 6.0),)
     app.cut_from.set("5.5")
-    app.add_cut(replace=True)  # Enter changes the chosen range
+    app.add_cut()  # Enter changes it
     assert app.panel.line.chosen.cuts == ((5.5, 6.0),)
     app.pick_range("cut")
-    app._use_range(20.0, 25.0)
-    assert app.panel.line.chosen.cuts == ((5.5, 6.0), (20.0, 25.0))
-    app.cut_index = 0
-    app.delete_cut()
+    app._use_range(20.0, 25.0)  # a pick takes its place
     assert app.panel.line.chosen.cuts == ((20.0, 25.0),)
+    assert (app.cut_from.get(), app.cut_to.get()) == ("20", "25")
+    app.cut_from.set("abc")
+    app.add_cut()
+    assert "isn't a number" in app.status["text"]
     app.cut_from.set("")
     app.cut_to.set("")
-    app.add_cut()
-    assert "at least one end" in app.status["text"]
+    app.add_cut()  # both ends blank: no range
+    assert app.panel.line.chosen.cuts == () and app.panel.line.chosen.cutting is None
 
 
 def test_a_cut_in_the_old_x_is_cleared(app):
@@ -144,13 +139,10 @@ def test_a_cut_in_the_old_x_is_cleared(app):
     assert app.panel.line.steps[0].cuts == ()
 
 
-def test_a_cut_range_with_no_points_explains_itself(app):
+def test_cutting_out_every_point_explains_itself(app):
     plot(app, x_fn="1/x")
-    add_step(app, "cut")
-    app.cut_from.set("5")
-    app.cut_to.set("9")  # in T, while x is 1/B
-    app.add_cut()
-    assert app.error_label["text"].startswith("Splicing error: there are no points")
+    add_step(app, "cut", cuts=((None, 1.0),))  # all of 1/B is under 1
+    assert app.error_label["text"].startswith("Splicing error: removing x")
 
 
 def test_links_share_what_they_tick(app):
@@ -170,7 +162,7 @@ def test_links_share_what_they_tick(app):
     app.cut_from.set("5")
     app.cut_to.set("9")
     app.add_cut()
-    assert cutting(other) == ("keep", ((5.0, 9.0),))
+    assert cutting(other) == ("remove", ((5.0, 9.0),))
     app.add_line()
     assert len(app.panels[(0, 1)].lines) == 2  # lines stay paired
 
@@ -186,10 +178,12 @@ def test_derived_panels_follow_every_setting(app):
     app.add_cut()
     add_step(app, "smooth", method="median")
     derived = app.panels[(1, 0)].lines[0]
-    assert cutting(derived) == ("keep", ((5.0, 9.0),))
+    assert cutting(derived) == ("remove", ((5.0, 9.0),))
     assert [s.method for s in steps_of(derived, "smooth")] == ["median"]
-    x, _ = drawn(app, (1, 0))
-    assert x.min() >= 5 and x.max() <= 9
+    x, _ = drawn(app)  # the data panel's gap; the derivative's even grid spans it
+    finite = x[np.isfinite(x)]
+    assert len(finite) and not np.any((finite > 5) & (finite < 9))
+    assert len(drawn(app, (1, 0))[0])
 
 
 def buttons(widget):
@@ -441,10 +435,11 @@ def test_undo_one_step(app):
     app.cut_from.set("5")
     app.cut_to.set("9")
     app.add_cut()
-    app.cut_index = 0
-    app.delete_cut()
+    app.cut_from.set("")
+    app.cut_to.set("")
+    app.add_cut()  # cleared
     app.undo()
-    assert cutting(app.panel.line) == ("keep", ((5.0, 9.0),))
+    assert cutting(app.panel.line) == ("remove", ((5.0, 9.0),))
     app.undo()
     assert app.status["text"] == "Nothing to undo."
 
@@ -467,7 +462,7 @@ def test_session_save_and_open(app, tmp_path):
     app.open_session(path)
     assert app.cols == 2
     line = app.panels[(0, 0)].lines[0]
-    assert cutting(line) == ("keep", ((5.0, 9.0),))
+    assert cutting(line) == ("remove", ((5.0, 9.0),))
     assert line.steps[1].fitting == ("fit", None, "A + B * x", "")
 
 
@@ -727,9 +722,12 @@ def test_fit_lines_and_old_settings_load_as_steps(app, tmp_path):
     path.write_text(json.dumps(old))
     app.open_session(path)
     data, fit = app.panel.lines
-    assert [s.kind for s in data.steps] == ["cut", "despike", "subtract", "smooth"]
-    assert data.steps[0].cutting == ("keep", ((0.05, 0.2),)) and data.steps[1].spike_window == 31
-    assert data.steps[2].fitting == ("subtract", 4, "", "") and data.steps[3].method == "median"
+    # The kept range: everything either side of it cut out.
+    assert [s.kind for s in data.steps] == ["cut", "cut", "despike", "subtract", "smooth"]
+    assert [s.cutting for s in data.steps[:2]] == [("remove", ((None, 0.05),)),
+                                                    ("remove", ((0.2, None),))]
+    assert data.steps[2].spike_window == 31
+    assert data.steps[3].fitting == ("subtract", 4, "", "") and data.steps[4].method == "median"
     assert [s.kind for s in fit.steps] == ["subtract", "smooth", "fit"]
     assert fit.steps[2].fitting == ("fit", None, "A * sin(B * x + C)", "B=314")
     assert fit.steps[2].only  # drawn instead of its data, as it was

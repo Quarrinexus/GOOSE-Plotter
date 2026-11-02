@@ -8,7 +8,7 @@ from goose_plotter import session
 from goose_plotter.model import (SYNC, Line, Link, Panel, Step, curve_colours, legend_labels,
                                  line_colours)
 
-STEPS = (Step("cut", cut="remove", cuts=((0.1, 0.2), (0.3, None))),
+STEPS = (Step("cut", cuts=((0.3, None),)),
          Step("subtract", degree=4), Step("smooth", window=31),
          Step("fit", advanced=True, function="A * sin(B * x)", start="B=314", on=False))
 
@@ -47,7 +47,7 @@ def test_bad_values_are_dropped_not_fatal():
     dumped["panels"]["0,0"]["legend"] = "centre stage"
     loaded = session.load(dumped)[2][(0, 0)]
     cut, _, smooth, _ = loaded.lines[0].steps
-    assert (smooth.method, smooth.window, cut.cut) == ("savgol", 21, "keep")
+    assert (smooth.method, smooth.window, cut.cut) == ("savgol", 21, "remove")
     assert len(loaded.lines[0].steps) == 4 and loaded.legend == "auto"
 
 
@@ -77,20 +77,40 @@ def old(fmt, **line):
                                "lines": [{"run": "r.005", **line}]}}}
 
 
+def removes(*ranges):
+    """Cut steps removing each of `ranges`, as a Keep of what's between them becomes."""
+    return tuple(Step("cut", cuts=(r,)) for r in ranges)
+
+
+def test_cut_steps_become_one_removed_range_each():
+    """Steps saved before Cut steps were one Remove each: a Keep becomes
+    Removes of what's outside it, several ranges a step per range."""
+    panels, links = state()
+    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
+    dumped["panels"]["0,0"]["lines"][0]["steps"] = [
+        {"kind": "cut", "cut": "keep", "cuts": [[0.1, 0.2]], "on": False},
+        {"kind": "smooth"},
+        {"kind": "cut", "cut": "remove", "cuts": [[1, 2], [3, 4]]}]
+    steps = session.load(dumped)[2][(0, 0)].lines[0].steps
+    assert steps == (Step("cut", cuts=((None, 0.1),), on=False),
+                     Step("cut", cuts=((0.2, None),), on=False), Step("smooth"),
+                     *removes((1.0, 2.0), (3.0, 4.0)))
+
+
 def test_format_5_single_cut_becomes_one_range():
     loaded = session.load(old(5, cut="keep", cut_from=0.5, cut_to=0.2))[2][(0, 0)].lines[0]
-    assert loaded.steps == (Step("cut", cut="keep", cuts=((0.2, 0.5),)),)
+    assert loaded.steps == removes((None, 0.2), (0.5, None))  # kept 0.2 to 0.5
 
 
-@pytest.mark.parametrize("cut, cuts, wanted", [
-    ("", [], ((0.2, 0.5),)),
-    ("keep", [[0.1, 0.3], [0.4, None]], ((0.2, 0.3), (0.4, 0.5))),
-    ("remove", [[0.3, 0.4]], ((0.2, 0.3), (0.4, 0.5))),
+@pytest.mark.parametrize("cut, cuts, wanted", [  # wanted: what's removed, as one range each
+    ("", [], removes((None, 0.2), (0.5, None))),
+    ("keep", [[0.1, 0.3], [0.4, None]], removes((None, 0.2), (0.3, 0.4), (0.5, None))),
+    ("remove", [[0.3, 0.4]], removes((None, 0.2), (0.3, 0.4), (0.5, None))),
 ])
 def test_format_6_fit_range_becomes_a_cut(cut, cuts, wanted):
     loaded = session.load(old(6, background="subtract", fit_from=0.5, fit_to=0.2, cut=cut,
                               cuts=cuts))[2][(0, 0)].lines[0]
-    assert loaded.steps == (Step("cut", cut="keep", cuts=wanted), Step("subtract"))
+    assert loaded.steps == wanted + (Step("subtract"),)
 
 
 def test_format_6_fit_range_is_ignored_with_the_background_off():
@@ -105,7 +125,7 @@ def test_before_format_10_settings_become_steps_in_the_old_order():
                 fit_function="A + B * x", fit_start="B=2", fit_values=[["A", 1]],
                 smooth="median", window=41, in_x=True, span=0.01)
     loaded = session.load(old(9, **line))[2][(0, 0)].lines[0]
-    assert loaded.steps == (Step("cut", cuts=((0.1, 0.2),)),
+    assert loaded.steps == removes((None, 0.1), (0.2, None)) + (
                             Step("despike", spike_window=31, threshold=4.5),
                             Step("subtract", advanced=True, function="A + B * x", start="B=2"),
                             Step("smooth", method="median", window=41, in_x=True, span=0.01))
@@ -181,7 +201,7 @@ def test_legend_names_only_what_differs():
     base = ("r.005", "B", "x", "M006_AH", "y")
     cut = Step("cut", cuts=((1.0, 2.0),))
     lines = [Line(shown=base + ((),)), Line(shown=base + ((cut,),))]
-    assert legend_labels(lines) == ["M006_AH", "M006_AH · x 1–2"]
+    assert legend_labels(lines) == ["M006_AH", "M006_AH · without x 1–2"]
     lines[1].shown = ("r.003",) + base[1:] + ((),)
     assert legend_labels(lines) == ["run 005", "run 003"]
     lines[1].shown = base + ((Step("despike"),),)
@@ -250,4 +270,4 @@ def test_changing_x_clears_every_x_unit_setting():
     line.clear_x_units()
     smooth, cut = line.steps
     assert (smooth.span, cut.cuts) == (None, ())
-    assert cut.cutting is None and cut.cut == "keep"  # the mode stays for new ranges
+    assert cut.cutting is None and cut.cut == "remove"

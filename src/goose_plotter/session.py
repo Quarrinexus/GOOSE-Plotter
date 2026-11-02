@@ -6,7 +6,7 @@ import math
 from goose_plotter import background, measure, smoothing, spectrum, splicing
 from goose_plotter.model import (GRID_AXES, GRID_STYLES, GRIDS, KINDS, LEGENDS, MARKERS,
                                  OPERATIONS, STYLES, SYNC, Line, Link, Panel, Step,
-                                 tidy_data_view)
+                                 one_range_cuts, tidy_data_view)
 from goose_plotter.widgets import MAX_GRID
 
 # 2: derived panels have their own lines, in their data panel's link group.
@@ -135,7 +135,15 @@ def _build(cls, data, **extra):
 
 def _line(data, fmt=FORMAT):
     """A Line from `dump`'s data; before format 10 its processing was fixed
-    fields, made into steps by `_old_steps`. Before 9 its style could be "auto"."""
+    fields, made into steps by `_old_steps`. Before 9 its style could be "auto".
+    Cut steps could keep ranges, or hold several, until they were one Remove
+    each; `one_range_cuts` makes them so, whatever the format."""
+    line = _line_as_saved(data, fmt)
+    line.steps = one_range_cuts(line.steps)
+    return line
+
+
+def _line_as_saved(data, fmt):
     if isinstance(data, dict) and data.get("style") == "auto":
         # The old automatic style: dashed for a shown fit, else solid.
         data = {**data, "style": "--" if data.get("background") == "fit" else "-"}

@@ -72,10 +72,14 @@ mirror. If that folder isn't around this repo, use whatever data folder
    ranges). One `Step` class holds every kind's settings (`kind`: "cut",
    "despike", "subtract", "smooth", "fit"), and gives the tuples the
    calculation modules take (`cutting`, `despiking`, `fitting`, `smoothing`):
-   - cut (`splicing.cut`): Kept, the rows in none of its ranges are dropped;
-     removed, the rows in any turn to NaN in x and y, so it's drawn as a gap
-     and fits and x-unit windows leave it out (SG in points still
-     interpolates across it, as across any NaN)
+   - cut (`splicing.cut`, "remove"): one range per step; the rows in it turn
+     to NaN in x and y, so it's drawn as a gap and fits and x-unit windows
+     leave it out (SG in points still interpolates across it, as across any
+     NaN). Cut steps once kept ranges or held several; `session._line` turns
+     any such into one Remove step per range (`model.one_range_cuts`, a Keep
+     as `splicing.gaps` of it). Only an FFT panel's spectrum cut (`Panel.cut`
+     / `cuts`) still keeps or removes several ranges, so the Cut editor shows
+     its mode, Add / Delete and range list just for it (`_show_cut_editor`).
    - despike (`despike.despike`): spikes turn to NaN in x and y, like a
      removed cut
    - subtract (`background.apply` in "subtract" mode): the polynomial, or with

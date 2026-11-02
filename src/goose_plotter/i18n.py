@@ -142,7 +142,7 @@ ZH = {
     "x {start} to {end}": "x {start} 至 {end}",
     "cut before fits, smoothing and FFT": "在拟合、平滑和 FFT 之前截取",
     "on an FFT: cuts the spectrum, in F": "FFT 面板上：按 F 截取频谱",
-    "'{text}' isn't a number.": "“{text}”不是数字。",
+    "'{entry}' isn't a number.": "“{entry}”不是数字。",
     "Type at least one end of the range.": "请至少输入区间的一端。",
     "Keeping the range; choose Remove ranges to cut it out instead.":
         "已保留该区间；若要去除它，请选择“去除区间”。",

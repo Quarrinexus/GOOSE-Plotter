@@ -46,8 +46,8 @@ class Step:
     was, or with `only` puts the fit in the data's place, so the line is its fit."""
     kind: str = "smooth"  # a key of KINDS
     on: bool = True
-    cut: str = "keep"  # cut: a key of splicing.MODES (not ""), for all the ranges
-    cuts: tuple = ()  # cut: x ranges, (start, end) pairs as splicing.tidy makes them
+    cut: str = "remove"  # cut: what it does to its range; "keep" only in old sessions
+    cuts: tuple = ()  # cut: its x range, a (start, end) pair as splicing.tidy makes it; () for none
     spike_window: int = 21  # despike: points around each one, for its median
     threshold: float = 5.0  # despike: how many local spreads off it makes a spike
     degree: int = 5  # subtract, fit: of the polynomial
@@ -171,6 +171,20 @@ class Line:
         run, x, x_fn, y, y_fn, steps = self.shown
         return (run, file_part(y_fn, y), file_part(x_fn, x),
                 tuple(s for s in steps if s.active))
+
+
+def one_range_cuts(steps):
+    """`steps` with every Cut step removing one range, as the Cut editor makes
+    them: a Keep becomes Removes of what's outside its ranges (`splicing.gaps`),
+    and a step with several ranges one step per range, in their place."""
+    out = []
+    for s in steps:
+        if s.kind != "cut" or (s.cut == "remove" and len(s.cuts) <= 1):
+            out.append(s)
+            continue
+        ranges = splicing.gaps(s.cuts, None, None) if s.cut == "keep" and s.cuts else s.cuts
+        out += [replace(s, cut="remove", cuts=(r,)) for r in ranges] or [replace(s, cut="remove")]
+    return tuple(out)
 
 
 def without_x_units(steps):

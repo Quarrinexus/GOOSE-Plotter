@@ -52,9 +52,9 @@ def plain(text):
 # How long after a spinbox arrow's last step the change is applied, see _soon.
 SPIN_PAUSE = 250  # ms
 
-# Where the Process tab's notes wrap: inside the column in Chinese too, whose
+# Where notes in the controls column wrap: inside it in Chinese too, whose
 # 16 px song ti makes it narrower than in English.
-STEP_WRAP = 270
+WRAP = 270
 
 
 class LineError(Exception):
@@ -323,7 +323,7 @@ class Plotter(tk.Tk):
         place_buttons()
         axis_boxes.bind("<Configure>", place_buttons, add="+")
         # Why the selected line isn't drawn; shown only when it isn't.
-        self.error_label = ttk.Label(controls, foreground=theme.ERROR, wraplength=300)
+        self.error_label = ttk.Label(controls, foreground=theme.ERROR, wraplength=WRAP)
         self.axes_block = axes
 
         # The rest is in tabs, one shown at a time, so the column stays short.
@@ -641,8 +641,6 @@ class Plotter(tk.Tk):
 
     # --- steps ------------------------------------------------------------
 
-    CUT_MODES = {k: v for k, v in splicing.MODES.items() if k}  # a Cut step is always on
-
     def _steps_box(self, parent):
         """The Process tab: the selected line's steps in the order they're done
         (drag one to move it), buttons to add, remove and turn one off, and
@@ -680,7 +678,7 @@ class Plotter(tk.Tk):
             self.editors[kind] = ttk.Frame(holder)
             build(self.editors[kind])
         self.editors["subtract"] = self.editors["fit"]  # the same boxes; see _show_step
-        self.no_steps = ttk.Label(holder, foreground=theme.HINT, wraplength=STEP_WRAP,
+        self.no_steps = ttk.Label(holder, foreground=theme.HINT, wraplength=WRAP,
                                   text=tr("No steps: Add step cuts, despikes, subtracts, "
                                           "smooths or fits a curve to the line."))
 
@@ -805,17 +803,17 @@ class Plotter(tk.Tk):
                    command=self.fit_to_line).pack(side=tk.LEFT, padx=(10, 0))
 
     def _cut_editor(self, body):
-        """A Cut step (or an FFT panel's cut of its spectrum): keep or remove
-        some x ranges, typed or picked."""
-        self.cut_mode = tk.StringVar(value=shown(self.CUT_MODES, "keep"))
+        """A Cut step: the one x range it removes, typed or picked. Or an FFT
+        panel's cut of its spectrum, which also has a mode (keep or remove)
+        and any number of ranges, in a list; those widgets only show for it."""
+        self.cut_mode = tk.StringVar(value=shown(splicing.MODES, ""))
         self.cut_from, self.cut_to = tk.StringVar(), tk.StringVar()
-        self.cut_index = None  # the range chosen in the list, which Enter changes
-        self.cut_owner = None  # what the list was last filled from
+        self.cut_index = None  # the spectrum's range chosen in the list, which Enter changes
+        self.cut_owner = None  # what the boxes were last filled from
         self.cut_mode_box = ttk.Combobox(body, textvariable=self.cut_mode, state="readonly",
-                                         width=14, values=menu(self.CUT_MODES))
-        self.cut_mode_box.pack(anchor=tk.W, pady=(4, 0))
+                                         width=14, values=menu(splicing.MODES))
         self.cut_mode_box.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
-        row = ttk.Frame(body)
+        row = self.cut_boxes = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text="x").pack(side=tk.LEFT)
         start = ttk.Entry(row, textvariable=self.cut_from, width=7)
@@ -831,14 +829,12 @@ class Plotter(tk.Tk):
         buttons = ttk.Frame(body)
         buttons.pack(fill=tk.X, pady=(6, 0))
         buttons.columnconfigure((0, 1, 2), weight=1, uniform="cut")
-        for i, (text, command) in enumerate((("Add", self.add_cut),
-                                             ("Pick", lambda: self.pick_range("cut")),
-                                             ("Delete", self.delete_cut))):
-            ttk.Button(buttons, text=tr(text), width=1, command=command).grid(
-                row=0, column=i, sticky="ew", padx=(0 if i == 0 else 6, 0))
-        # The ranges. Width 1: the list takes the room the column leaves it.
-        row = ttk.Frame(body)
-        row.pack(anchor=tk.W, fill=tk.X, pady=(6, 0))
+        self.cut_buttons = {text: ttk.Button(buttons, text=tr(text), width=1, command=command)
+                            for text, command in (("Add", self.add_cut),
+                                                  ("Pick", lambda: self.pick_range("cut")),
+                                                  ("Delete", self.delete_cut))}
+        # The spectrum's ranges. Width 1: the list takes the room the column leaves it.
+        row = self.cut_list_row = ttk.Frame(body)
         # Plain text, so the chosen row in the theme's colours (the Lines list
         # picks each row's own foreground instead).
         self.cut_list = tk.Listbox(row, height=3, width=1, exportselection=False,
@@ -893,9 +889,7 @@ class Plotter(tk.Tk):
         l = self.panel.line
         found = l.found[l.step] if step is not None and l.step < len(l.found) else None
         if step is None or step.kind == "cut":
-            modes = splicing.MODES if step is None else self.CUT_MODES
-            self.cut_mode_box["values"] = menu(modes)
-            self.cut_mode.set(shown(modes, self.panel.cut if step is None else step.cut))
+            self._show_cut_editor(spectrum=step is None)
             self._show_cuts()
         elif step.kind == "despike":
             self.despike_window.set(step.spike_window)
@@ -938,7 +932,7 @@ class Plotter(tk.Tk):
                 return old
             return value if ok(value) else old
         if step.kind == "cut":
-            return replace(step, cut=key_of(self.CUT_MODES, self.cut_mode.get()) or step.cut)
+            return step  # its range is set by add_cut
         if step.kind == "despike":
             return replace(step, spike_window=max(3, number(self.despike_window, int,
                                                             step.spike_window)),
@@ -1055,10 +1049,35 @@ class Plotter(tk.Tk):
         unfitted = lambda steps: [s for s in steps if not overlay(s)]
         return ("xy" if unfitted(before) == unfitted(after) else "x"), "x"
 
+    def _show_cut_editor(self, spectrum):
+        """The Cut editor for a Cut step (x boxes and Pick), or for an FFT
+        panel's spectrum (its mode, Add and Delete, and the list as well)."""
+        widgets = ({"Add": (0, 0), "Pick": (1, 6), "Delete": (2, 6)} if spectrum
+                   else {"Pick": (0, 0)})
+        for text, button in self.cut_buttons.items():
+            if text in widgets:
+                column, pad = widgets[text]
+                button.grid(row=0, column=column, sticky="ew", padx=(pad, 0))
+            else:
+                button.grid_remove()
+        if spectrum:
+            self.cut_mode.set(shown(splicing.MODES, self.panel.cut))
+            self.cut_mode_box.pack(anchor=tk.W, pady=(4, 0), before=self.cut_boxes)
+            self.cut_list_row.pack(anchor=tk.W, fill=tk.X, pady=(6, 0))
+        else:
+            self.cut_mode_box.pack_forget()
+            self.cut_list_row.pack_forget()
+
     def _show_cuts(self):
-        """Fill the cut list with the chosen Cut step's ranges (an FFT panel's
-        spectrum's), and the boxes with the chosen one."""
+        """Fill the boxes with the chosen Cut step's range; for an FFT panel's
+        spectrum, the list with its ranges and the boxes with the chosen one."""
         mode, cuts = self._cut_ranges()
+        if not self._spectrum_row():
+            start, end = cuts[0] if cuts else (None, None)
+            self.cut_owner, self.cut_index = None, None
+            self.cut_from.set("" if start is None else f"{start:.12g}")
+            self.cut_to.set("" if end is None else f"{end:.12g}")
+            return
         owner = (id(self.panel), self.panel.line.step)
         if owner != self.cut_owner:  # another step: start at its first range
             self.cut_owner, self.cut_index = owner, 0 if cuts else None
@@ -1110,7 +1129,7 @@ class Plotter(tk.Tk):
             except ValueError:
                 value = np.nan
             if value is not None and not np.isfinite(value):
-                self._say(tr("'{text}' isn't a number.", text=text), error=True)
+                self._say(tr("'{entry}' isn't a number.", entry=text), error=True)
                 return None
             ends.append(value)
         if ends == [None, None]:
@@ -1119,9 +1138,20 @@ class Plotter(tk.Tk):
         return tuple(ends)
 
     def add_cut(self, pair=None, replace=False):
-        """Add a range to the chosen Cut step (an FFT panel's spectrum cut):
-        `pair`, else the typed one. `replace`: in place of the range chosen in
-        the list (Enter), if there is one."""
+        """Set the chosen Cut step's range to `pair`, else the typed one (both
+        ends blank: none). For an FFT panel's spectrum cut, add it to its
+        ranges, or with `replace` (Enter) put it in place of the one chosen in
+        the list."""
+        if not self._spectrum_row():
+            if pair is None and not (self.cut_from.get().strip() or self.cut_to.get().strip()):
+                self._set_cuts(())
+            else:
+                pair = pair or self._typed_cut()
+                if pair is None:
+                    return
+                self._set_cuts(splicing.tidy([pair]))
+            self.apply_controls()
+            return
         pair = pair or self._typed_cut()
         if pair is None:
             return
@@ -1355,7 +1385,7 @@ class Plotter(tk.Tk):
         and the chosen link's settings. No toggle, as it has the Linking tab to itself."""
         body = ttk.Frame(parent)
         body.pack(anchor=tk.W, fill=tk.X, pady=(8, 0))
-        status = ttk.Label(body, foreground=theme.MUTED, wraplength=300)
+        status = ttk.Label(body, foreground=theme.MUTED, wraplength=WRAP)
         status.pack(anchor=tk.W, pady=(2, 0))
 
         # A tab per link, in a strip that scrolls sideways if they don't fit.
@@ -2603,7 +2633,7 @@ class Plotter(tk.Tk):
                           ("Clear", lambda: self.set_region(()))))
 
         # The readout: which line, then its numbers in the region, once it's drawn.
-        self.readout_line = ttk.Label(body, foreground=theme.MUTED, wraplength=300)
+        self.readout_line = ttk.Label(body, foreground=theme.MUTED, wraplength=WRAP)
         self.readout_line.pack(anchor=tk.W, pady=(8, 0))
         self.readout_table = ttk.Frame(body)
         self.readout_table.columnconfigure((1, 2), weight=1, uniform="readout")
@@ -2624,7 +2654,7 @@ class Plotter(tk.Tk):
         points.pack(fill=tk.X, pady=(8, 0))
         button_row(points, (("Read points", self.read_points), ("Clear points", self.clear_points)),
                    pady=0)
-        self.point_labels = [ttk.Label(points, wraplength=300) for _ in range(3)]
+        self.point_labels = [ttk.Label(points, wraplength=WRAP) for _ in range(3)]
 
         # An FFT's peaks, only on an FFT panel.
         self.peak_section = ttk.Frame(body)
@@ -2796,7 +2826,7 @@ class Plotter(tk.Tk):
             except ValueError:
                 value = np.nan
             if value is not None and not np.isfinite(value):
-                self._say(tr("'{text}' isn't a number.", text=text), error=True)
+                self._say(tr("'{entry}' isn't a number.", entry=text), error=True)
                 return None
             ends.append(value)
         return measure.tidy_region(ends)

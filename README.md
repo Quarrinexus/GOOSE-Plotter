@@ -121,16 +121,16 @@ stay until it's done or cancelled.
   any kind can be used any number of times, e.g. subtract a polynomial,
   smooth, then subtract again. The chosen step's settings show under the
   list. The kinds:
-  - **Cut**: give it any number of x ranges: type x ... to ... and **Add**,
-    or **Pick** one by dragging across the plot. **Keep ranges** cuts the
-    line to what's in any of them (e.g. the parts of a sweep with the
-    oscillations), **Remove ranges** cuts them all out (glitches, parked
-    stretches), leaving gaps. Click a range in the list to see it in the
-    boxes, where Enter changes it; **Delete** removes it. They're in the
-    plotted x, and a blank end means no limit. Everything after the cut
-    sees only what's left: an FFT of one kept range has its resolution, 1 /
-    (the range's width). To only zoom in, without cutting anything, type a
-    range in the axes editor instead.
+  - **Cut**: cuts one x range out of the line (a glitch, a parked
+    stretch), leaving a gap: type x ... to ... and press Enter, or **Pick**
+    it by dragging across the plot, which replaces the range there was.
+    It's in the plotted x, and a blank end means no limit, so to look at
+    only part of a sweep, cut out each side of it with a Cut step of its
+    own (up to the start, and from the end). Clear both boxes and press
+    Enter to cut nothing. Everything after the cut sees only what's left:
+    an FFT of what's left has its resolution, 1 / (the width it spans). To
+    only zoom in, without cutting anything, type a range in the axes editor
+    instead.
   - **Despike**: turns isolated glitches into gaps and leaves every other
     point as it is: a point is a spike when it's more than **Threshold**
     times the local spread (the median absolute deviation, as a standard
@@ -190,7 +190,8 @@ stay until it's done or cancelled.
 
   Sessions saved before steps open with each line's old settings as steps,
   in the order they were done: cut, despike, background, smoothing (a Show
-  fit becomes a Fit curve with Show only fit ticked).
+  fit becomes a Fit curve with Show only fit ticked). A cut that kept
+  ranges, or held several, opens as one Cut step per range it cuts out.
 - **Line editor**: the box under + and -, which shows the selected line's
   look, opens it. **Colour** (drag in the field and the brightness strip;
   **Automatic** goes back to the colour map's; **Colour Maps** picks the map
