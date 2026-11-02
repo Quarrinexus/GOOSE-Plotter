@@ -243,3 +243,13 @@ def test_derivative_errors():
         derivative.derivative(x, x, 1, 20)
     with pytest.raises(ValueError, match="at least 5"):
         derivative.derivative(x, x, 2, 3)
+
+
+def test_fit_report_errors_match_numpys_polynomial_covariance():
+    rng = np.random.default_rng(0)
+    x = np.linspace(0.03, 0.07, 400)
+    y = 3 + 200 * x + 5000 * x ** 2 + rng.normal(0, 0.05, x.size)
+    found = background.report(x, y, background.fit(x, y, 2), 2)["parameters"]
+    coefficients, covariance = np.polyfit(x, y, 2, cov=True)
+    assert [v for _, v, _ in found] == pytest.approx(list(coefficients))
+    assert [e for _, _, e in found] == pytest.approx(np.sqrt(np.diag(covariance)), rel=1e-4)

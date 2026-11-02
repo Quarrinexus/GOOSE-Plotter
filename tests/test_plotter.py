@@ -671,7 +671,7 @@ def test_show_only_fit_puts_the_fit_in_the_lines_place(app):
     _, data = drawn(app)
     (curve,) = app.curves[app.selected]
     fitted = curve.get_ydata()
-    assert app.fit_options.winfo_manager() and not app.fit_only.get()
+    assert app.fit_only_box.winfo_manager() and not app.fit_only.get()
     app.fit_only.set(True)
     app.apply_controls()
     assert app.panel.line.chosen.only
@@ -685,7 +685,7 @@ def test_show_only_fit_puts_the_fit_in_the_lines_place(app):
     app.selected = (0, 0)
     app._load_controls()
     app.choose_step(0)  # Subtract has neither
-    assert not app.fit_options.winfo_manager()
+    assert not app.fit_only_box.winfo_manager()
 
 
 def test_make_fit_new_line_moves_the_fit_to_its_own_line(app):
@@ -912,3 +912,28 @@ def test_save_area_does_not_widen_the_column(app):
     side = app.side.master
     slot = app.side_scroll.master
     assert side.winfo_reqwidth() == app.side.winfo_reqwidth() + slot.winfo_reqwidth()
+
+
+def test_fit_results_report_the_chosen_fit(app, monkeypatch):
+    plot(app)
+    add_step(app, "fit", degree=2)
+    shownt = []
+    monkeypatch.setattr("goose_plotter.plotter.FitResultsPopup", lambda parent, text, report, export: shownt.append(text))
+    app.show_fit_results()
+    text = shownt[0]
+    assert "Points fitted:" in text and "R squared:" in text
+    assert [n for n in ("A =", "B =", "C =") if n in text] == ["A =", "B =", "C ="]
+    report = next(iter(app.fit_reports.values()))
+    assert [n for n, _, _ in report["parameters"]] == ["A", "B", "C"]
+    assert "+/-" in text and all(e > 0 for _, _, e in report["parameters"])
+
+
+def test_fit_results_export_writes_the_numbers(app, tmp_path):
+    plot(app)
+    add_step(app, "fit", degree=1)
+    report = next(iter(app.fit_reports.values()))
+    out = tmp_path / "fit.csv"
+    app._export_fit_results(report, app, path=str(out))
+    rows = out.read_text().splitlines()
+    assert rows[0] == f"points,{report['points']}" and "parameter,value,standard error" in rows
+    assert rows[-1].startswith("A,") or rows[-1].startswith("B,")

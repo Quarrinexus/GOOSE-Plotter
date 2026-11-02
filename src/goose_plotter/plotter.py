@@ -32,7 +32,7 @@ from goose_plotter.datasets import (FormatError, describe, detect_format, find_d
                                   load_dataset, read_lines, run_number)
 from goose_plotter.format_dialog import FormatDialog
 from goose_plotter.settings import load_settings, save_settings
-from goose_plotter.widgets import (MAX_GRID, SELECTED, AxesPopup, LayoutPicker, LineStylePopup,
+from goose_plotter.widgets import (MAX_GRID, FitResultsPopup, SELECTED, AxesPopup, LayoutPicker, LineStylePopup,
                                  OverwriteDialog, SaveOptionsPopup, StepList, TabStrip,
                                  line_sample)
 
@@ -197,6 +197,7 @@ class Plotter(tk.Tk):
         # _plot_state kept of it, or None for the one shown, which is live}.
         self.plots, self.plot_index, self.plot_count = [{"n": 1, "state": None}], 0, 1
         self.link_partner = None  # id of the panel whose link the Linking tab shows
+        self.fit_reports = {}  # (_data_key, step index) -> background.report, for Fit Results
         self.cache = {}  # _data_key -> (x, y and labels, span, fit values, spikes), see _line_data
         # One step of undo: the state before the last change, and after it.
         self.undo_state = self.last_state = None
@@ -778,8 +779,14 @@ class Plotter(tk.Tk):
         self.degree_box = ttk.Spinbox(row, textvariable=self.degree, from_=0, to=30, width=3,
                                       command=lambda: self._soon(self.apply_controls))
         self.degree_box.pack(side=tk.LEFT, padx=(4, 0))
-        ttk.Checkbutton(body, text=tr("Advanced Fitting"), variable=self.advanced,
-                        command=self.apply_controls).pack(anchor=tk.W, pady=(4, 0))
+        top = ttk.Frame(body)
+        top.pack(anchor=tk.W, pady=(4, 0))
+        ttk.Checkbutton(top, text=tr("Advanced Fitting"), variable=self.advanced,
+                        command=self.apply_controls).pack(side=tk.LEFT)
+        # A Fit curve's only: drawn instead of the data.
+        self.fit_only = tk.BooleanVar(value=False)
+        self.fit_only_box = ttk.Checkbutton(top, text=tr("Show only fit"),
+                                            variable=self.fit_only, command=self.apply_controls)
         # Width 1 and filling the row, so a long function never widens the column.
         boxes = ttk.Frame(body)
         boxes.pack(anchor=tk.W, fill=tk.X, pady=(2, 0))
@@ -794,13 +801,58 @@ class Plotter(tk.Tk):
         for box in (self.degree_box, *self.fit_entries):
             for key in ("<Return>", "<KP_Enter>"):
                 box.bind(key, lambda _: self.apply_controls())
-        # A Fit curve's only: drawn instead of the data, or moved to a line of its own.
         self.fit_options = ttk.Frame(body)
-        self.fit_only = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self.fit_options, text=tr("Show only fit"), variable=self.fit_only,
-                        command=self.apply_controls).pack(side=tk.LEFT)
-        ttk.Button(self.fit_options, text=tr("Make fit new line"),
-                   command=self.fit_to_line).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Button(self.fit_options, text=tr("Fit Results"),
+                   command=self.show_fit_results).pack(side=tk.LEFT)
+        # A Fit curve's only: the fit moved to a line of its own.
+        self.fit_new_line = ttk.Button(self.fit_options, text=tr("Make fit new line"),
+                                       command=self.fit_to_line)
+
+    def show_fit_results(self):
+        """A popup with what the chosen fit step found (see background.report)."""
+        l = self.panel.line
+        step = l.steps[l.step] if l.step < len(l.steps) else None
+        report = None
+        if step is not None and step.kind in ("fit", "subtract") and l.shown:
+            report = self.fit_reports.get((self._data_key(l), l.step))
+        if report is None:
+            messagebox.showinfo(tr("Fit Results"), tr("There is no fit to report: the step is "
+                                                      "off, or its fit failed."))
+            return
+        lo, hi = report["x range"]
+        lines = [tr("Step {n}: {kind}", n=l.step + 1, kind=tr(KINDS[step.kind])),
+                 tr("Fit: {what}", what=background.describe(*step.fitting)), "",
+                 tr("Points fitted: {n}", n=report["points"]),
+                 tr("x range: {lo:g} to {hi:g}", lo=lo, hi=hi),
+                 tr("R squared: {r2:.6g}", r2=report["r2"]),
+                 tr("R squared (adjusted): {r2:.6g}", r2=report["adjusted r2"]),
+                 tr("Residual standard error: {sigma:.6g}", sigma=report["sigma"]),
+                 tr("RMS residual: {rms:.6g}", rms=report["rms"]),
+                 tr("Largest residual: {largest:.6g}", largest=report["largest"]), "",
+                 tr("Parameters:")]
+        lines += [f"  {name} = {value:.8g} +/- " + (f"{error:.3g}" if error is not None else "?")
+                  for name, value, error in report["parameters"]]
+        FitResultsPopup(self, plain("\n".join(lines)), report, self._export_fit_results)
+
+    def _export_fit_results(self, report, parent, path=None):
+        """Write a fit's numbers to a CSV the user picks: its statistics, then
+        its parameters with their errors."""
+        if path is None:
+            stem = Path(self.filename.get().strip() or self._default_name() or "plot").stem
+            path = filedialog.asksaveasfilename(
+                parent=parent, title=tr("Save fit results"), defaultextension=".csv",
+                initialdir=self.settings.get("output_dir") or Path.home(),
+                initialfile=f"{stem}-fit.csv",
+                filetypes=[("CSV", "*.csv"), ("All files", "*")])
+        if not path:
+            return
+        with open(path, "w", newline="") as f:
+            out = csv.writer(f)
+            for key in ("points", "r2", "adjusted r2", "rms", "sigma", "largest"):
+                out.writerow([key, report[key]])
+            out.writerow([])
+            out.writerow(["parameter", "value", "standard error"])
+            out.writerows((n, v, "" if e is None else e) for n, v, e in report["parameters"])
 
     def _cut_editor(self, body):
         """A Cut step: the one x range it removes, typed or picked. Or an FFT
@@ -918,10 +970,13 @@ class Plotter(tk.Tk):
                 entry["state"] = "normal" if step.advanced else "disabled"
             self.degree_box["state"] = "disabled" if step.advanced else "normal"
             self.fit_only.set(step.only)
+            self.fit_options.pack(anchor=tk.W, pady=(6, 0))
             if step.kind == "fit":
-                self.fit_options.pack(anchor=tk.W, pady=(6, 0))
+                self.fit_only_box.pack(side=tk.LEFT, padx=(10, 0))
+                self.fit_new_line.pack(side=tk.LEFT, padx=(10, 0))
             else:
-                self.fit_options.pack_forget()
+                self.fit_only_box.pack_forget()
+                self.fit_new_line.pack_forget()
 
     def _read_step(self, step):
         """`step` with its editor's settings; boxes that don't hold a number keep the old one."""
@@ -1813,7 +1868,10 @@ class Plotter(tk.Tk):
                 elif step.kind == "despike":
                     x, y, found[j] = despike.despike(x, y, *step.despiking)
                 elif step.kind == "subtract":
+                    before = y
                     y, found[j] = background.apply(x, y, *step.fitting)
+                    self.fit_reports[key, j] = background.report(
+                        x, before, before - y, step.fitting[1], found[j], step.fitting[2])
                     y_label = tuple(f"{t} − fit" for t in y_label)
                 elif step.kind == "smooth":
                     if step.in_x and step.span is None:
@@ -1821,7 +1879,10 @@ class Plotter(tk.Tk):
                         l.steps = l.steps[:j] + (step,) + l.steps[j + 1:]
                     y = smoothing.smooth(x, y, *step.smoothing)
                 elif step.only:  # the line becomes the fit
+                    before = y
                     y, found[j] = background.apply(x, y, *step.fitting)
+                    self.fit_reports[key, j] = background.report(
+                        x, before, y, step.fitting[1], found[j], step.fitting[2])
                 elif not fit_error:  # a fit curve; after one fails, the rest wait
                     try:
                         fitted, found[j] = background.apply(x, y, *step.fitting)
@@ -1829,11 +1890,17 @@ class Plotter(tk.Tk):
                         fit_error = f"Fit error: {err}"
                     else:
                         curves[j] = (x, fitted)
+                        self.fit_reports[key, j] = background.report(
+                            x, y, fitted, step.fitting[1], found[j], step.fitting[2])
         except Exception as err:  # bad file or function shouldn't kill the window
             raise LineError(f"{stage} error: {err}" if l.run in self.frames else str(err))
         l.found = tuple(found)
         result = x, y, x_label, y_label, curves, fit_error
-        self.cache[key] = self.cache[self._data_key(l)] = (result, l.steps, l.found)
+        final = self._data_key(l)
+        for j in range(len(l.steps)):  # a span filled in changed the key
+            if (key, j) in self.fit_reports:
+                self.fit_reports[final, j] = self.fit_reports[key, j]
+        self.cache[key] = self.cache[final] = (result, l.steps, l.found)
         return result
 
     @staticmethod
@@ -1846,6 +1913,8 @@ class Plotter(tk.Tk):
         wanted = {self._data_key(l) for p in self.panels.values() for l in p.lines}
         for key in [k for k in self.cache if k not in wanted]:
             del self.cache[key]
+        for key in [k for k in self.fit_reports if k[0] not in wanted]:
+            del self.fit_reports[key]
 
     def _draw_panel(self, cell):
         """Draw a panel's lines; problems are written into the panel itself.

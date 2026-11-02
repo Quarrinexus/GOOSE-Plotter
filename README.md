@@ -167,6 +167,12 @@ stay until it's done or cancelled.
     only fit ticked, dashed), and this line goes back to its data; the new
     line is styled, named and linked like any other.
 
+  **Fit Results**, beside Advanced Fitting, opens a window with what the
+  chosen fit found: the points fitted, R squared, the RMS and largest
+  residual, and the parameters (a polynomial's coefficients in x, highest
+  power first), each with its standard error, plus adjusted R squared and
+  the residual standard error. **Copy** copies the text; **Export** writes the numbers to a CSV.
+
   Subtract and Fit curve have **Advanced Fitting**: tick it to fit a
   function of your own instead of the polynomial. Greyed out, the **y =**
   box shows the polynomial that Polynomial degree fits (`A*x**5 + B*x**4 +

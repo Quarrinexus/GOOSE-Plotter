@@ -6,7 +6,7 @@ import re
 import warnings
 
 import numpy as np
-from numpy.polynomial import Chebyshev
+from numpy.polynomial import Chebyshev, Polynomial
 
 from goose_plotter.axis_functions import FUNCTIONS, slug
 
@@ -59,6 +59,93 @@ def apply(x, y, mode, degree, function="", start=""):
     return (fitted if mode == "fit" else y - fitted), tuple(values.items())
 
 
+def report(x, y, fitted, degree, values=(), function=""):
+    """What a fit of `y` found, for the Fit Results popup: the points used, the
+    parameters as (name, value, standard error), the root-mean-square and
+    largest residual, R squared (and adjusted for the parameters) and the
+    residual standard error. A polynomial's parameters are its
+    coefficients in x, highest power first, named as `polynomial_text` names
+    them; `values` and `function` are a function of the user's own. A standard
+    error is None where it can't be worked out (too few points, a singular fit)."""
+    x, y, fitted = (np.asarray(a, dtype=float) for a in (x, y, fitted))
+    used = np.isfinite(x) & np.isfinite(y) & np.isfinite(fitted)
+    xu, yu = x[used], y[used]
+    residual = yu - fitted[used]
+    n = int(used.sum())
+    if degree is None:
+        names, found = [name for name, _ in values], [v for _, v in values]
+        errors = _function_errors(function, found, xu, residual)
+    else:
+        fit_ = Chebyshev.fit(xu, yu, degree)
+        names, found = _names(degree), list(fit_.convert(kind=Polynomial).coef[::-1])
+        errors = _polynomial_errors(fit_, xu, residual)
+    spread = ((yu - yu.mean()) ** 2).sum() if n else 0.0
+    r2 = float(1 - (residual ** 2).sum() / spread) if spread > 0 else float("nan")
+    p = len(names)
+    free = n - p  # degrees of freedom left after the parameters
+    return {"points": n, "parameters": tuple(zip(names, (float(v) for v in found), errors)),
+            "adjusted r2": float(1 - (1 - r2) * (n - 1) / free) if free > 0 else float("nan"),
+            "sigma": float(np.sqrt((residual ** 2).sum() / free)) if free > 0 else float("nan"),
+            "rms": float(np.sqrt(np.mean(residual ** 2))) if n else float("nan"),
+            "largest": float(np.abs(residual).max()) if n else float("nan"),
+            "r2": r2,
+            "x range": (float(xu.min()), float(xu.max())) if n else None}
+
+
+def _errors(jacobian, residual):
+    """Standard errors from the Jacobian of the model at the fit: the square
+    roots of the diagonal of s^2 (J^T J)^-1, s^2 the residual variance."""
+    n, p = jacobian.shape
+    if n <= p:
+        return [None] * p
+    try:
+        covariance = (residual ** 2).sum() / (n - p) * np.linalg.inv(jacobian.T @ jacobian)
+    except np.linalg.LinAlgError:
+        return [None] * p
+    variance = np.diag(covariance)
+    return [float(math.sqrt(v)) if np.isfinite(v) and v >= 0 else None for v in variance]
+
+
+def _polynomial_errors(polynomial, x, residual):
+    """Errors on the raw coefficients, highest power first: found on the
+    Chebyshev basis the fit was made in (well conditioned), then carried over
+    by the linear map between the two."""
+    degree = len(polynomial.coef) - 1
+    u = (x - sum(polynomial.domain) / 2) / ((polynomial.domain[1] - polynomial.domain[0]) / 2)
+    design = np.polynomial.chebyshev.chebvander(u, degree)
+    n, p = design.shape
+    if n <= p:
+        return [None] * p
+    try:
+        covariance = (residual ** 2).sum() / (n - p) * np.linalg.inv(design.T @ design)
+    except np.linalg.LinAlgError:
+        return [None] * p
+    to_raw = np.zeros((degree + 1, degree + 1))
+    for k in range(degree + 1):  # basis k as a polynomial in x, its length trimmed
+        coef = Chebyshev.basis(k, domain=polynomial.domain).convert(kind=Polynomial).coef
+        to_raw[:len(coef), k] = coef
+    variance = np.diag(to_raw @ covariance @ to_raw.T)[::-1]
+    return [float(math.sqrt(v)) if np.isfinite(v) and v >= 0 else None for v in variance]
+
+
+def _function_errors(function, values, x, residual):
+    """Errors on a typed function's parameters, from a central-difference Jacobian."""
+    try:
+        code, params = parse(function)
+        jacobian = np.empty((len(x), len(params)))
+        for i, v in enumerate(values):
+            step = 1e-6 * max(abs(v), 1e-3)
+            up, down = list(values), list(values)
+            up[i], down[i] = v + step, v - step
+            jacobian[:, i] = (_evaluate(code, params, up, x)
+                              - _evaluate(code, params, down, x)) / (2 * step)
+        if not np.isfinite(jacobian).all():
+            return [None] * len(params)
+        return _errors(jacobian, residual)
+    except (ValueError, NameError, TypeError):
+        return [None] * len(values)
+
+
 def fit(x, y, degree):
     """The fitted polynomial at each finite x, NaN elsewhere."""
     if degree < 0:
@@ -89,11 +176,15 @@ def fit(x, y, degree):
 
 def polynomial_text(degree):
     """What `fit` fits, as a function to type: 'A*x**2 + B*x + C' for degree 2."""
-    names = [chr(65 + i) if i < 26 else chr(64 + i // 26) + chr(65 + i % 26)
-             for i in range(max(degree, 0) + 1)]
     powers = range(max(degree, 0), -1, -1)
     return " + ".join(name + ("" if n == 0 else "*x" if n == 1 else f"*x**{n}")
-                      for name, n in zip(names, powers))
+                      for name, n in zip(_names(degree), powers))
+
+
+def _names(degree):
+    """A, B, C ... for a polynomial's coefficients, highest power first."""
+    return [chr(65 + i) if i < 26 else chr(64 + i // 26) + chr(65 + i % 26)
+            for i in range(max(degree, 0) + 1)]
 
 
 def parse(expr):

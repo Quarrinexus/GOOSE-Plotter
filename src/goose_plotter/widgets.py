@@ -179,6 +179,35 @@ class OverwriteDialog(tk.Toplevel):
         self.destroy()
 
 
+class FitResultsPopup(tk.Toplevel):
+    """The details of a fit as selectable text, and Export (`export(report, popup)` writes the numbers to a file)."""
+
+    def __init__(self, parent, text, report, export):
+        super().__init__(parent)
+        self.title(tr("Fit Results"))
+        self.transient(parent)
+        body = ttk.Frame(self, padding=14)
+        body.pack(fill=tk.BOTH, expand=True)
+        box = tk.Text(body, width=44, height=min(24, text.count("\n") + 1), wrap=tk.NONE,
+                      relief=tk.FLAT, font="TkFixedFont")
+        box.insert("1.0", text)
+        box["state"] = "disabled"
+        box.pack(fill=tk.BOTH, expand=True)
+        buttons = ttk.Frame(body)
+        buttons.pack(anchor=tk.E, pady=(10, 0))
+        ttk.Button(buttons, text=tr("Close"), command=self.destroy).pack(side=tk.RIGHT)
+        ttk.Button(buttons, text=tr("Export"), command=lambda: export(report, self)).pack(
+            side=tk.RIGHT, padx=(0, 6))
+        ttk.Button(buttons, text=tr("Copy"), command=lambda: self._copy(text)).pack(
+            side=tk.RIGHT, padx=(0, 6))
+        self.bind("<Escape>", lambda _: self.destroy())
+        self.focus_set()
+
+    def _copy(self, text):
+        self.clipboard_clear()
+        self.clipboard_append(text)
+
+
 class SaveOptionsPopup(tk.Toplevel):
     """How Save figure writes the figure: its size (as on screen, or typed in
     inches or cm), dpi and background. Changes apply as they're made, through
