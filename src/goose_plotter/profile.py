@@ -1,7 +1,7 @@
 """A data folder's `goose-plotter.json`: labels, units, sample colours, default axes, format."""
 
-from dataclasses import dataclass, field
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 
 PROFILE_NAME = "goose-plotter.json"

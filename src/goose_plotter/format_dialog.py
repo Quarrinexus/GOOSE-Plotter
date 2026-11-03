@@ -3,8 +3,8 @@
 import tkinter as tk
 from tkinter import ttk
 
-from goose_plotter.datasets import FormatError, parse
 from goose_plotter import theme
+from goose_plotter.datasets import FormatError, parse
 from goose_plotter.i18n import tr
 
 PREVIEW_LINES = 40  # of the raw file

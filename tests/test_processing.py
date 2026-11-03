@@ -2,11 +2,9 @@
 
 import numpy as np
 import pytest
-
 from numpy.polynomial import Chebyshev
 
 from goose_plotter import background, derivative, smoothing, spectrum, splicing
-
 
 # --- background -------------------------------------------------------------
 

@@ -1,9 +1,9 @@
 """Shared fixtures: a made-up data folder laid out like the real runs, and the
 window built on it with its settings kept out of the user's own."""
 
-from dataclasses import replace
 import json
 import tkinter as tk
+from dataclasses import replace
 
 import numpy as np
 import pytest

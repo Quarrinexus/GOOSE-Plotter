@@ -5,8 +5,16 @@ import json
 import pytest
 
 from goose_plotter import session
-from goose_plotter.model import (SYNC, Line, Link, Panel, Step, curve_colours, legend_labels,
-                                 line_colours)
+from goose_plotter.model import (
+    SYNC,
+    Line,
+    Link,
+    Panel,
+    Step,
+    curve_colours,
+    legend_labels,
+    line_colours,
+)
 
 STEPS = (Step("cut", cuts=((0.3, None),)),
          Step("subtract", degree=4), Step("smooth", window=31),

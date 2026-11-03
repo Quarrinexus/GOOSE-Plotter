@@ -1,8 +1,8 @@
 """Find and load delimited text data files, detecting their layout."""
 
+import re
 from io import StringIO
 from pathlib import Path
-import re
 
 import pandas as pd
 

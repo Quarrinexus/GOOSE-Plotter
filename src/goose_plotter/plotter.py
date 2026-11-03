@@ -1,40 +1,86 @@
 """Interactive plotter window: pick datasets and axes, plot, save. See README.md."""
 
 import csv
-from dataclasses import replace
 import io
 import json
 import math
-from pathlib import Path
 import tkinter as tk
+from dataclasses import replace
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
+import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.colors import to_hex
 from matplotlib.figure import Figure
 from matplotlib.widgets import SpanSelector
-import numpy as np
 from PIL import Image, ImageDraw, ImageTk
 
+from goose_plotter import (
+    background,
+    colourmaps,
+    derivative,
+    despike,
+    i18n,
+    measure,
+    session,
+    smoothing,
+    spectrum,
+    splicing,
+    theme,
+)
 from goose_plotter.axis_functions import apply_function, is_identity, rename
-from goose_plotter import (background, colourmaps, derivative, despike, i18n, measure, session,
-                           smoothing, spectrum, splicing, theme)
-from goose_plotter.i18n import key_of, menu, shown, tr
 from goose_plotter.columns import label, lookup, with_unit, without_unit
-from goose_plotter.model import (DATA_VIEW, GRID_AXES, GRID_STYLES, GRIDS, KINDS, LEGENDS,
-                               RANGES, SYNC, Link, Panel, Step, clear_data_ranges, clear_ranges,
-                               curve_colours, legend_labels, line_colours, overlay, shared,
-                               swap_data_view, without_x_units)
-from goose_plotter.profile import load_profile, save_format
-from goose_plotter.datasets import (FormatError, describe, detect_format, find_datasets,
-                                  load_dataset, read_lines, run_number)
+from goose_plotter.datasets import (
+    FormatError,
+    describe,
+    detect_format,
+    find_datasets,
+    load_dataset,
+    read_lines,
+    run_number,
+)
 from goose_plotter.format_dialog import FormatDialog
+from goose_plotter.i18n import key_of, menu, shown, tr
+from goose_plotter.model import (
+    DATA_VIEW,
+    GRID_AXES,
+    GRID_STYLES,
+    GRIDS,
+    KINDS,
+    LEGENDS,
+    RANGES,
+    SYNC,
+    Link,
+    Panel,
+    Step,
+    clear_data_ranges,
+    clear_ranges,
+    curve_colours,
+    legend_labels,
+    line_colours,
+    overlay,
+    shared,
+    swap_data_view,
+    without_x_units,
+)
+from goose_plotter.profile import load_profile, save_format
 from goose_plotter.settings import load_settings, save_settings
-from goose_plotter.widgets import (MAX_GRID, FitResultsPopup, SELECTED, AxesPopup, LayoutPicker, LineStylePopup,
-                                 OverwriteDialog, SaveOptionsPopup, StepList, TabStrip,
-                                 line_sample)
+from goose_plotter.widgets import (
+    MAX_GRID,
+    SELECTED,
+    AxesPopup,
+    FitResultsPopup,
+    LayoutPicker,
+    LineStylePopup,
+    OverwriteDialog,
+    SaveOptionsPopup,
+    StepList,
+    TabStrip,
+    line_sample,
+)
 
 PARTNER = "#f0c987"  # frame around the panel locked to the selected one
 

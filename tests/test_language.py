@@ -3,11 +3,11 @@ none widens the controls column, and a language change carries on where the
 window was."""
 
 import pytest
+from conftest import drawn, plot
+from test_plotter import click
 
 from goose_plotter import background, i18n, smoothing, splicing
 from goose_plotter.i18n import shown
-from conftest import drawn, plot
-from test_plotter import click
 
 
 @pytest.fixture
@@ -108,6 +108,7 @@ def literal_keys():
     """Every English text written out in a tr() call in the source."""
     import ast
     from pathlib import Path
+
     import goose_plotter
     keys = set()
 
@@ -143,6 +144,7 @@ def test_translations_keep_their_places_and_fit_tks_fonts():
     """The same {places} as the English, and only characters the X core fonts'
     Chinese (GB2312) has, with none of those plain() swaps for ASCII."""
     from string import Formatter
+
     from goose_plotter.plotter import PLAIN
 
     def places(text):

@@ -75,7 +75,7 @@ def extremes(x, y, region=(), even=False):
     high = refine(x, y, top) if even else (float(x[top]), float(y[top]))
     low = (float(x[bottom]), float(y[bottom]))
     return {"max": high, "min": low, "range": float(y[top] - y[bottom]),
-            "mean": float(np.mean(y[rows])), "points": int(len(rows))}
+            "mean": float(np.mean(y[rows])), "points": len(rows)}
 
 
 def peaks(x, y, region=(), count=5, floor=10.0):

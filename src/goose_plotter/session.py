@@ -1,12 +1,26 @@
 """The panels and their lines as plain JSON-ready data, for session files and undo."""
 
-from dataclasses import fields
 import math
+from dataclasses import fields
 
 from goose_plotter import background, measure, smoothing, spectrum, splicing
-from goose_plotter.model import (GRID_AXES, GRID_STYLES, GRIDS, KINDS, LEGENDS, MARKERS,
-                                 OPERATIONS, STYLES, SYNC, Line, Link, Panel, Step,
-                                 one_range_cuts, tidy_data_view)
+from goose_plotter.model import (
+    GRID_AXES,
+    GRID_STYLES,
+    GRIDS,
+    KINDS,
+    LEGENDS,
+    MARKERS,
+    OPERATIONS,
+    STYLES,
+    SYNC,
+    Line,
+    Link,
+    Panel,
+    Step,
+    one_range_cuts,
+    tidy_data_view,
+)
 from goose_plotter.widgets import MAX_GRID
 
 # 2: derived panels have their own lines, in their data panel's link group.

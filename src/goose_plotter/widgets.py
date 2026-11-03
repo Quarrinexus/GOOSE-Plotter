@@ -4,14 +4,23 @@ the axes editor, the layout grid and the overwrite question."""
 import tkinter as tk
 from tkinter import ttk
 
-from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb
 import numpy as np
+from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb
 from PIL import Image, ImageDraw, ImageTk
 
 from goose_plotter import colourmaps, theme
 from goose_plotter.i18n import tr
-from goose_plotter.model import (AUTO_MARKER_SIZE, GRID_AXES, GRID_STYLES, GRIDS, LEGENDS,
-                                 MARKERS, PALETTE, RANGES, STYLES)
+from goose_plotter.model import (
+    AUTO_MARKER_SIZE,
+    GRID_AXES,
+    GRID_STYLES,
+    GRIDS,
+    LEGENDS,
+    MARKERS,
+    PALETTE,
+    RANGES,
+    STYLES,
+)
 
 SELECTED = "#e8a33d"  # frame around the selected panel
 MAX_GRID = 6  # the layout picker offers up to MAX_GRID x MAX_GRID panels

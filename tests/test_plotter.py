@@ -5,9 +5,10 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from conftest import B_HIGH, B_LOW, F, add_step, cutting, drawn, plot, steps_of
 
 from goose_plotter import background, session, splicing
-from conftest import B_HIGH, B_LOW, F, add_step, cutting, drawn, plot, steps_of
+
 
 def test_plots_the_profile_default_axes(app):
     plot(app)
@@ -532,6 +533,7 @@ def test_spinbox_arrows_apply_once_they_stop(app, monkeypatch):
     """Redrawing on every arrow step let Tk's auto-repeat run the degree away
     while a slow fit redrew; the change is applied once the steps stop."""
     import time
+
     from goose_plotter.plotter import SPIN_PAUSE
     plot(app, x_fn="1/x")
     add_step(app, "subtract")

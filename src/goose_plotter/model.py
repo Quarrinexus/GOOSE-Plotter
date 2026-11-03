@@ -1,17 +1,16 @@
 """What's plotted: panels holding lines, and how those lines are coloured and labelled."""
 
-from dataclasses import dataclass, field, replace
 import math
+from dataclasses import dataclass, field, replace
 from uuid import uuid4
 
-from matplotlib.colors import to_rgb
 import numpy as np
+from matplotlib.colors import to_rgb
 
-from goose_plotter import colourmaps
+from goose_plotter import background, colourmaps, despike, smoothing, splicing
 from goose_plotter.axis_functions import file_part
 from goose_plotter.columns import sample_of
 from goose_plotter.datasets import describe
-from goose_plotter import background, despike, smoothing, splicing
 
 # What a link between two panels can share, line by line: a Link's `sync`
 # names the keys it shares.

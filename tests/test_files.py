@@ -4,10 +4,9 @@ import json
 
 import numpy as np
 import pytest
-
-from goose_plotter import axis_functions, columns, datasets, profile
 from conftest import write_run
 
+from goose_plotter import axis_functions, columns, datasets, profile
 
 # --- data files -------------------------------------------------------------
 
