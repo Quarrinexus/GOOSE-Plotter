@@ -128,10 +128,10 @@ def test_format_6_fit_range_is_ignored_with_the_background_off():
 
 
 def test_before_format_10_settings_become_steps_in_the_old_order():
-    line = dict(cut="keep", cuts=[[0.1, 0.2]], despike=True, despike_window=31,
-                despike_threshold=4.5, despiked=7, background="subtract", advanced=True,
-                fit_function="A + B * x", fit_start="B=2", fit_values=[["A", 1]],
-                smooth="median", window=41, in_x=True, span=0.01)
+    line = {"cut": "keep", "cuts": [[0.1, 0.2]], "despike": True, "despike_window": 31,
+                "despike_threshold": 4.5, "despiked": 7, "background": "subtract", "advanced": True,
+                "fit_function": "A + B * x", "fit_start": "B=2", "fit_values": [["A", 1]],
+                "smooth": "median", "window": 41, "in_x": True, "span": 0.01}
     loaded = session.load(old(9, **line))[2][(0, 0)].lines[0]
     assert loaded.steps == removes((None, 0.1), (0.2, None)) + (
                             Step("despike", spike_window=31, threshold=4.5),
@@ -166,7 +166,7 @@ def test_version_1_layout():
     old = {"rows": 2, "cols": 1, "panels": {
         "0,0": {"lines": [{"run": "r.005", "y": "M006_AH"}], "link_group": None},
         "1,0": {"source": "0,0"}}}
-    rows, cols, panels, links = session.load(old)
+    _rows, _cols, panels, links = session.load(old)
     fft = panels[(1, 0)]
     assert fft.operation == "fft" and fft.lines[0].y == "M006_AH"
     (link,) = links.values()

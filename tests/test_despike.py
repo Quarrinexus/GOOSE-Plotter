@@ -44,7 +44,7 @@ def test_nan_is_never_a_spike_and_doesnt_hide_one():
 
 
 def test_a_wider_spike_needs_a_wider_window():
-    x, y = noisy()
+    _x, y = noisy()
     y[2000:2012] += 0.5  # 12 points: most of a 21-point window's median
     assert despike.spikes(y, 21, 5)[2000:2012].sum() < 12
     assert despike.spikes(y, 51, 5)[2000:2012].all()

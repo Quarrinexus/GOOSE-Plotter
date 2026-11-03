@@ -1172,7 +1172,7 @@ class Plotter(tk.Tk):
     def _show_cuts(self):
         """Fill the boxes with the chosen Cut step's range; for an FFT panel's
         spectrum, the list with its ranges and the boxes with the chosen one."""
-        mode, cuts = self._cut_ranges()
+        _mode, cuts = self._cut_ranges()
         if not self._spectrum_row():
             start, end = cuts[0] if cuts else (None, None)
             self.cut_owner, self.cut_index = None, None

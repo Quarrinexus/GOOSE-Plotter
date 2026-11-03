@@ -551,7 +551,7 @@ def test_spinbox_arrows_apply_once_they_stop(app, monkeypatch):
 def test_ticking_advanced_fitting_starts_from_the_polynomial(app):
     plot(app, x_fn="1/x")
     add_step(app, "subtract")
-    x, polynomial = drawn(app)
+    _x, polynomial = drawn(app)
     app.advanced.set(True)
     app.apply_controls()
     step = app.panel.line.chosen
