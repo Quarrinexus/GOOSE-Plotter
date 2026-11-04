@@ -67,12 +67,10 @@ def settings_file(tmp_path, monkeypatch):
 
 @pytest.fixture
 def app(data_dir, settings_file, tmp_path, monkeypatch):
-    """The window on the made-up data folder, with the questions it can ask
-    answered yes so nothing waits. Skipped where there's no display."""
+    """The window on the made-up data folder. Skipped where there's no display."""
     output = tmp_path / "output"
     settings.save_settings({"data_dir": str(data_dir), "output_dir": str(output)})
     from goose_plotter import plotter
-    monkeypatch.setattr(plotter.messagebox, "askyesno", lambda *a, **k: True)
     try:
         window = plotter.Plotter()
     except tk.TclError as err:

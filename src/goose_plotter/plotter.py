@@ -7,7 +7,7 @@ import math
 import tkinter as tk
 from dataclasses import replace
 from pathlib import Path
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, simpledialog, ttk
 from tkinter import font as tkfont
 from typing import ClassVar
 
@@ -204,6 +204,9 @@ class Plotter(tk.Tk):
         self.merging = False  # the last change was a colour pick; see _changed
         self.restoring = False
         self.status_timer = None  # the pending clear of an info message, see _say
+        # (what, how): undoing the last change if it was outside the panels (a
+        # closed plot, a recipe written), which the undo snapshot can't hold; see undo
+        self.side_undo = None
         self.spin_pending = None  # a spinbox change waiting to be applied, see _soon
         self.settings = load_settings()
         # Where automatic line colours come from, for every panel; see set_colour_map.
@@ -819,8 +822,8 @@ class Plotter(tk.Tk):
         if step is not None and step.kind in ("fit", "subtract") and l.shown:
             report = self.fit_reports.get((self._data_key(l), l.step))
         if report is None:
-            messagebox.showinfo("Fit Results", ("There is no fit to report: the step is "
-                                                      "off, or its fit failed."))
+            self._say("There is no fit to report: the step is off, or its fit failed.",
+                      error=True)
             return
         lo, hi = report["x range"]
         lines = [f"Step {l.step + 1}: {KINDS[step.kind]}",
@@ -1191,14 +1194,19 @@ class Plotter(tk.Tk):
             menu.add_cascade(label="Delete recipe", menu=gone)
         return menu
 
-    def _store_recipes(self, recipes):
-        """Write `recipes` into the data folder's profile; whether it worked."""
+    def _store_recipes(self, recipes, what=None):
+        """Write `recipes` into the data folder's profile; whether it worked.
+        With `what`, Ctrl+Z straight after writes back the recipes before it."""
+        before, folder = self.profile.recipes, self.data_dir
         try:
-            save_recipes(self.data_dir, recipes)
+            save_recipes(folder, recipes)
         except (OSError, ValueError) as err:
             self._say(f"Couldn't save the recipes: {err}", error=True)
             return False
         self.profile.recipes = recipes
+        if what:
+            self.side_undo = (what, lambda: self.data_dir == folder
+                              and self._store_recipes(before))
         return True
 
     def save_recipe(self, name=None):
@@ -1216,14 +1224,12 @@ class Plotter(tk.Tk):
         name = (name or "").strip()
         if not name:
             return
-        if name in self.profile.recipes and not messagebox.askyesno(
-                "Replace recipe?", f"There's already a recipe called '{name}'. Replace it?",
-                parent=self):
-            return
         picked = tuple(l.steps[i] for i in l.picks)
         recipe = {"x": l.x, "x_fn": l.x_fn, "steps": session.dump_steps(picked)}
-        if self._store_recipes({**self.profile.recipes, name: recipe}):
-            self._say(f"Saved recipe '{name}'.")
+        replacing = name in self.profile.recipes
+        if self._store_recipes({**self.profile.recipes, name: recipe}, f"saving '{name}'"):
+            self._say(f"{'Replaced' if replacing else 'Saved'} recipe '{name}'"
+                      + ("; Ctrl+Z puts the old one back." if replacing else "."))
 
     def apply_recipe(self, name, every=False):
         """Put recipe `name`'s steps after the chosen step of the selected line
@@ -1237,12 +1243,9 @@ class Plotter(tk.Tk):
                         what=f"Used '{name}':")
 
     def delete_recipe(self, name):
-        if not messagebox.askyesno("Delete recipe?", f"Delete the recipe '{name}'?",
-                                   parent=self):
-            return
         recipes = {k: v for k, v in self.profile.recipes.items() if k != name}
-        if self._store_recipes(recipes):
-            self._say(f"Deleted recipe '{name}'.")
+        if self._store_recipes(recipes, f"deleting '{name}'"):
+            self._say(f"Deleted recipe '{name}'; Ctrl+Z brings it back.")
 
     def _steps_changed(self, before):
         """After the selected line's steps changed from `before`: pass them on
@@ -2400,6 +2403,7 @@ class Plotter(tk.Tk):
             self._say(f"Click a different panel for the {self._kind(operation)}.",
                       error=True)
             return
+        replaced = ""
         if old.derived and old.source == source:  # derived from it: change what it shows
             if old.operation != operation:
                 clear_ranges(old)  # in the old operation's units
@@ -2409,18 +2413,17 @@ class Plotter(tk.Tk):
             dependents = [c for c, p in self.panels.items() if p.source == target]
             own = not old.derived or old.data_view is not None  # its lines are its own data
             if (own and any(l.shown for l in old.lines)) or dependents:
-                question = (f"Replace panel {self._number(target)}'s lines with the "
-                            f"{self._kind(operation)} of panel {self._number(source)}")
-                question += (", and the panels derived from it will stop following it?"
-                             if dependents else "?")
-                if not messagebox.askyesno("Replace panel?", question, parent=self):
-                    return
+                replaced = (f"Panel {self._number(target)}'s lines were replaced"
+                            + (", and the panels derived from it no longer follow it"
+                               if dependents else "") + "; Ctrl+Z puts them back.")
             for c in dependents:  # derived from what's replaced: they keep their lines
                 self.panels[c].source = None
             self.panels[target] = self._derived(source, operation)
         self.selected = target
         self._build_axes()
         self._load_controls()
+        if replaced:
+            self._say(replaced)
 
     def in_place(self, operation):
         """Turn the selected data panel into its own FFT or derivative, keeping its
@@ -2726,13 +2729,6 @@ class Plotter(tk.Tk):
         source = self.panels[target].lines
         followers = [] if target in self._tied(cell) else self._group_lists(cell)
         extra = sum(max(0, len(lines) - len(source)) for lines in followers)
-        if extra and not messagebox.askyesno(
-                "Link panels?",
-                f"Panel {self._number(target)} has {len(source)} "
-                f"line{'s' if len(source) > 1 else ''}, so {extra} of panel "
-                f"{self._number(cell)}'s (and those linked to it) will be removed. Link anyway?",
-                parent=self):
-            return
         for lines in followers:  # same number of lines as the target's
             del lines[len(source):]
             while len(lines) < len(source):
@@ -2746,6 +2742,10 @@ class Plotter(tk.Tk):
             p.selected = min(p.selected, len(p.lines) - 1)
         self._build_axes()
         self._load_controls()
+        if extra:
+            self._say(f"Linked to panel {self._number(target)}, which has {len(source)} "
+                      f"line{'s' if len(source) > 1 else ''}: {extra} of panel "
+                      f"{self._number(cell)}'s were removed to match. Ctrl+Z brings them back.")
 
     def unlink_panel(self):
         """Remove the chosen link; both panels keep their lines, and any other links."""
@@ -3242,6 +3242,7 @@ class Plotter(tk.Tk):
             return
         if now == self.last_state:
             return
+        self.side_undo = None  # a change to the panels comes after it now
         if not (merge and self.merging):
             self.undo_state = self.last_state
         self.last_state, self.merging = now, merge
@@ -3255,6 +3256,11 @@ class Plotter(tk.Tk):
         """Go back one step: the panels as they were before the last change."""
         self.stop_picking()
         self._changed()  # a colour still being picked counts as that change
+        if self.side_undo:
+            (what, how), self.side_undo = self.side_undo, None
+            how()
+            self._say(f"Undone {what}.")
+            return
         if self.undo_state is None:
             self._say("Nothing to undo.", error=True)
             return
@@ -3422,20 +3428,13 @@ class Plotter(tk.Tk):
         self._show_plots()
 
     def close_plot(self, n):
-        """Close plot `n`, asking first if anything's plotted in it: it can't be
-        brought back (a session can keep it)."""
+        """Close plot `n`; Ctrl+Z, straight after, opens it again (`side_undo`)."""
         if len(self.plots) == 1:
             return
         index = self._index(n)
+        closed = self.plots[index]
         if index == self.plot_index:
-            plotted = any(l.run for p in self.panels.values() for l in p.lines)
-        else:
-            saved = self.plots[index]["state"]["session"]["panels"].values()
-            plotted = any(l.get("run") for p in saved for l in p["lines"])
-        if plotted and not messagebox.askyesno(
-                "Close plot?",
-                f"Close Plot {n}? It can't be brought back; save a session first to keep it.", parent=self):
-            return
+            closed["state"] = self._plot_state()
         del self.plots[index]
         if index < self.plot_index:
             self.plot_index -= 1
@@ -3444,6 +3443,17 @@ class Plotter(tk.Tk):
             shown = self.plots[self.plot_index]
             state, shown["state"] = shown["state"], None
             self._load_plot(state)
+        self._show_plots()
+        self.side_undo = (f"closing Plot {n}", lambda: self._reopen_plot(index, closed))
+        self._say(f"Closed Plot {n}; Ctrl+Z opens it again.")
+
+    def _reopen_plot(self, index, plot):
+        """Put back a plot `close_plot` closed, at `index`, and show it."""
+        self.plots[self.plot_index]["state"] = self._plot_state()
+        self.plots.insert(index, plot)
+        self.plot_index = index
+        state, plot["state"] = plot["state"], None
+        self._load_plot(state)
         self._show_plots()
 
     # --- line style -------------------------------------------------------

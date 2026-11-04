@@ -217,7 +217,9 @@ stay until it's done or cancelled.
   as recipe...** names the picked steps, choosing a recipe puts its steps
   after the chosen step, as Paste does (**Apply to every line** on all of
   the panel's lines),
-  and **Delete recipe** forgets one. A recipe remembers the x it was made on
+  and **Delete recipe** forgets one. Saving under a name that's taken
+  replaces that recipe; Ctrl+Z straight after a save or a delete puts the
+  recipes back as they were. A recipe remembers the x it was made on
   and keeps its cut ranges only on a line with the same x, as Paste does.
 
   Sessions saved before steps open with each line's old settings as steps,
@@ -263,7 +265,7 @@ stay until it's done or cancelled.
   all panels, kept in `settings.json` until you untick it.
 - **FFT** (Derive tab): **New panel** adds a row with the selected panel's spectrum
   under it; **Existing panel...** puts it in the panel you click next
-  (asking first if that panel has lines of its own). The new panel is linked
+  (replacing any lines of its own; Ctrl+Z puts them back). The new panel is linked
   to the data panel (see Linked data below, and the Linking tab) with every
   Sync box ticked on both, so changing a line's axes, steps or
   colour in either redraws both, and adding or removing a line does too; untick
@@ -294,7 +296,8 @@ stay until it's done or cancelled.
 - **Links** (Linking tab): **Link...** then click another panel, and the
   two are linked: they share their lines' settings, line by line (the
   selected panel, and any panels linked to it, take the other's number of
-  lines, asking first if some would go). Each link is its own thing: a panel
+  lines; the status line says if some went, and Ctrl+Z brings them back).
+  Each link is its own thing: a panel
   linked to panels 1 and 3 has a tab for each link, **Panel 1** and **Panel
   3**, which scroll sideways if there are too many, and the chosen link's
   panel gets a heavier dashed frame. The chosen link's **Sync** boxes say
@@ -348,8 +351,8 @@ stay until it's done or cancelled.
   it.
 - **Plots**: the tabs above the plot, left of the toolbar, each hold a plot
   of their own (layout, panels, lines, links, the name to save under and
-  its undo step); **+** makes a new, empty one, and **×** closes one (asking
-  first if anything's plotted in it, as it can't be brought back). The
+  its undo step); **+** makes a new, empty one, and **×** closes one
+  (Ctrl+Z straight after opens it again, as it was). The
   data folder and the controls' tab are shared. Save session and Open
   session work on the plot shown. Switching resets the zoom.
 - **Layout** (the four-pane button on the bar above the plot, left of the

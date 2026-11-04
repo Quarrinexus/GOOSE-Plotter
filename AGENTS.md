@@ -23,8 +23,8 @@ uv run pytest
 the real runs, B from 28 T to 4 T with an oscillation of 50 T in 1/B), so it
 needs none of the author's. The calculation modules are tested directly;
 `test_plotter.py` builds the real window with the `app` fixture, which
-points it at a temporary data folder and settings file (never the user's)
-and answers `askyesno`. Where Tk has no display those tests are skipped;
+points it at a temporary data folder and settings file (never the user's).
+Where Tk has no display those tests are skipped;
 any other error making the window fails them. The window is hidden, and a
 hidden window never lays out the plot's side, so a test clicking there
 (the plot tabs) shows it first.
@@ -323,6 +323,14 @@ making a drag one step. `undo` restores with `restoring` set, so the restore
 isn't recorded as a change. Selection isn't in the snapshot, so selecting
 isn't a step. Opening a session is undoable, but not its data-folder switch.
 
+Nothing asks "are you sure?": anything that can't be put back is made
+undoable instead, and says so in the status line. Changes outside the
+panels (closing a plot, writing recipes) can't be in the snapshot, so they
+set `side_undo`, `(what, how)`, which `undo` runs first; `_changed` clears it
+once the panels change after it, so Ctrl+Z always undoes the latest thing.
+The only popups left ask for input: the recipe name, the data format, and
+whether to overwrite a saved figure's file.
+
 ## Plots
 
 The tabs above the plot (`plot_strip`) are separate plots. Only the one
@@ -395,12 +403,10 @@ controls' tab, settings) stays out.
 
 For a look at something the tests don't cover, or on the real data:
 
-Build the window, patch the popups so they can't block, drive the controls,
-then read the state:
+Build the window, drive the controls, then read the state:
 
 ```python
 from goose_plotter import plotter as P, smoothing
-P.messagebox.askyesno = lambda *a, **k: True  # the only popup questions left
 app = P.Plotter()                      # uses ~/.config/goose-plotter/settings.json
 app.run.set(next(n for n in app.datasets if "005" in n)); app.apply_controls()
 app.add_step("smooth")                 # a step, chosen, its editor shown
@@ -412,9 +418,11 @@ app.destroy()
 
 Menu dicts (`smoothing.METHODS`, `spectrum.WINDOWS`, ...) map stored keys
 to the text a Combobox shows; set a box with `mapping[key]` and read it back
-with `widgets.key_of(mapping, text)`. `askyesno` comes up when making FFT or derivative panels or linking. Wrap runs in
-`timeout`: an unpatched popup waits forever. Don't call
-`choose_folder`, which rewrites the user's settings file.
+with `widgets.key_of(mapping, text)`. Wrap runs in `timeout`: Save figure
+over an existing file, Save steps as recipe without a name, and a file
+whose format isn't detected open a window that waits. Don't call
+`choose_folder`, which rewrites the user's settings file, or save recipes
+on the real data, which writes its `goose-plotter.json`.
 
 ## Style
 

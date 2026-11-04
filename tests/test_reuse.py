@@ -101,15 +101,22 @@ def test_a_recipe_is_kept_in_the_profile_and_applied_anywhere(app, data_dir):
     assert app.profile.recipes == {}
 
 
-def test_saving_a_recipe_under_a_taken_name_asks_first(app, monkeypatch):
-    from goose_plotter import plotter
+def test_replacing_or_deleting_a_recipe_is_undone_by_ctrl_z(app, data_dir):
     plot(app)
     add_step(app, "smooth", window=11)
     app.save_recipe("mine")
     add_step(app, "despike")
-    monkeypatch.setattr(plotter.messagebox, "askyesno", lambda *a, **k: False)
-    app.save_recipe("mine")
-    assert len(app.profile.recipes["mine"]["steps"]) == 1  # not replaced
+    app.choose_step(None, "all")
+    app.save_recipe("mine")  # no question: replaced
+    assert len(app.profile.recipes["mine"]["steps"]) == 2
+    app.undo()
+    assert len(app.profile.recipes["mine"]["steps"]) == 1
+    assert len(profile.load_profile(data_dir)[0].recipes["mine"]["steps"]) == 1
+    assert len(app.panel.line.steps) == 2  # the panels' own undo wasn't used
+    app.delete_recipe("mine")
+    assert app.profile.recipes == {}
+    app.undo()
+    assert "mine" in profile.load_profile(data_dir)[0].recipes
 
 
 def test_profile_drops_recipes_it_cant_use(tmp_path):

@@ -389,9 +389,12 @@ def test_plots_in_tabs_keep_their_own_panels(app):
     assert (app.rows, app.cols) == (1, 2) and app.panel.line.x_fn == "1/x"
     names = [text for _, text in app.plot_strip.tabs]
     assert names == ["Plot 1", "Plot 2"] and app.plot_strip.chosen == 2
-    app.close_plot(2)  # asks (answered yes); shows the one before
+    app.close_plot(2)  # shows the one before
     assert len(app.plots) == 1 and app.plot_strip.chosen == 1
     assert app.panel.line.run and not app.plot_strip.close_spans  # the last has no ×
+    app.undo()  # opens it again, as it was
+    assert len(app.plots) == 2 and app.plot_strip.chosen == 2
+    assert (app.rows, app.cols) == (1, 2) and app.panel.line.x_fn == "1/x"
 
 
 def test_clicking_the_plot_tabs(app):
@@ -993,3 +996,36 @@ def test_toolbar_is_drawn_in_the_windows_style(app):
     assert zoom.var.get() == 1
     bar.zoom()
     assert zoom.var.get() == 0
+
+
+def test_making_an_fft_over_a_plotted_panel_asks_nothing(app):
+    """It replaces the panel's lines at once, says so, and Ctrl+Z puts them back."""
+    plot(app)
+    app.set_layout(1, 2)
+    app.selected = (0, 1)
+    app._load_controls()
+    plot(app, run="Cambridge_Sep_26.003")
+    app._put_derived((0, 0), (0, 1), "fft")
+    assert app.panels[0, 1].operation == "fft" and "Ctrl+Z" in app.status["text"]
+    app.undo()
+    assert not app.panels[0, 1].derived
+    assert app.panels[0, 1].line.run == "Cambridge_Sep_26.003"
+
+
+def test_linking_to_fewer_lines_asks_nothing(app):
+    plot(app)
+    app.set_layout(1, 2)
+    app.add_line()  # panel 1: two lines; panel 2: one
+    app._link((0, 0), (0, 1))
+    assert len(app.panels[0, 0].lines) == 1 and "removed" in app.status["text"]
+    app.undo()
+    assert len(app.panels[0, 0].lines) == 2 and not app.links
+
+
+def test_a_closed_plot_cant_be_reopened_after_another_change(app):
+    plot(app)
+    app.new_plot()
+    app.close_plot(2)
+    plot(app, x_fn="1/x")  # a change since: Ctrl+Z undoes that instead
+    app.undo()
+    assert len(app.plots) == 1 and app.panel.line.x_fn == "x"
