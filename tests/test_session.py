@@ -7,6 +7,7 @@ import pytest
 from goose_plotter import session
 from goose_plotter.model import (
     SYNC,
+    Layout,
     Line,
     Link,
     Panel,
@@ -33,27 +34,27 @@ def state(**panel_kw):
 
 def test_round_trip_through_json():
     panels, links = state(title="$B$ sweep", x_min=0.1)
-    dumped = session.dump(panels, 2, 1, links)
-    rows, cols, loaded, loaded_links = session.load(json.loads(json.dumps(dumped)))
-    assert (rows, cols) == (2, 1)
+    dumped = session.dump(panels, Layout.grid(2, 1), links)
+    layout, loaded, loaded_links = session.load(json.loads(json.dumps(dumped)))
+    assert layout == Layout.grid(2, 1)
     assert loaded[(0, 0)].lines[0].steps == STEPS
     assert loaded[(0, 0)].title == "$B$ sweep" and loaded[(0, 0)].x_min == 0.1
     assert loaded[(1, 0)].operation == "fft" and loaded[(1, 0)].source == (0, 0)
     assert loaded_links == links
     # Undo compares dumps, so a loaded state must dump the same as the original.
-    assert session.dump(loaded, rows, cols, loaded_links) == dumped
+    assert session.dump(loaded, layout, loaded_links) == dumped
 
 
 def test_bad_values_are_dropped_not_fatal():
     panels, links = state()
-    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
+    dumped = json.loads(json.dumps(session.dump(panels, Layout.grid(2, 1), links)))
     line = dumped["panels"]["0,0"]["lines"][0]
     line.update(width="thick", colour=None)
     line["steps"][2].update(method="wobble", window=-3)
     line["steps"][0].update(cut="sometimes")
     line["steps"] += [{"kind": "teleport"}, "not a step"]
     dumped["panels"]["0,0"]["legend"] = "centre stage"
-    loaded = session.load(dumped)[2][(0, 0)]
+    loaded = session.load(dumped)[1][(0, 0)]
     cut, _, smooth, _ = loaded.lines[0].steps
     assert (smooth.method, smooth.window, cut.cut) == ("savgol", 21, "remove")
     assert len(loaded.lines[0].steps) == 4 and loaded.legend == "auto"
@@ -69,9 +70,9 @@ def test_not_a_session():
 
 def test_duplicate_ids_are_made_distinct():
     panels, links = state()
-    dumped = session.dump(panels, 2, 1, links)
+    dumped = session.dump(panels, Layout.grid(2, 1), links)
     dumped["panels"]["1,0"]["id"] = dumped["panels"]["0,0"]["id"]
-    loaded = session.load(dumped)[2]
+    loaded = session.load(dumped)[1]
     assert loaded[(0, 0)].id != loaded[(1, 0)].id
 
 
@@ -94,19 +95,19 @@ def test_cut_steps_become_one_removed_range_each():
     """Steps saved before Cut steps were one Remove each: a Keep becomes
     Removes of what's outside it, several ranges a step per range."""
     panels, links = state()
-    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
+    dumped = json.loads(json.dumps(session.dump(panels, Layout.grid(2, 1), links)))
     dumped["panels"]["0,0"]["lines"][0]["steps"] = [
         {"kind": "cut", "cut": "keep", "cuts": [[0.1, 0.2]], "on": False},
         {"kind": "smooth"},
         {"kind": "cut", "cut": "remove", "cuts": [[1, 2], [3, 4]]}]
-    steps = session.load(dumped)[2][(0, 0)].lines[0].steps
+    steps = session.load(dumped)[1][(0, 0)].lines[0].steps
     assert steps == (Step("cut", cuts=((None, 0.1),), on=False),
                      Step("cut", cuts=((0.2, None),), on=False), Step("smooth"),
                      *removes((1.0, 2.0), (3.0, 4.0)))
 
 
 def test_format_5_single_cut_becomes_one_range():
-    loaded = session.load(old(5, cut="keep", cut_from=0.5, cut_to=0.2))[2][(0, 0)].lines[0]
+    loaded = session.load(old(5, cut="keep", cut_from=0.5, cut_to=0.2))[1][(0, 0)].lines[0]
     assert loaded.steps == removes((None, 0.2), (0.5, None))  # kept 0.2 to 0.5
 
 
@@ -117,13 +118,13 @@ def test_format_5_single_cut_becomes_one_range():
 ])
 def test_format_6_fit_range_becomes_a_cut(cut, cuts, wanted):
     loaded = session.load(old(6, background="subtract", fit_from=0.5, fit_to=0.2, cut=cut,
-                              cuts=cuts))[2][(0, 0)].lines[0]
+                              cuts=cuts))[1][(0, 0)].lines[0]
     assert loaded.steps == wanted + (Step("subtract"),)
 
 
 def test_format_6_fit_range_is_ignored_with_the_background_off():
     loaded = session.load(old(6, background="", fit_from=0.2, fit_to=0.5, cut="remove",
-                              cuts=[[1, 2]]))[2][(0, 0)].lines[0]
+                              cuts=[[1, 2]]))[1][(0, 0)].lines[0]
     assert loaded.steps == (Step("cut", cut="remove", cuts=((1.0, 2.0),)),)
 
 
@@ -132,7 +133,7 @@ def test_before_format_10_settings_become_steps_in_the_old_order():
                 "despike_threshold": 4.5, "despiked": 7, "background": "subtract", "advanced": True,
                 "fit_function": "A + B * x", "fit_start": "B=2", "fit_values": [["A", 1]],
                 "smooth": "median", "window": 41, "in_x": True, "span": 0.01}
-    loaded = session.load(old(9, **line))[2][(0, 0)].lines[0]
+    loaded = session.load(old(9, **line))[1][(0, 0)].lines[0]
     assert loaded.steps == removes((None, 0.1), (0.2, None)) + (
                             Step("despike", spike_window=31, threshold=4.5),
                             Step("subtract", advanced=True, function="A + B * x", start="B=2"),
@@ -140,24 +141,24 @@ def test_before_format_10_settings_become_steps_in_the_old_order():
     assert loaded.found == ()
     # Show fit: a fit drawn instead of the data, where the background was;
     # nothing on: no steps.
-    shown = session.load(old(8, background="fit", degree=3))[2][(0, 0)].lines[0]
+    shown = session.load(old(8, background="fit", degree=3))[1][(0, 0)].lines[0]
     assert shown.steps == (Step("fit", degree=3, only=True),)
-    assert session.load(old(8, cut="", smooth=""))[2][(0, 0)].lines[0].steps == ()
+    assert session.load(old(8, cut="", smooth=""))[1][(0, 0)].lines[0].steps == ()
 
 
 def test_before_format_5_derived_links_share_the_cut():
     dumped = old(4)
     dumped["links"][0]["sync"] = "run x x_fn y y_fn colour style"  # nothing of the steps
-    loaded_links = session.load(dumped)[3]
+    loaded_links = session.load(dumped)[2]
     assert all("steps" in link.synced for link in loaded_links.values())
 
 
 def test_before_format_5_partial_links_between_data_panels_stay_partial():
     a, b = Panel([Line(run="r")]), Panel([Line(run="r")])
-    dumped = session.dump({(0, 0): a, (0, 1): b}, 1, 2,
+    dumped = session.dump({(0, 0): a, (0, 1): b}, Layout.grid(1, 2),
                           {frozenset((a.id, b.id)): Link("run x y")})
     dumped["format"] = 4
-    (link,) = session.load(dumped)[3].values()
+    (link,) = session.load(dumped)[2].values()
     assert link.synced == {"run", "x", "y"}
 
 
@@ -166,7 +167,7 @@ def test_version_1_layout():
     old = {"rows": 2, "cols": 1, "panels": {
         "0,0": {"lines": [{"run": "r.005", "y": "M006_AH"}], "link_group": None},
         "1,0": {"source": "0,0"}}}
-    _rows, _cols, panels, links = session.load(old)
+    _layout, panels, links = session.load(old)
     fft = panels[(1, 0)]
     assert fft.operation == "fft" and fft.lines[0].y == "M006_AH"
     (link,) = links.values()
@@ -176,7 +177,7 @@ def test_version_1_layout():
 def test_format_2_blank_text_was_automatic():
     old = {"format": 2, "rows": 1, "cols": 1,
            "panels": {"0,0": {"title": "", "lines": [{"label": ""}]}}}
-    panel = session.load(old)[2][(0, 0)]
+    panel = session.load(old)[1][(0, 0)]
     assert panel.title is None and panel.lines[0].label is None
 
 
@@ -185,7 +186,7 @@ def test_format_8_auto_style_is_solid_or_dashed_for_a_shown_fit():
            "panels": {"0,0": {"lines": [{"style": "auto"},
                                         {"style": "auto", "background": "fit"},
                                         {"style": ":", "background": "fit"}]}}}
-    lines = session.load(old)[2][(0, 0)].lines
+    lines = session.load(old)[1][(0, 0)].lines
     assert [l.style for l in lines] == ["-", "--", ":"]
 
 
@@ -195,10 +196,10 @@ def test_format_8_keeps_its_settings_and_links():
     automatic one."""
     a, b = Panel([Line(run="r")], title=""), Panel([Line(run="r")])
     dumped = json.loads(json.dumps(session.dump(
-        {(0, 0): a, (0, 1): b}, 1, 2, {frozenset((a.id, b.id)): Link("run x y")})))
+        {(0, 0): a, (0, 1): b}, Layout.grid(1, 2), {frozenset((a.id, b.id)): Link("run x y")})))
     dumped["format"] = 8
     dumped["panels"]["0,0"]["lines"] = [{"run": "r", "despike": True}]  # as format 8 had it
-    _, _, loaded, links = session.load(dumped)
+    _, loaded, links = session.load(dumped)
     assert links == {frozenset((a.id, b.id)): Link("run x y")}
     assert loaded[(0, 0)].title == "" and loaded[(0, 0)].lines[0].steps == (Step("despike"),)
 
@@ -252,10 +253,10 @@ def test_what_a_draw_found_and_the_chosen_step_are_not_saved():
     panels, links = state()
     line = panels[(0, 0)].lines[0]
     line.found, line.step = (None, (("A", 1.0),), None, None), 2
-    dumped = json.loads(json.dumps(session.dump(panels, 2, 1, links)))
+    dumped = json.loads(json.dumps(session.dump(panels, Layout.grid(2, 1), links)))
     saved = dumped["panels"]["0,0"]["lines"][0]
     assert "found" not in saved and "step" not in saved
-    loaded = session.load(dumped)[2][(0, 0)].lines[0]
+    loaded = session.load(dumped)[1][(0, 0)].lines[0]
     assert loaded.found == () and loaded.step == 0 and line.copy().found == ()
 
 
@@ -264,13 +265,13 @@ def test_what_a_draw_found_and_the_chosen_step_are_not_saved():
 def test_old_link_keys_for_steps_share_steps():
     dumped = old(8)
     dumped["links"][0]["sync"] = "run x smoothing"
-    assert session.load(dumped)[3][frozenset("df")].synced == {"run", "x", "steps"}
+    assert session.load(dumped)[2][frozenset("df")].synced == {"run", "x", "steps"}
     dumped = old(7)
     del dumped["panels"]["1,0"]["source"]  # not known as derived: judged by what it shares
     dumped["links"][0]["sync"] = "run x x_fn y y_fn colour style"  # all but the steps
-    assert "steps" in session.load(dumped)[3][frozenset("df")].synced
+    assert "steps" in session.load(dumped)[2][frozenset("df")].synced
     dumped["links"][0]["sync"] = "run x y"  # partial links stay partial
-    assert "steps" not in session.load(dumped)[3][frozenset("df")].synced
+    assert "steps" not in session.load(dumped)[2][frozenset("df")].synced
 
 
 def test_changing_x_clears_every_x_unit_setting():

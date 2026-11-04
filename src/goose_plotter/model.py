@@ -201,6 +201,110 @@ def without_x_units(steps):
     return tuple(replace(s, cuts=(), span=None) for s in steps)
 
 
+MAX_GRID = 6  # most rows, and most panels in a row
+
+
+def _shares(values, n):
+    """`values` as n positive shares rounded to 3 places, or () for equal
+    ones (or anything else), so equal layouts compare and save equal."""
+    try:
+        shares = tuple(round(float(v), 3) for v in values)
+    except (TypeError, ValueError):
+        return ()
+    if (len(shares) != n or not all(math.isfinite(v) and v > 0 for v in shares)
+            or len(set(shares)) <= 1):
+        return ()
+    return shares
+
+
+@dataclass(frozen=True)
+class Layout:
+    """How a plot's panels are laid out: rows of panels, each row with its own
+    number of them (`counts`), and how the room is shared: each row's share
+    of the height, and per row each panel's share of its width. Shares are
+    () for equal. Panels are kept by (row, column), column < counts[row]."""
+    counts: tuple = (1,)
+    heights: tuple = ()
+    widths: tuple = ()  # per row: () or that row's shares
+
+    def __post_init__(self):
+        counts = tuple(self.counts)
+        widths = tuple(self.widths) if len(self.widths) == len(counts) else ((),) * len(counts)
+        object.__setattr__(self, "counts", counts)
+        object.__setattr__(self, "heights", _shares(self.heights, len(counts)))
+        object.__setattr__(self, "widths", tuple(_shares(w, n) for w, n in zip(widths, counts)))
+
+    @classmethod
+    def grid(cls, rows, cols):
+        return cls((cols,) * rows)
+
+    @property
+    def rows(self):
+        return len(self.counts)
+
+    def cells(self):
+        """Every panel's (row, column), in reading order."""
+        return [(r, c) for r, n in enumerate(self.counts) for c in range(n)]
+
+    def number(self, cell):
+        """A panel's number as the user sees it: 1, 2, ... across then down."""
+        return sum(self.counts[:cell[0]]) + cell[1] + 1
+
+    def row_heights(self):
+        return self.heights or (1,) * self.rows
+
+    def col_widths(self, row):
+        return self.widths[row] or (1,) * self.counts[row]
+
+    def with_counts(self, counts):
+        """These rows and counts, keeping the sizes that still fit: a row's
+        height while it's there, its widths while its count is the same."""
+        counts = tuple(counts)
+        heights = self.row_heights()[:len(counts)] + (1,) * (len(counts) - self.rows)
+        widths = tuple(self.widths[r] if r < self.rows and self.counts[r] == n else ()
+                       for r, n in enumerate(counts))
+        return Layout(counts, heights, widths)
+
+    def without(self, cell):
+        """The layout once the panel at `cell` is gone: its row has one panel
+        fewer, or goes if it was the last."""
+        r, c = cell
+        if self.counts[r] > 1:
+            widths = list(self.widths)
+            widths[r] = tuple(w for i, w in enumerate(self.col_widths(r)) if i != c)
+            counts = self.counts[:r] + (self.counts[r] - 1,) + self.counts[r + 1:]
+            return Layout(counts, self.heights, widths)
+        heights = self.row_heights()
+        return Layout(self.counts[:r] + self.counts[r + 1:], heights[:r] + heights[r + 1:],
+                      self.widths[:r] + self.widths[r + 1:])
+
+    def resized(self, heights=None, row=None, widths=None):
+        """With new `heights`, or new `widths` for `row`."""
+        if heights is not None:
+            return Layout(self.counts, heights, self.widths)
+        rows = list(self.widths)
+        rows[row] = widths
+        return Layout(self.counts, self.heights, rows)
+
+    def plain(self):
+        return {"counts": list(self.counts), "heights": list(self.heights),
+                "widths": [list(w) for w in self.widths]}
+
+    @classmethod
+    def from_plain(cls, data):
+        """A Layout from `plain`'s data; ValueError if its counts don't make one."""
+        try:
+            counts = tuple(int(n) for n in data["counts"])
+        except (KeyError, TypeError, ValueError) as err:
+            raise ValueError(f"not a layout ({err})") from None
+        if not (1 <= len(counts) <= MAX_GRID and all(1 <= n <= MAX_GRID for n in counts)):
+            raise ValueError("that layout is bigger than the plotter allows")
+        widths = data.get("widths")
+        return cls(counts, data.get("heights") or (),
+                   tuple(w if isinstance(w, list) else () for w in widths)
+                   if isinstance(widths, list) else ())
+
+
 @dataclass
 class Link:
     """A link between two panels (the Plotter keeps them by the pair of their

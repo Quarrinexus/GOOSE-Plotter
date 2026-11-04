@@ -85,8 +85,8 @@ def test_splicing_an_fft_cuts_its_spectrum_in_f(app):
     assert low > 25 and high < 75
     assert fft.cuts == ((30.0, 70.0),) and fft.cut == "keep"
     assert all(not steps_of(l, "cut") for p in app.panels.values() for l in p.lines)  # data uncut
-    saved = json.loads(json.dumps(session.dump(app.panels, app.rows, app.cols, app.links)))
-    _, _, panels, _ = session.load(saved)  # as a session file gives it back
+    saved = json.loads(json.dumps(session.dump(app.panels, app.layout, app.links)))
+    _, panels, _ = session.load(saved)  # as a session file gives it back
     assert (panels[(1, 0)].cut, panels[(1, 0)].cuts) == ("keep", ((30.0, 70.0),))
     app.pick_range("cut")  # picking works on an FFT panel
     assert app.picker is not None
@@ -381,12 +381,12 @@ def test_plots_in_tabs_keep_their_own_panels(app):
     plot(app, run="Cambridge_Sep_26.005", x_fn="1/x")
     app.set_layout(1, 2)
     app.switch_plot(1)
-    assert (app.rows, app.cols) == (1, 1) and app.panel.region == (5.0, 9.0)
+    assert app.layout.counts == (1,) and app.panel.region == (5.0, 9.0)
     assert app.panel.line.x_fn == "x" and app.filename.get().startswith("run_005")
     app.undo()  # plot 1's own last step: the region
     assert app.panel.region == ()
     app.switch_plot(2)
-    assert (app.rows, app.cols) == (1, 2) and app.panel.line.x_fn == "1/x"
+    assert app.layout.counts == (2,) and app.panel.line.x_fn == "1/x"
     names = [text for _, text in app.plot_strip.tabs]
     assert names == ["Plot 1", "Plot 2"] and app.plot_strip.chosen == 2
     app.close_plot(2)  # shows the one before
@@ -394,7 +394,7 @@ def test_plots_in_tabs_keep_their_own_panels(app):
     assert app.panel.line.run and not app.plot_strip.close_spans  # the last has no ×
     app.undo()  # opens it again, as it was
     assert len(app.plots) == 2 and app.plot_strip.chosen == 2
-    assert (app.rows, app.cols) == (1, 2) and app.panel.line.x_fn == "1/x"
+    assert app.layout.counts == (2,) and app.panel.line.x_fn == "1/x"
 
 
 def test_clicking_the_plot_tabs(app):
@@ -460,12 +460,12 @@ def test_session_save_and_open(app, tmp_path):
     path = tmp_path / "s.json"
     app.save_session(path)
     saved = json.loads(path.read_text())
-    assert saved["format"] == session.FORMAT and saved["cols"] == 2
+    assert saved["format"] == session.FORMAT and saved["layout"]["counts"] == [2]
     assert [s["kind"] for s in saved["panels"]["0,0"]["lines"][0]["steps"]] == ["cut", "fit"]
     app.set_layout(1, 1)
     app.remove_step()
     app.open_session(path)
-    assert app.cols == 2
+    assert app.layout.counts == (2,)
     line = app.panels[(0, 0)].lines[0]
     assert cutting(line) == ("remove", ((5.0, 9.0),))
     assert line.steps[1].fitting == ("fit", None, "A + B * x", "")

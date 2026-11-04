@@ -294,7 +294,7 @@ canvas draws, and on the real figure that would break every redraw after.
 
 ## Sessions
 
-`session.dump` / `session.load` turn `self.panels` into plain data and back;
+`session.dump` / `session.load` turn `self.panels` and `self.layout` into plain data and back;
 `Plotter._restore` swaps it and the links in. `dump` marks its output with `FORMAT`;
 without it `load` reads the version 1 layout (`_load_old`), where a derived
 panel had no lines of its own and every panel an "fft" operation. `load` drops unknown or mistyped fields and menu values that
@@ -330,6 +330,36 @@ set `side_undo`, `(what, how)`, which `undo` runs first; `_changed` clears it
 once the panels change after it, so Ctrl+Z always undoes the latest thing.
 The only popups left ask for input: the recipe name, the data format, and
 whether to overwrite a saved figure's file.
+
+## Layout
+
+`self.layout` is a frozen `model.Layout`: `counts`, the number of panels in
+each row, and the rows' and each row's panels' shares of the room
+(`heights`, `widths`; () for equal, and `_shares` rounds and turns equal
+shares into (), so equal layouts dump equal). Panels are still kept by
+`(row, column)`, with `column < counts[row]`; `layout.cells()` is reading
+order and `layout.number` the panel number. So:
+
+- Never assume a full grid: a row may have fewer panels than the one above
+  (`_step_panel` clamps the column going up or down). `set_counts` resizes
+  (`set_layout(rows, cols)` is an even grid); `layout.with_counts` keeps
+  sizes that still fit, `layout.without(cell)` is a deletion (the row
+  closes up, or goes), and `delete_panel` moves panels and their `source`
+  cells by zipping the old reading order with the new.
+- `_build_axes` makes a gridspec of rows (`row_grid`) and one of panels per
+  row (`col_grids`), kept so a drag can change their ratios.
+- **Dragging gaps**: `_find_dividers` runs on every on-screen draw (not a
+  save's, which has its own canvas) and finds the gaps from the axes' tight
+  boxes. A press in one starts `divider_drag`, holding the pair's shares and
+  pixel extent from then; motion only sets the gridspec ratios and
+  `draw_idle`s, never `_build_axes` (which would make an undo step per
+  motion), and the release calls `_changed` once.
+- The Layout window applies as it's changed, with `_changed(merge="layout")`,
+  so one opening of it is one undo step; `_changed`'s `merge` is a name, so
+  the colour picker's merging (True) doesn't join it. `_load_controls`
+  keeps the window showing the layout.
+- Sessions before format 11 had `rows` and `cols`; `load` makes them
+  `Layout.grid`. `VERSION` went to 10 with it.
 
 ## Plots
 

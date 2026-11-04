@@ -263,8 +263,8 @@ stay until it's done or cancelled.
   click. **Ticks**: **Point inward** turns every panel's tick marks to point
   into the plot instead of out (off to start with); it's a preference for
   all panels, kept in `settings.json` until you untick it.
-- **FFT** (Derive tab): **New panel** adds a row with the selected panel's spectrum
-  under it; **Existing panel...** puts it in the panel you click next
+- **FFT** (Derive tab): **New panel** adds a row like the selected panel's,
+  with its spectrum under it; **Existing panel...** puts it in the panel you click next
   (replacing any lines of its own; Ctrl+Z puts them back). The new panel is linked
   to the data panel (see Linked data below, and the Linking tab) with every
   Sync box ticked on both, so changing a line's axes, steps or
@@ -356,13 +356,25 @@ stay until it's done or cancelled.
   data folder and the controls' tab are shared. Save session and Open
   session work on the plot shown. Switching resets the zoom.
 - **Layout** (the four-pane button on the bar above the plot, left of the
-  toolbar's): hover to size the grid, click to apply. Click a panel to select it.
-- **Delete panel** (the button beside Layout): deletes the selected panel. The
-  panels after it, across then down, move back one place, and the grid loses
-  the row or column that leaves empty (a 3 x 1 stack becomes 2 x 1); in a
-  grid of both rows and columns the last cell gets an empty panel instead.
-  An FFT or derivative panel of the deleted one keeps its lines, unlinked. Ctrl+Z brings
-  it back. There's always at least one panel.
+  toolbar's): the plot is rows of panels, and each row can hold its own
+  number of them, e.g. one wide data panel over its FFT and derivative.
+  Hover the grid and click for an even grid of rows x columns; under it,
+  **-** and **+** set each row's number of panels, and **Add row** /
+  **Remove row** add one like the last or take the last away. Changes apply
+  as they're made, a new panel copying the selected one, and Ctrl+Z
+  undoes everything done in one opening of the window at once. Click a
+  panel to select it.
+- **Sizes**: drag the gap between two rows, or between two panels in a row,
+  to share their room differently (the pointer turns into a double arrow
+  over a gap); double-click a gap to make that pair even again, and **Even
+  sizes** in the Layout window evens everything. One drag is one Ctrl+Z.
+  Sizes are kept with the plot and in sessions; changing a row's number of
+  panels evens that row's widths.
+- **Delete panel** (the button beside Layout): deletes the selected panel.
+  Its row closes up, the panels after it in the row moving back one place,
+  and the row goes if it was its last panel. An FFT or derivative panel of
+  the deleted one keeps its lines, unlinked. Ctrl+Z brings it back. There's
+  always at least one panel.
 - **⇅** (beside the X and Y axis boxes): swaps x and y, functions included, for
   every line in the panel.
 - **Save figure**: writes to the output folder, named after the plot (e.g.

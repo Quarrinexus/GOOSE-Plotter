@@ -11,9 +11,11 @@ from goose_plotter.model import (
     KINDS,
     LEGENDS,
     MARKERS,
+    MAX_GRID,
     OPERATIONS,
     STYLES,
     SYNC,
+    Layout,
     Line,
     Link,
     Panel,
@@ -21,7 +23,6 @@ from goose_plotter.model import (
     one_range_cuts,
     tidy_data_view,
 )
-from goose_plotter.widgets import MAX_GRID
 
 # 2: derived panels have their own lines, in their data panel's link group.
 # 3: a title, axis label or legend name of None is the automatic one, "" none.
@@ -31,7 +32,8 @@ from goose_plotter.widgets import MAX_GRID
 # 7: the background fits the whole line; its old x range is a cut.
 # 8: lines can be despiked, and links can share it.
 # 9: a line's processing is a list of steps, in any order (format 10).
-VERSION = 9
+# 10: rows can have different numbers of panels, and sizes (format 11).
+VERSION = 10
 KEY = "goose_plotter_session"  # the session file's marker, holding VERSION
 # `dump`'s own marker, so `load` reads undo snapshots and files alike; its
 # absence means the layout of version 1, where a derived panel shared its
@@ -40,9 +42,10 @@ KEY = "goose_plotter_session"  # the session file's marker, holding VERSION
 # before 5, there was no cut to share; in 5, a line had one cut range;
 # before 7, a line's background had an x range of its own; before 8, there
 # was no despiking to share; before 9, a line's style could be "auto"; before
-# 10, a line had a fixed cut, despiking, fit and smoothing instead of steps.
-FORMAT = 10
-OLD_FORMATS = (2, 3, 4, 5, 6, 7, 8, 9)  # read and brought up to date; others are version 1
+# 10, a line had a fixed cut, despiking, fit and smoothing instead of steps;
+# before 11, the layout was a grid, "rows" by "cols".
+FORMAT = 11
+OLD_FORMATS = (2, 3, 4, 5, 6, 7, 8, 9, 10)  # read and brought up to date; others are version 1
 TEXTS = {Panel: ("title", "x_label", "y_label"), Line: ("label",)}
 
 # Not saved: what the last draw found, and what the controls show.
@@ -104,7 +107,7 @@ def _plain(obj):
     return {f.name: getattr(obj, f.name) for f in fields(obj) if f.name not in SKIP}
 
 
-def dump(panels, rows, cols, links):
+def dump(panels, layout, links):
     """The layout, every panel's settings and lines (with a derived panel's
     source cell while it has one), and the links, in a fixed order so equal
     states dump equal (undo compares them)."""
@@ -118,7 +121,7 @@ def dump(panels, rows, cols, links):
     saved_links = [{"a": a, "b": b, "sync": link.sync, "frozen": link.frozen}
                    for (a, b), link in sorted((tuple(sorted(pair)), link)
                                               for pair, link in links.items())]
-    return {"format": FORMAT, "rows": rows, "cols": cols, "panels": out, "links": saved_links}
+    return {"format": FORMAT, "layout": layout.plain(), "panels": out, "links": saved_links}
 
 
 def _allowed(f, value):
@@ -249,20 +252,24 @@ def _old_steps(data):
 
 
 def load(state):
-    """(rows, cols, panels, links) from `dump`'s output, links being
+    """(layout, panels, links) from `dump`'s output, links being
     {frozenset of two panel ids: Link}. Raises ValueError if it isn't one."""
     try:
-        rows, cols = int(state["rows"]), int(state["cols"])
+        if "layout" in state:
+            layout = Layout.from_plain(state["layout"])
+        else:  # before format 11: a grid
+            rows, cols = int(state["rows"]), int(state["cols"])
+            if not (1 <= rows <= MAX_GRID and 1 <= cols <= MAX_GRID):
+                raise ValueError(f"a {rows} x {cols} layout is bigger than the plotter allows")
+            layout = Layout.grid(rows, cols)
         saved = {key_cell(k): v for k, v in state["panels"].items()}
-    except (KeyError, TypeError, ValueError, AttributeError) as err:
+    except (KeyError, TypeError, AttributeError) as err:
         raise ValueError(f"not a session ({err})") from None
-    if not (1 <= rows <= MAX_GRID and 1 <= cols <= MAX_GRID):
-        raise ValueError(f"a {rows} x {cols} layout is bigger than the plotter allows")
-    grid = [(r, c) for r in range(rows) for c in range(cols)]
+    grid = layout.cells()
     fmt = state.get("format")
     if fmt not in (*OLD_FORMATS, FORMAT):
         panels, groups = _load_old(saved, grid)
-        return rows, cols, _blank_is_auto(panels), _group_links(panels, groups)
+        return layout, _blank_is_auto(panels), _group_links(panels, groups)
     panels = {}
     for cell in grid:
         data = saved.get(cell)
@@ -276,17 +283,17 @@ def load(state):
         if p.id in seen:
             p.id = Panel().id
         seen.add(p.id)
-    if fmt in (8, 9, FORMAT):
-        return rows, cols, panels, _links(state.get("links"), panels)
+    if fmt in (8, 9, 10, FORMAT):
+        return layout, panels, _links(state.get("links"), panels)
     # Before 8 some of what is now "steps" couldn't be shared (the cut before 5,
     # despiking before 8), so a link that shared all the rest shares it.
     new = {"steps"}
     if fmt in (4, 5, 6, 7):
-        return rows, cols, panels, _share_new(_links(state.get("links"), panels), panels, new)
+        return layout, panels, _share_new(_links(state.get("links"), panels), panels, new)
     groups = {cell: _group_of(saved.get(cell), old_ticks=False) for cell in panels}
     if fmt == 2:
         panels = _blank_is_auto(panels)
-    return rows, cols, panels, _share_new(_group_links(panels, groups), panels, new)
+    return layout, panels, _share_new(_group_links(panels, groups), panels, new)
 
 
 def _share_new(links, panels, new):

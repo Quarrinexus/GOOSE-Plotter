@@ -17,13 +17,13 @@ from goose_plotter.model import (
     GRIDS,
     LEGENDS,
     MARKERS,
+    MAX_GRID,
     PALETTE,
     RANGES,
     STYLES,
 )
 
 SELECTED = "#e8a33d"  # frame around the selected panel
-MAX_GRID = 6  # the layout picker offers up to MAX_GRID x MAX_GRID panels
 
 
 def key_of(mapping, text):
@@ -143,22 +143,28 @@ class ColourPicker(ttk.Frame):
 
 
 class LayoutPicker(tk.Toplevel):
-    """Word-style grid: hover to choose rows x columns, click to apply."""
+    """The plot's layout. Hover the Word-style grid and click for an even grid
+    of rows x columns; below it, set each row's number of panels with - and +,
+    or add and remove rows. Changes apply as they're made, `on_counts(counts)`;
+    Even sizes, `on_even()`, undoes divider drags. `show(layout)` follows
+    changes made elsewhere (undo)."""
 
     CELL, GAP = 26, 3
 
-    def __init__(self, parent, rows, cols, on_pick):
+    def __init__(self, parent, layout, on_counts, on_even):
         super().__init__(parent)
         self.title("Layout")
         self.resizable(False, False)
         self.transient(parent)
-        self.on_pick = on_pick
+        self.on_counts, self.counts = on_counts, layout.counts
+        body = ttk.Frame(self, padding=10)
+        body.pack(fill=tk.BOTH, expand=True)
         size = MAX_GRID * (self.CELL + self.GAP) + self.GAP
-        self.grid_canvas = tk.Canvas(self, width=size, height=size, highlightthickness=0,
+        self.grid_canvas = tk.Canvas(body, width=size, height=size, highlightthickness=0,
                                      background=theme.SURFACE, cursor="hand2")
-        self.grid_canvas.pack(padx=10, pady=(10, 4))
-        self.label = ttk.Label(self, anchor=tk.CENTER)
-        self.label.pack(fill=tk.X, pady=(0, 10))
+        self.grid_canvas.pack()
+        self.label = ttk.Label(body, anchor=tk.CENTER)
+        self.label.pack(fill=tk.X, pady=(4, 8))
         self.cells = {}
         for r in range(MAX_GRID):
             for c in range(MAX_GRID):
@@ -167,11 +173,59 @@ class LayoutPicker(tk.Toplevel):
                 self.cells[r, c] = self.grid_canvas.create_rectangle(
                     x0, y0, x0 + self.CELL, y0 + self.CELL, width=1)
         self.grid_canvas.bind("<Motion>", self._hover)
+        self.grid_canvas.bind("<Leave>", lambda _: self._show(self.counts))
         self.grid_canvas.bind("<Button-1>", self._click)
+        ttk.Label(body, text="Panels in each row", foreground=theme.MUTED).pack(anchor=tk.W)
+        self.rows_frame = ttk.Frame(body)
+        self.rows_frame.pack(fill=tk.X, pady=(2, 6))
+        self.row_counts = []  # each row's number label
+        buttons = ttk.Frame(body)
+        buttons.pack(fill=tk.X)
+        buttons.columnconfigure((0, 1, 2), weight=1)
+        self.add_row = ttk.Button(buttons, text="Add row",
+                                  command=lambda: self._change(self.counts + self.counts[-1:]))
+        self.add_row.grid(row=0, column=0, sticky="ew")
+        self.remove_row = ttk.Button(buttons, text="Remove row",
+                                     command=lambda: self._change(self.counts[:-1]))
+        self.remove_row.grid(row=0, column=1, sticky="ew", padx=6)
+        ttk.Button(buttons, text="Even sizes", command=on_even).grid(
+            row=0, column=2, sticky="ew")
         self.bind("<Escape>", lambda _: self.destroy())
-        self._show(rows, cols)
-        self.grab_set()  # modal: the main window waits for a choice
+        self.show(layout)
         self.focus_set()
+
+    def show(self, layout):
+        """Show `layout`'s rows; the row controls are made again only when the
+        number of rows changes, so a click never destroys its own button."""
+        self.counts = layout.counts
+        if len(self.row_counts) != layout.rows:
+            for child in self.rows_frame.winfo_children():
+                child.destroy()
+            self.row_counts = []
+            for r in range(layout.rows):
+                ttk.Label(self.rows_frame, text=f"Row {r + 1}").grid(row=r, column=0, sticky="w")
+                ttk.Button(self.rows_frame, text="-", width=2, style="Box.TButton",
+                           command=lambda r=r: self._step(r, -1)).grid(
+                    row=r, column=1, padx=(10, 4), pady=1)
+                count = ttk.Label(self.rows_frame, width=2, anchor=tk.CENTER)
+                count.grid(row=r, column=2)
+                ttk.Button(self.rows_frame, text="+", width=2, style="Box.TButton",
+                           command=lambda r=r: self._step(r, 1)).grid(
+                    row=r, column=3, padx=(4, 0), pady=1)
+                self.row_counts.append(count)
+        for label, n in zip(self.row_counts, self.counts):
+            label["text"] = str(n)
+        self.add_row.state(["!disabled" if layout.rows < MAX_GRID else "disabled"])
+        self.remove_row.state(["!disabled" if layout.rows > 1 else "disabled"])
+        self._show(self.counts)
+
+    def _change(self, counts):
+        if counts and counts != self.counts:
+            self.on_counts(tuple(counts))
+
+    def _step(self, row, by):
+        n = min(max(self.counts[row] + by, 1), MAX_GRID)
+        self._change(self.counts[:row] + (n,) + self.counts[row + 1:])
 
     def _cell_at(self, event):
         step = self.CELL + self.GAP
@@ -179,21 +233,24 @@ class LayoutPicker(tk.Toplevel):
         c = min(max(int((event.x - self.GAP) // step), 0), MAX_GRID - 1)
         return r + 1, c + 1
 
-    def _show(self, rows, cols):
+    def _show(self, counts):
+        """Light the cells of `counts`, a panel count per row."""
         for (r, c), item in self.cells.items():
-            on = r < rows and c < cols
+            on = r < len(counts) and c < counts[r]
             self.grid_canvas.itemconfigure(
                 item, fill=SELECTED if on else theme.BACKGROUND,
                 outline="#b5781c" if on else theme.BORDER)
-        self.label["text"] = f"{rows} × {cols}"
+        even = len(set(counts)) == 1
+        self.label["text"] = (f"{len(counts)} × {counts[0]}" if even
+                              else " + ".join(str(n) for n in counts) + " panels")
 
     def _hover(self, event):
-        self._show(*self._cell_at(event))
+        rows, cols = self._cell_at(event)
+        self._show((cols,) * rows)
 
     def _click(self, event):
         rows, cols = self._cell_at(event)
-        self.destroy()
-        self.on_pick(rows, cols)
+        self._change((cols,) * rows)
 
 
 class OverwriteDialog(tk.Toplevel):

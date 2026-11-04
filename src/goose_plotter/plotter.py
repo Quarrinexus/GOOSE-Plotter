@@ -50,8 +50,10 @@ from goose_plotter.model import (
     GRIDS,
     KINDS,
     LEGENDS,
+    MAX_GRID,
     RANGES,
     SYNC,
+    Layout,
     Link,
     Panel,
     Step,
@@ -69,7 +71,6 @@ from goose_plotter.profile import load_profile, save_format, save_recipes
 from goose_plotter.settings import load_settings, save_settings
 from goose_plotter.toolbar import Toolbar
 from goose_plotter.widgets import (
-    MAX_GRID,
     SELECTED,
     AxesPopup,
     FitResultsPopup,
@@ -173,7 +174,7 @@ class Plotter(tk.Tk):
             self.attributes("-zoomed", True)  # Linux (X11)
         self.frames = {}  # dataset name -> DataFrame, so each file is read once
         self.datasets = {}  # dataset name -> file, from the data folder
-        self.rows, self.cols = 1, 1
+        self.layout = Layout()  # rows of panels, and their sizes
         self.panels = {(0, 0): Panel()}  # (row, col) -> Panel
         self.selected = (0, 0)
         self.axes = {}  # (row, col) -> matplotlib Axes
@@ -183,6 +184,7 @@ class Plotter(tk.Tk):
         # (row, col) -> {"title"/"x_label"/"y_label": text}, and -> {line index: legend name}.
         self.auto_text, self.auto_names = {}, {}
         self.style_popup = None
+        self.layout_popup = None
         self.axes_popup = None
         self.save_popup = None
         self.picker = None  # the SpanSelector while a fit or cut range is being dragged
@@ -389,6 +391,12 @@ class Plotter(tk.Tk):
         self._show_plots()
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.canvas.mpl_connect("button_press_event", self._on_click)
+        # The gaps between panels can be dragged to resize them; see _find_dividers.
+        self.dividers, self.divider_drag, self.divider_cursor = [], None, ""
+        self.divider_rows, self.divider_boxes = [], {}
+        self.canvas.mpl_connect("draw_event", self._find_dividers)
+        self.canvas.mpl_connect("motion_notify_event", self._divider_motion)
+        self.canvas.mpl_connect("button_release_event", self._divider_release)
 
         self._refresh_runs()
         self._build_axes()
@@ -402,7 +410,7 @@ class Plotter(tk.Tk):
         Fixed there, as the coordinates grow to the left."""
         first_text = next(w for w in self.toolbar.pack_slaves() if isinstance(w, tk.Label))
         layout = self.toolbar.button("Layout", self.choose_layout,
-                                     "Layout: rows and columns of panels")
+                                     "Layout: rows of panels, and their sizes")
         self.delete_button = self.toolbar.button("Delete panel", self.delete_panel,
                                                  "Delete the selected panel")
         self.toolbar.spacer().pack(side=tk.RIGHT, before=first_text, padx="3p")
@@ -475,8 +483,12 @@ class Plotter(tk.Tk):
             self._select_line(at)
 
     def _step_panel(self, dr, dc):
-        """Select the panel beside the selected one, if there is one."""
-        cell = (self.selected[0] + dr, self.selected[1] + dc)
+        """Select the panel beside the selected one, if there is one (above or
+        below, the nearest in a row of fewer panels)."""
+        r, c = self.selected[0] + dr, self.selected[1] + dc
+        if dr and 0 <= r < self.layout.rows:
+            c = min(c, self.layout.counts[r] - 1)
+        cell = (r, c)
         if cell in self.axes:
             self.stop_picking()
             self._select_panel(cell)
@@ -1788,6 +1800,8 @@ class Plotter(tk.Tk):
 
     def _load_controls(self):
         """Show the selected line's settings in the controls."""
+        if self.layout_popup and self.layout_popup.winfo_exists():
+            self.layout_popup.show(self.layout)
         self._fill_line_list()
         l = self.panel.line
         self.run.set(l.run)
@@ -1979,18 +1993,24 @@ class Plotter(tk.Tk):
         values, name = apply_function(expr, values)
         return values, tuple(f"{expr},   {name} = {t}" for t in texts)
 
-    def _build_axes(self):
-        """Recreate the grid of axes and draw every panel into it."""
+    def _build_axes(self, merge=False):
+        """Recreate the axes, row by row, and draw every panel into them."""
         self.stop_picking()
         self.fig.clear()
-        grid = self.fig.subplots(self.rows, self.cols, squeeze=False)
-        self.axes = {(r, c): grid[r, c] for r in range(self.rows) for c in range(self.cols)}
+        # A row each, then its panels, so rows can hold different numbers of
+        # panels; the gridspecs are kept so a divider drag can resize them.
+        layout = self.layout
+        self.row_grid = self.fig.add_gridspec(layout.rows, 1, height_ratios=layout.row_heights())
+        self.col_grids = [self.row_grid[r].subgridspec(1, n, width_ratios=layout.col_widths(r))
+                          for r, n in enumerate(layout.counts)]
+        self.axes = {(r, c): self.fig.add_subplot(self.col_grids[r][0, c])
+                     for r, c in layout.cells()}
         self._tidy_links()
         for cell in self.axes:
             self._draw_panel(cell)
         self._update_filename()
         self.canvas.draw()
-        self._changed()
+        self._changed(merge=merge)
 
     # The stage named in a step's errors, by kind.
     STAGES: ClassVar = {"cut": "Splicing", "despike": "Despike", "subtract": "Fit",
@@ -2233,6 +2253,8 @@ class Plotter(tk.Tk):
             return
         # Out of any box, so the shortcuts for lines and panels work next.
         self.canvas.get_tk_widget().focus_set()
+        if self._divider_press(event):
+            return
         cell = next((c for c, ax in self.axes.items() if ax is event.inaxes), None)
         if cell is None:
             return
@@ -2258,48 +2280,171 @@ class Plotter(tk.Tk):
             return  # clicked empty space in the panel already selected
         self._select_panel(cell)
 
+    # --- dragging the gaps between panels -----------------------------------
+
+    def _find_dividers(self, event):
+        """After each draw on screen, where the gaps are: between one row and
+        the next, and between neighbours in a row, each as (kind, where, box
+        in pixels), kind "row" (where: the upper row) or "col" (where: the
+        left panel's cell). A gap is from one panel's labels to the next's,
+        at least DIVIDER pixels wide, as constrained layout leaves little."""
+        if event.canvas is not self.canvas:  # a figure being saved, at its own size
+            return
+        renderer, layout = event.renderer, self.layout
+        boxes = {cell: ax.get_tightbbox(renderer) or ax.bbox for cell, ax in self.axes.items()}
+        rows = []  # each row's (bottom, top) in pixels, y up
+        for r, n in enumerate(layout.counts):
+            row = [boxes[r, c] for c in range(n)]
+            rows.append((min(b.y0 for b in row), max(b.y1 for b in row)))
+        width = self.fig.bbox.width
+
+        def span(lo, hi):
+            if hi - lo < self.DIVIDER:
+                mid = (lo + hi) / 2
+                lo, hi = mid - self.DIVIDER / 2, mid + self.DIVIDER / 2
+            return lo, hi
+
+        zones = []
+        for r in range(layout.rows - 1):
+            lo, hi = span(rows[r + 1][1], rows[r][0])
+            zones.append(("row", r, (0, lo, width, hi)))
+        for r, n in enumerate(layout.counts):
+            for c in range(n - 1):
+                lo, hi = span(boxes[r, c].x1, boxes[r, c + 1].x0)
+                zones.append(("col", (r, c), (lo, rows[r][0], hi, rows[r][1])))
+        self.dividers = zones
+        self.divider_rows, self.divider_boxes = rows, boxes
+
+    DIVIDER = 8  # least width of a draggable gap, in pixels
+    LEAST = 0.15  # least share of the pair a drag leaves either side
+
+    def _divider_at(self, event):
+        if self.toolbar.mode or event.inaxes is not None or event.x is None:
+            return None
+        return next((z for z in self.dividers if z[2][0] <= event.x <= z[2][2]
+                     and z[2][1] <= event.y <= z[2][3]), None)
+
+    def _divider_press(self, event):
+        """Start dragging the gap under a left press, if there is one: from
+        the two sides' extent and shares now, so the drag follows the pointer
+        smoothly. A double click shares their room evenly again."""
+        zone = self._divider_at(event) if event.button == 1 else None
+        if zone is None:
+            return False
+        kind, where, _ = zone
+        layout = self.layout
+        if kind == "row":
+            shares = layout.row_heights()
+            i = where
+            start, end = self.divider_rows[where][1], self.divider_rows[where + 1][0]
+        else:
+            r, i = where
+            shares = layout.col_widths(r)
+            start, end = self.divider_boxes[r, i].x0, self.divider_boxes[r, i + 1].x1
+        total = shares[i] + shares[i + 1]
+        if event.dblclick:
+            self._set_shares(kind, where, i, shares, total / 2, total / 2)
+            self.canvas.draw()
+            self._changed()
+            return True
+        self.divider_drag = (kind, where, i, shares, total, start, end)
+        return True
+
+    def _set_shares(self, kind, where, i, shares, first, second):
+        shares = list(shares)
+        shares[i], shares[i + 1] = first, second
+        if kind == "row":
+            self.layout = self.layout.resized(heights=shares)
+            self.row_grid.set_height_ratios(self.layout.row_heights())
+        else:
+            self.layout = self.layout.resized(row=where[0], widths=shares)
+            self.col_grids[where[0]].set_width_ratios(self.layout.col_widths(where[0]))
+
+    def _divider_motion(self, event):
+        """Resize the two sides of the gap being dragged (only the grid's
+        ratios: nothing is drawn again but the layout), or show a resize
+        cursor over a gap."""
+        if self.divider_drag is not None:
+            if event.x is None:
+                return
+            kind, where, i, shares, total, start, end = self.divider_drag
+            # Rows run down from the top, while pixels count up from the bottom.
+            at = (start - event.y) / (start - end) if kind == "row" else (
+                (event.x - start) / (end - start))
+            at = min(max(at, self.LEAST), 1 - self.LEAST)
+            self._set_shares(kind, where, i, shares, total * at, total * (1 - at))
+            self.canvas.draw_idle()
+            return
+        zone = self._divider_at(event)
+        cursor = ("" if zone is None else
+                  "sb_v_double_arrow" if zone[0] == "row" else "sb_h_double_arrow")
+        if cursor != self.divider_cursor:
+            self.divider_cursor = cursor
+            self.canvas.get_tk_widget().configure(cursor=cursor)
+
+    def _divider_release(self, _event):
+        """The end of a drag: one undo step for all of it."""
+        if self.divider_drag is not None:
+            self.divider_drag = None
+            self._changed()
+
     def choose_layout(self):
-        LayoutPicker(self, self.rows, self.cols, self.set_layout)
+        if self.layout_popup and self.layout_popup.winfo_exists():
+            self.layout_popup.lift()
+            return
+        self.merging = False  # a new go in the picker is a step of its own
+        self.layout_popup = LayoutPicker(
+            self, self.layout, lambda counts: self.set_counts(counts, merge="layout"),
+            self.even_sizes)
+        self._undo_keys(self.layout_popup)
 
     def set_layout(self, rows, cols):
-        """Resize the grid. Panels keep their cell; new cells copy the selected one."""
+        """An even grid of `rows` by `cols` panels."""
+        self.set_counts((cols,) * rows)
+
+    def set_counts(self, counts, merge=False):
+        """Rows of `counts[r]` panels each. Panels keep their cell; new cells
+        copy the selected one. `merge`: part of one go in the layout picker,
+        so Ctrl+Z after it brings back every panel it took away."""
+        if tuple(counts) == self.layout.counts:
+            return
         template = self.panel
-        self.panels = {
-            (r, c): self.panels.get((r, c)) or template.copy()
-            for r in range(rows) for c in range(cols)
-        }
+        layout = self.layout.with_counts(counts)
+        self.panels = {cell: self.panels.get(cell) or template.copy() for cell in layout.cells()}
         # A derived panel whose data panel is gone keeps its lines and what it
         # shows; _build_axes forgets that source.
         if self.selected not in self.panels:
             self.selected = (0, 0)
-        self.rows, self.cols = rows, cols
-        self._build_axes()
+        self.layout = layout
+        self._build_axes(merge=merge)
         self._load_controls()
 
+    def even_sizes(self):
+        """Every row and panel the same size again."""
+        if self.layout.heights or any(self.layout.widths):
+            self.layout = Layout(self.layout.counts)
+            self._build_axes()
+            self._load_controls()
+
     def delete_panel(self):
-        """Delete the selected panel. The panels after it, in reading order, move
-        back one place; the grid loses the row or column that leaves empty, if
-        one does, or else keeps an empty panel in its last cell."""
+        """Delete the selected panel. Its row closes up, the panels after it in
+        the row moving back one place, and goes if it was the row's last."""
         self.stop_picking()
         if len(self.panels) == 1:
             return
-        order = sorted(self.panels)  # reading order
         gone, number = self.selected, self._number(self.selected)
+        layout = self.layout.without(gone)
+        order = self.layout.cells()  # reading order
         kept = [c for c in order if c != gone]
-        moved = dict(zip(kept, order))  # old cell -> new cell
+        moved = dict(zip(kept, layout.cells()))  # old cell -> new cell
         panels = {moved[c]: self.panels[c] for c in kept}
         for p in panels.values():  # a panel derived from the deleted one keeps its lines
             if p.source is not None:
                 p.source = moved.get(p.source)
-        if self.cols == 1:
-            self.rows -= 1
-        elif self.rows == 1:
-            self.cols -= 1
-        else:
-            panels[order[-1]] = Panel()
-        self.panels = panels
+        self.panels, self.layout = panels, layout
         # The panel that took its place, or the new last one.
-        self.selected = order[min(order.index(gone), len(kept) - 1)]
+        new_order = layout.cells()
+        self.selected = new_order[min(order.index(gone), len(new_order) - 1)]
         self._build_axes()
         self._load_controls()
         self._say(f"Deleted panel {number}; Ctrl+Z brings it back.")
@@ -2325,7 +2470,7 @@ class Plotter(tk.Tk):
 
     def _number(self, cell):
         """A panel's number as the user sees it: 1, 2, ... across then down."""
-        return cell[0] * self.cols + cell[1] + 1
+        return self.layout.number(cell)
 
     def _derived_from(self, p):
         """'panel 1, linked to it' for a derived panel, or what it is without one."""
@@ -2372,14 +2517,15 @@ class Plotter(tk.Tk):
         source = self._derive_source(operation)
         if source is None:
             return
-        if self.rows >= MAX_GRID:
+        if self.layout.rows >= MAX_GRID:
             self._say("The layout is full; put it in an existing panel.", error=True)
             return
-        row = self.rows
-        for c in range(self.cols):
+        # A row like the source's, the new panel under it and the rest empty.
+        row, count = self.layout.rows, self.layout.counts[source[0]]
+        for c in range(count):
             self.panels[row, c] = Panel()
         self.panels[row, source[1]] = self._derived(source, operation)
-        self.rows += 1
+        self.layout = self.layout.with_counts((*self.layout.counts, count))
         self.selected = (row, source[1])
         self._build_axes()
         self._load_controls()
@@ -3231,19 +3377,20 @@ class Plotter(tk.Tk):
         """Called after anything that may have changed the panels: if it did,
         the state before becomes the one Ctrl+Z goes back to.
 
-        With `merge`, a change straight after another merging one (the colour
-        picker, which calls this on every drag step) extends that step."""
+        With `merge` (a name: True for the colour picker, which calls this on
+        every drag step, "layout" for the layout picker), a change straight
+        after another with the same `merge` extends that step."""
         self._prune_cache()
         if self.restoring:
             return
-        now = session.dump(self.panels, self.rows, self.cols, self.links)
+        now = session.dump(self.panels, self.layout, self.links)
         if self.last_state is None:  # the window's first draw
             self.last_state = now
             return
         if now == self.last_state:
             return
         self.side_undo = None  # a change to the panels comes after it now
-        if not (merge and self.merging):
+        if not (merge and merge == self.merging):
             self.undo_state = self.last_state
         self.last_state, self.merging = now, merge
 
@@ -3270,7 +3417,7 @@ class Plotter(tk.Tk):
             self._restore(state)
         finally:
             self.restoring = False
-        self.last_state = session.dump(self.panels, self.rows, self.cols, self.links)
+        self.last_state = session.dump(self.panels, self.layout, self.links)
         self.merging = False
         self._say("Undone. (One step only.)")
 
@@ -3279,12 +3426,12 @@ class Plotter(tk.Tk):
     def _restore(self, state, selected=None):
         """Replace the panels with those in `state` (from session.dump). Raises
         ValueError, changing nothing, if it isn't one."""
-        rows, cols, panels, links = session.load(state)
+        layout, panels, links = session.load(state)
         self.stop_picking()
         for cell, p in panels.items():  # keep the line each panel had selected
             if cell in self.panels:
                 p.selected = min(self.panels[cell].selected, len(p.lines) - 1)
-        self.rows, self.cols, self.panels, self.links = rows, cols, panels, links
+        self.layout, self.panels, self.links = layout, panels, links
         if selected in panels:
             self.selected = selected
         elif self.selected not in panels:
@@ -3307,7 +3454,7 @@ class Plotter(tk.Tk):
                 return
         data = {session.KEY: session.VERSION, "data_dir": self.data_dir,
                 "selected": session.cell_key(self.selected),
-                **session.dump(self.panels, self.rows, self.cols, self.links)}
+                **session.dump(self.panels, self.layout, self.links)}
         if self.filename.get().strip() != self.auto_name:  # a name the user typed
             data["save_as"] = self.filename.get().strip()
         try:
@@ -3368,7 +3515,7 @@ class Plotter(tk.Tk):
         session holds them), which panel and lines are selected, the link the
         Linking tab shows, the name typed to save under and its undo step."""
         typed = self.filename.get().strip()
-        return {"session": session.dump(self.panels, self.rows, self.cols, self.links),
+        return {"session": session.dump(self.panels, self.layout, self.links),
                 "selected": self.selected,
                 "lines": {cell: p.selected for cell, p in self.panels.items()},
                 "link_partner": self.link_partner, "undo": self.undo_state,
@@ -3376,7 +3523,7 @@ class Plotter(tk.Tk):
 
     @staticmethod
     def _blank_plot():
-        return {"session": session.dump({(0, 0): Panel()}, 1, 1, {}), "selected": (0, 0),
+        return {"session": session.dump({(0, 0): Panel()}, Layout(), {}), "selected": (0, 0),
                 "lines": {}, "link_partner": None, "undo": None, "save_as": None}
 
     def _load_plot(self, state):
@@ -3395,7 +3542,7 @@ class Plotter(tk.Tk):
             self._load_controls()
         finally:
             self.restoring = False
-        self.last_state = session.dump(self.panels, self.rows, self.cols, self.links)
+        self.last_state = session.dump(self.panels, self.layout, self.links)
         self.undo_state, self.merging = state["undo"], False
         if state["save_as"]:
             self.filename.set(state["save_as"])
