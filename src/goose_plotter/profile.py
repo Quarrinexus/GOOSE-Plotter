@@ -23,7 +23,7 @@ def _read(data_dir):
         return {}
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError("expected a JSON object")
+        raise ValueError("expected a JSON object")  # noqa: TRY004 - callers catch ValueError
     return data
 
 

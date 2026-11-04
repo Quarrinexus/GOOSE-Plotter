@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from conftest import B_HIGH, B_LOW, F, add_step, cutting, drawn, plot, steps_of
 
-from goose_plotter import background, session, splicing
+from goose_plotter import background, model, session, splicing
 
 
 def test_plots_the_profile_default_axes(app):
@@ -263,10 +263,10 @@ def test_undo_forgets_ranges_in_an_x_that_changed(app):
 
 def click(app, x, y, cell=None):
     """A left click on the plot at data point (x, y) of `cell`'s axes."""
-    from matplotlib.backend_bases import MouseEvent
+    from matplotlib.backend_bases import MouseButton, MouseEvent
     ax = app.axes[cell or app.selected]
     px, py = ax.transData.transform((x, y))
-    app._on_click(MouseEvent("button_press_event", app.canvas, px, py, button=1))
+    app._on_click(MouseEvent("button_press_event", app.canvas, px, py, button=MouseButton.LEFT))
 
 
 def test_measure_reads_a_region_without_touching_the_plot(app):
@@ -939,3 +939,14 @@ def test_fit_results_export_writes_the_numbers(app, tmp_path):
     rows = out.read_text().splitlines()
     assert rows[0] == f"points,{report['points']}" and "parameter,value,standard error" in rows
     assert rows[-1].startswith("A,") or rows[-1].startswith("B,")
+
+
+def test_popups_keep_tks_size_method(app):
+    """The popups' size controls have their own names, leaving Tk's `size()` alone."""
+    plot(app)
+    app.open_style()
+    app.open_save_options()
+    for popup in (app.style_popup, app.save_popup):
+        assert isinstance(popup.size(), tuple)
+    assert app.style_popup.marker_size.get() == model.AUTO_MARKER_SIZE
+    assert app.save_popup.options()["size"] == app._save_options()["size"]

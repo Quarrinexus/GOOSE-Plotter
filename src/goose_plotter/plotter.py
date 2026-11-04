@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
+from typing import ClassVar
 
 import numpy as np
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -125,7 +126,7 @@ def text_problem(text):
     fig.text(0, 0, text)
     try:
         fig.canvas.draw()
-    except Exception as err:  # ValueError from the mathtext parser, mostly
+    except Exception as err:  # noqa: BLE001 - ValueError from the mathtext parser, mostly
         return str(err).strip().splitlines()[0] if str(err).strip() else "can't be drawn"
     return ""
 
@@ -150,7 +151,7 @@ def axes_icon(colour=theme.MUTED):
     draw.line((2 * k, 3 * k, 2 * k, 19 * k, 17 * k, 19 * k), fill=colour, width=2 * k)
     curve = [(x * k, (16 - 11 * (x - 4) / 12 + 2.5 * np.sin(x / 1.6)) * k) for x in range(4, 17)]
     draw.line(curve, fill=colour, width=int(1.6 * k), joint="curve")
-    return ImageTk.PhotoImage(image.resize((18, 22), Image.LANCZOS))
+    return ImageTk.PhotoImage(image.resize((18, 22), Image.Resampling.LANCZOS))
 
 
 def flag_icon(width=24, height=12):
@@ -167,7 +168,7 @@ def flag_icon(width=24, height=12):
     draw.rectangle((0, h / 3, w, 2 * h / 3), fill="white")
     draw.rectangle((w / 2 - h / 10, 0, w / 2 + h / 10, h), fill="#c8102e")
     draw.rectangle((0, h / 2 - h / 10, w, h / 2 + h / 10), fill="#c8102e")
-    return ImageTk.PhotoImage(image.resize((width, height), Image.LANCZOS))
+    return ImageTk.PhotoImage(image.resize((width, height), Image.Resampling.LANCZOS))
 
 
 def star(draw, centre, radius, fill, pointing=-np.pi / 2):
@@ -192,7 +193,7 @@ def china_flag_icon(width=24, height=16):
         centre = (x * unit, y * unit)
         towards = np.arctan2(big[1] - centre[1], big[0] - centre[0])
         star(draw, centre, unit, "#ffde00", pointing=towards)
-    return ImageTk.PhotoImage(image.resize((width, height), Image.LANCZOS))
+    return ImageTk.PhotoImage(image.resize((width, height), Image.Resampling.LANCZOS))
 
 
 FLAGS = {"en": flag_icon, "zh": china_flag_icon}  # the language button's picture
@@ -838,9 +839,9 @@ class Plotter(tk.Tk):
         boxes.pack(anchor=tk.W, fill=tk.X, pady=(2, 0))
         boxes.columnconfigure(1, weight=1)
         self.fit_entries = []
-        for i, (label, var) in enumerate(((tr("y ="), self.fit_function),
+        for i, (text, var) in enumerate(((tr("y ="), self.fit_function),
                                           (tr("Start"), self.fit_start))):
-            ttk.Label(boxes, text=label).grid(row=i, column=0, sticky=tk.W, pady=(0, 2))
+            ttk.Label(boxes, text=text).grid(row=i, column=0, sticky=tk.W, pady=(0, 2))
             entry = ttk.Entry(boxes, textvariable=var, width=1)
             entry.grid(row=i, column=1, sticky=tk.EW, padx=(4, 0), pady=(0, 2))
             self.fit_entries.append(entry)
@@ -1756,7 +1757,7 @@ class Plotter(tk.Tk):
                 if l.run not in self.frames:  # still unreadable; don't ask again
                     self._redraw_selected()
                     return
-            except Exception:  # anything else is reported by the redraw below
+            except Exception:  # noqa: BLE001, S110 - anything else is reported by the redraw below
                 pass
         # Same axes: keep the zoom, as smoothing and fits are often tuned zoomed
         # in. A background change moves y by orders of magnitude, and removing
@@ -1880,8 +1881,8 @@ class Plotter(tk.Tk):
         self._changed()
 
     # The stage named in a step's errors, by kind.
-    STAGES = {"cut": "Splicing", "despike": "Despike", "subtract": "Fit", "smooth": "Smoothing",
-              "fit": "Fit"}
+    STAGES: ClassVar = {"cut": "Splicing", "despike": "Despike", "subtract": "Fit",
+                        "smooth": "Smoothing", "fit": "Fit"}
 
     def _line_data(self, l):
         """(x, y, x labels, y labels, curves, fit error) for a line: its columns
@@ -1932,13 +1933,13 @@ class Plotter(tk.Tk):
                 elif not fit_error:  # a fit curve; after one fails, the rest wait
                     try:
                         fitted, found[j] = background.apply(x, y, *step.fitting)
-                    except Exception as err:
+                    except Exception as err:  # noqa: BLE001 - kept as the fit error
                         fit_error = f"Fit error: {err}"
                     else:
                         curves[j] = (x, fitted)
                         self.fit_reports[key, j] = background.report(
                             x, y, fitted, step.fitting[1], found[j], step.fitting[2])
-        except Exception as err:  # bad file or function shouldn't kill the window
+        except Exception as err:  # noqa: BLE001 - bad file or function shouldn't kill the window
             raise LineError(f"{stage} error: {err}" if l.run in self.frames else str(err))
         l.found = tuple(found)
         result = x, y, x_label, y_label, curves, fit_error
@@ -2226,7 +2227,7 @@ class Plotter(tk.Tk):
         return (tr("panel {n}", n=self._number(p.source)) if p.source is not None
                 else tr("a data panel"))
 
-    KINDS = {"fft": "FFT", "d1": "first derivative", "d2": "second derivative"}
+    KINDS: ClassVar = {"fft": "FFT", "d1": "first derivative", "d2": "second derivative"}
 
     @classmethod
     def _kind(cls, operation):
@@ -2758,8 +2759,8 @@ class Plotter(tk.Tk):
                                                           padx=(0, 8))
             self.readout[name] = [ttk.Label(self.readout_table, width=1),
                                   ttk.Label(self.readout_table, width=1)]
-            for c, label in enumerate(self.readout[name]):
-                label.grid(row=r, column=c + 1, sticky="ew")
+            for c, cell in enumerate(self.readout[name]):
+                cell.grid(row=r, column=c + 1, sticky="ew")
         self.mark_button = ttk.Checkbutton(body, variable=self.mark_var,
                                            command=self.apply_measure)
         self.readout_parts = (self.readout_table, self.mark_button)
@@ -2916,12 +2917,12 @@ class Plotter(tk.Tk):
         if len(points) == 2:
             dx, dy = points[1][0] - points[0][0], points[1][1] - points[0][1]
             texts.append(f"dx {dx:.6g}   dy {dy:.6g}" + (f"   1/dx {1 / dx:.6g}" if dx else ""))
-        for label in self.point_labels:  # a row per point, none when there aren't any
-            label.pack_forget()
-            label["text"] = ""
-        for label, text in zip(self.point_labels, texts):
-            label["text"] = text
-            label.pack(anchor=tk.W)
+        for row in self.point_labels:  # a row per point, none when there aren't any
+            row.pack_forget()
+            row["text"] = ""
+        for row, text in zip(self.point_labels, texts):
+            row["text"] = text
+            row.pack(anchor=tk.W)
         self.peak_list.delete(0, tk.END)
         if fft:
             self.peak_section.pack(fill=tk.X, before=self.keep_section)

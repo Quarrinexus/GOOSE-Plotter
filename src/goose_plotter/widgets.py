@@ -3,6 +3,7 @@ the axes editor, the layout grid and the overwrite question."""
 
 import tkinter as tk
 from tkinter import ttk
+from typing import ClassVar
 
 import numpy as np
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb
@@ -222,7 +223,7 @@ class SaveOptionsPopup(tk.Toplevel):
     inches or cm), dpi and background. Changes apply as they're made, through
     `on_change(options)`, which returns why they can't be used, or ""."""
 
-    DEFAULTS = {"size": "screen", "width": 6.0, "height": 4.0, "unit": "in", "dpi": 200,
+    DEFAULTS: ClassVar = {"size": "screen", "width": 6.0, "height": 4.0, "unit": "in", "dpi": 200,
                 "transparent": False}
     CM = 2.54  # per inch
 
@@ -232,7 +233,7 @@ class SaveOptionsPopup(tk.Toplevel):
         self.resizable(False, False)
         self.transient(parent)
         self.on_change, self.screen = on_change, screen_inches
-        self.size = tk.StringVar(value=options["size"])
+        self.size_choice = tk.StringVar(value=options["size"])
         self.unit = tk.StringVar(value=options["unit"])
         scale = self.CM if options["unit"] == "cm" else 1
         self.width = tk.StringVar(value=f"{options['width'] * scale:.3g}")
@@ -246,8 +247,8 @@ class SaveOptionsPopup(tk.Toplevel):
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(2, 0))
         for key, text in (("screen", "As on screen"), ("custom", "Custom")):
-            ttk.Radiobutton(row, text=tr(text), variable=self.size, value=key, style="Toolbutton",
-                            command=self._apply).pack(side=tk.LEFT, padx=(0, 4))
+            ttk.Radiobutton(row, text=tr(text), variable=self.size_choice, value=key,
+                            style="Toolbutton", command=self._apply).pack(side=tk.LEFT, padx=(0, 4))
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(6, 0))
         ttk.Label(row, text=tr("Width")).pack(side=tk.LEFT)
@@ -315,7 +316,7 @@ class SaveOptionsPopup(tk.Toplevel):
             raise ValueError(tr("Width and height need to be more than 0."))
         if not 10 <= dpi <= 2400:
             raise ValueError(tr("DPI needs to be from 10 to 2400."))
-        return {"size": self.size.get(), "width": width, "height": height,
+        return {"size": self.size_choice.get(), "width": width, "height": height,
                 "unit": self.unit.get(), "dpi": dpi, "transparent": self.transparent.get()}
 
     def _apply(self):
@@ -329,7 +330,7 @@ class SaveOptionsPopup(tk.Toplevel):
 
     def _show(self):
         """Grey out the size boxes when it's as on screen, and give the size in pixels."""
-        custom = self.size.get() == "custom"
+        custom = self.size_choice.get() == "custom"
         for widget in (*self.boxes, *self.units):
             widget.state(["!disabled" if custom else "disabled"])
         try:
@@ -381,7 +382,7 @@ def line_sample(style, marker, colour, width=1.0, size=(44, 16)):
         elif marker == "x":
             draw.line(box, fill=colour, width=k * 2)
             draw.line((cx - r, y + r, cx + r, y - r), fill=colour, width=k * 2)
-    return ImageTk.PhotoImage(image.resize(size, Image.LANCZOS))
+    return ImageTk.PhotoImage(image.resize(size, Image.Resampling.LANCZOS))
 
 
 def map_sample(name, ticked=False, size=(64, 12), tick=16):
@@ -421,7 +422,7 @@ class LineStylePopup(tk.Toplevel):
         self.images = {}
         self.style, self.marker = tk.StringVar(), tk.StringVar()
         self.width, self.name = tk.DoubleVar(), tk.StringVar()
-        self.size = tk.DoubleVar()
+        self.marker_size = tk.DoubleVar()
         body = ttk.Frame(self, padding=12)
         body.pack(fill=tk.BOTH, expand=True)
 
@@ -490,7 +491,8 @@ class LineStylePopup(tk.Toplevel):
         row.pack(anchor=tk.W, fill=tk.X, pady=(0, 10))
         ttk.Label(row, text=tr("Size"), width=5).pack(side=tk.LEFT)
         self.size_scale = ttk.Scale(row, from_=self.SIZES[0], to=self.SIZES[1], length=180,
-                                    variable=self.size, command=lambda _: self._slide("size"))
+                                    variable=self.marker_size,
+                                    command=lambda _: self._slide("size"))
         self.size_scale.pack(side=tk.LEFT)
         self.size_scale.bind("<ButtonRelease-1>", lambda _: self._changed())
         self.size_label = ttk.Label(row, width=9)
@@ -517,7 +519,7 @@ class LineStylePopup(tk.Toplevel):
         """A drag of the width or size slider; one undo step until it ends."""
         if self.loading:
             return
-        value = round((self.width if which == "width" else self.size).get(), 1)
+        value = round((self.width if which == "width" else self.marker_size).get(), 1)
         (self.width_label if which == "width" else self.size_label)["text"] = f"{value:g}"
         self._changed(merge=True, **{"width" if which == "width" else "marker_size": value})
 
@@ -545,7 +547,7 @@ class LineStylePopup(tk.Toplevel):
             self.width.set(width)
             self.width_label["text"] = f"{width:g}" + (tr(" (auto)") if line.width is None else "")
             size = AUTO_MARKER_SIZE if line.marker_size is None else line.marker_size
-            self.size.set(size)
+            self.marker_size.set(size)
             self.size_label["text"] = (f"{size:g}"
                                        + (tr(" (auto)") if line.marker_size is None else ""))
             # Only a line with markers has a size to set.

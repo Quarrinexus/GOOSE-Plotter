@@ -128,7 +128,7 @@ def _allowed(f, value):
 def _build(cls, data, **extra):
     """A `cls` from `data`, keeping only known fields of the right type."""
     if not isinstance(data, dict):
-        raise ValueError(f"expected an object for a {cls.__name__.lower()}")
+        raise ValueError(f"expected an object for a {cls.__name__.lower()}")  # noqa: TRY004
     kwargs = {}
     for f in fields(cls):
         if f.name in SKIP or f.name not in data:
