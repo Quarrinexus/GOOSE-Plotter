@@ -393,7 +393,8 @@ controls' tab, settings) stays out.
   Delete panel with one panel) stays enabled with a faint picture and does
   nothing (`Toolbar.enable`, `button.enabled`); `set_history_buttons`,
   `back` and `forward` are overridden for that. A matplotlib that renames
-  its buttons (`toolitems`) needs `toolbar.ICONS` looked at.
+  its buttons (`toolitems`) needs `toolbar.ICONS` looked at. Its Save is
+  left out (`_without_save`), so Save figure is the one way to save.
 - **The controls column is a scrolling canvas** (`self.side`) with the Save
   area pinned below it; the scrollbar shows only when the column is taller
   than the window, in a slot that keeps its width either way so the plot

@@ -990,6 +990,7 @@ def test_toolbar_is_drawn_in_the_windows_style(app):
     bar.push_current()  # the home view
     bar.push_current()  # and one after it, to go back from
     assert back.enabled and str(back["image"]) == str(bar.icons[back][0])
+    assert "Save" not in bar._buttons  # Save figure is the one way to save
     zoom = bar._buttons["Zoom"]
     assert str(zoom["selectimage"]) == str(bar.icons[zoom][2])
     bar.zoom()

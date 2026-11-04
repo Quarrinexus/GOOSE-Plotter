@@ -1,7 +1,8 @@
 """The plot's toolbar: matplotlib's, drawn in the window's own style.
 
 matplotlib's Tk toolbar does the work (home, back and forward, pan, zoom,
-the subplot tool, saving); this only changes its look. Its icons become
+the subplot tool; not its Save, as Save figure does that); this only
+changes its look. Its icons become
 drawn line icons in the colours of the rest of the window (theme.MUTED,
 like the swap and axes buttons, theme.ACCENT for pan or zoom while on), its
 buttons go flat with the theme's hover, and its tooltips are the window's.
@@ -79,12 +80,6 @@ def _sliders(image, draw, u, w, c):
         draw.ellipse((knob * u - r, y * u - r, knob * u + r, y * u + r), fill=c)
 
 
-def _save(image, draw, u, w, c):
-    _stroke(draw, _points(u, 4, 3.5, 16.5, 3.5, 20.5, 7.5, 20.5, 20.5, 4, 20.5, 4, 3.5), w, c)
-    _stroke(draw, _points(u, 8, 3.5, 8, 8.5, 15, 8.5, 15, 3.5), w, c)
-    _stroke(draw, _points(u, 7.5, 20.5, 7.5, 14, 17, 14, 17, 20.5), w, c)
-
-
 def _layout(image, draw, u, w, c):
     for x0, y0 in ((3, 3), (13, 3), (3, 13), (13, 13)):
         draw.rounded_rectangle((x0 * u, y0 * u, (x0 + 8) * u, (y0 + 8) * u), radius=1.5 * u,
@@ -105,12 +100,23 @@ def _delete_panel(image, draw, u, w, c):
 
 # By matplotlib's names for its buttons, and the two GOOSE adds.
 ICONS = {"Home": _home, "Back": _back, "Forward": _forward, "Pan": _pan, "Zoom": _zoom,
-         "Subplots": _sliders, "Save": _save, "Layout": _layout,
+         "Subplots": _sliders, "Layout": _layout,
          "Delete panel": _delete_panel}
+
+
+def _without_save(items):
+    """matplotlib's buttons but Save, and no divider left at the end: Save
+    figure, under the controls, is the one way to save, with its own options."""
+    items = [item for item in items if item[0] != "Save"]
+    while items and items[-1][0] is None:
+        items.pop()
+    return tuple(items)
 
 
 class Toolbar(NavigationToolbar2Tk):
     """matplotlib's toolbar with GOOSE's look; see the module's docstring."""
+
+    toolitems = _without_save(NavigationToolbar2Tk.toolitems)
 
     def __init__(self, canvas, window):
         self.icons = {}  # button -> (normal, faint, on) PhotoImages, kept alive
