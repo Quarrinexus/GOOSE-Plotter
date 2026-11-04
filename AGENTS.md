@@ -57,10 +57,10 @@ mirror. If that folder isn't around this repo, use whatever data folder
 | `colourmaps.py` | the Colour Maps menu's maps (the nanoanalysis ones copied from igtz-hub/nanoanalysis_cm), spread over a panel's lines or stepped |
 | `axis_functions.py` | the Function boxes (`1/x`, `exp(y)`, ...) |
 | `datasets.py`, `format_dialog.py`, `profile.py`, `columns.py` | reading files and per-folder profiles |
-| `widgets.py` | the line and axes editors, colour picker, layout grid, overwrite question, `TabStrip`, `StepList` |
+| `toolbar.py` | the plot's toolbar: matplotlib's, with drawn icons and the theme's look, plus Layout and Delete panel |
+| `widgets.py` | the line and axes editors, colour picker, layout grid, overwrite question, `TabStrip`, `StepList`, `Tooltip`, `key_of` |
 | `session.py` | panels and lines to and from JSON-ready data, for session files and undo |
 | `theme.py` | the window's colours and ttk styling; use its names, not hex codes, in Tk widgets |
-| `i18n.py` | the window's language: `tr`, the menu helpers and the Chinese texts (`ZH`) |
 
 ## How a line is drawn
 
@@ -318,39 +318,7 @@ dump plus the selection, Linking tab's link, typed name and undo step.
 `switch_plot`, `new_plot` and `close_plot` keep the shown one and
 `_load_plot` another, making no undo step. So anything a plot must keep
 has to be in `_plot_state`; what's shared (data folder, profile, the
-controls' tab, settings) stays out. A language change carries every plot
-(`_relaunch_state` / `_resume`).
-
-## Language
-
-Every text Tk shows goes through `i18n.tr`, as a whole English sentence with
-{named} places (never pieces joined, as Chinese word order differs), and
-has an entry in `i18n.ZH`; `test_language.py` fails on any that hasn't,
-from the source's `tr(...)` literals, the menus and a run through the
-window. So:
-
-- **Menus hold English, their boxes show `tr`.** A menu dict
-  (`smoothing.METHODS`, `background.MODES`, `LEGENDS`, ...) stays English, as
-  the legend text reads it too. Fill a Combobox with `menu(mapping)`, set it
-  with `shown(mapping, key)` and read it back with `key_of(mapping, text)`,
-  never by comparing to the English. Radio buttons keep keys as values.
-- **Never translated:** stored values (Line and Panel fields, settings,
-  sessions), anything matplotlib draws (no Chinese font is set up; titles,
-  labels, legends, `_hint`, Measure's marks), file names and CSV exports,
-  and `Line.error`'s details from the calculation modules.
-- A template built with an f-string (`f"Pick the {what} range..."`) makes
-  one key per value; each needs its entry.
-- The language is set from the settings when a `Plotter` is made, before any
-  widget. Changing it (`set_language`) saves it, keeps `_relaunch_state`
-  and closes the window; `goose_plotter.main` opens a new one with it, and
-  `_resume` carries on without making an undo step.
-- Chinese needs full-width punctuation (，：（）“”) and only GB2312
-  characters; no Δ, − or →. On Linux, Tk's X core fonts would take Chinese
-  characters from Japanese and Korean fonts that lack many (drawn as
-  boxes), so in Chinese `theme.use_font` sets every named font to song ti
-  at 16 px (`i18n.FONTS`; one of its real bitmap sizes, so no other size),
-  tabs included; Latin letters then fall back to a serif. The glyph test
-  checks song ti draws every character.
+controls' tab, settings) stays out.
 
 ## Things that look odd but are deliberate
 
@@ -391,7 +359,19 @@ window. So:
   right of the plot, its buttons against the edge and the coordinates just
   before them (matplotlib packs the buttons at the left). It sorts the
   parts by type (labels are the coordinates and a filler), so a matplotlib
-  that builds the toolbar differently may need it looked at.
+  that builds the toolbar differently may need it looked at. Layout and
+  Delete panel (`_panel_buttons`, `Toolbar.button`) are packed among them,
+  between the coordinates and matplotlib's buttons, so they stay put as the
+  coordinates grow.
+- **The toolbar is matplotlib's, restyled** (`toolbar.Toolbar`): it keeps
+  matplotlib's commands and only swaps the look, overriding `_Button`,
+  `_Spacer` and `_rescale` (which, on a DPI change, redraws matplotlib's own
+  icons by explicit class, so ours are drawn again after). Tk stipples a
+  disabled button's picture, so an unusable button (Back with no history,
+  Delete panel with one panel) stays enabled with a faint picture and does
+  nothing (`Toolbar.enable`, `button.enabled`); `set_history_buttons`,
+  `back` and `forward` are overridden for that. A matplotlib that renames
+  its buttons (`toolitems`) needs `toolbar.ICONS` looked at.
 - **The controls column is a scrolling canvas** (`self.side`) with the Save
   area pinned below it; the scrollbar shows only when the column is taller
   than the window, in a slot that keeps its width either way so the plot
@@ -406,20 +386,19 @@ then read the state:
 
 ```python
 from goose_plotter import plotter as P, smoothing
-from goose_plotter.i18n import shown
 P.messagebox.askyesno = lambda *a, **k: True  # the only popup questions left
 app = P.Plotter()                      # uses ~/.config/goose-plotter/settings.json
 app.run.set(next(n for n in app.datasets if "005" in n)); app.apply_controls()
 app.add_step("smooth")                 # a step, chosen, its editor shown
-app.smooth.set(shown(smoothing.METHODS, "median")); app.apply_controls()
+app.smooth.set(smoothing.METHODS["median"]); app.apply_controls()
 print(app.panel.line.shown, app.error_label["text"])
 app.fig.savefig("/some/scratch/dir/check.png")
 app.destroy()
 ```
 
-Set menus with `shown(mapping, key)`, not their English text: the settings
-may choose Chinese, and then the English isn't one of the menu's texts.
-`askyesno` comes up when making FFT or derivative panels or linking. Wrap runs in
+Menu dicts (`smoothing.METHODS`, `spectrum.WINDOWS`, ...) map stored keys
+to the text a Combobox shows; set a box with `mapping[key]` and read it back
+with `widgets.key_of(mapping, text)`. `askyesno` comes up when making FFT or derivative panels or linking. Wrap runs in
 `timeout`: an unpatched popup waits forever. Don't call
 `choose_folder`, which rewrites the user's settings file.
 

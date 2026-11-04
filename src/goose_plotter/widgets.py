@@ -10,7 +10,6 @@ from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb
 from PIL import Image, ImageDraw, ImageTk
 
 from goose_plotter import colourmaps, theme
-from goose_plotter.i18n import tr
 from goose_plotter.model import (
     AUTO_MARKER_SIZE,
     GRID_AXES,
@@ -25,6 +24,48 @@ from goose_plotter.model import (
 
 SELECTED = "#e8a33d"  # frame around the selected panel
 MAX_GRID = 6  # the layout picker offers up to MAX_GRID x MAX_GRID panels
+
+
+def key_of(mapping, text):
+    """The key of a {key: text} menu dict whose text is `text`, as a Combobox gives it back."""
+    return next(k for k, v in mapping.items() if v == text)
+
+
+class Tooltip:
+    """A note under `widget` while the mouse rests on it, for buttons that are
+    only a picture."""
+
+    DELAY = 500  # ms
+
+    def __init__(self, widget, text):
+        self.widget, self.text = widget, text
+        self.pending = self.tip = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        for event in ("<Leave>", "<ButtonPress>"):
+            widget.bind(event, self._hide, add="+")
+
+    def _schedule(self, _event=None):
+        self._hide()
+        self.pending = self.widget.after(self.DELAY, self._show)
+
+    def _show(self):
+        self.pending = None
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        tk.Label(self.tip, text=self.text, background=theme.SURFACE, foreground=theme.TEXT,
+                 relief=tk.SOLID, borderwidth=1, padx=6, pady=2).pack()
+        self.tip.update_idletasks()
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() - self.tip.winfo_reqwidth()
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 2
+        self.tip.wm_geometry(f"+{max(x, 0)}+{y}")
+
+    def _hide(self, _event=None):
+        if self.pending:
+            self.widget.after_cancel(self.pending)
+            self.pending = None
+        if self.tip:
+            self.tip.destroy()
+            self.tip = None
 
 
 class ColourPicker(ttk.Frame):
@@ -108,7 +149,7 @@ class LayoutPicker(tk.Toplevel):
 
     def __init__(self, parent, rows, cols, on_pick):
         super().__init__(parent)
-        self.title(tr("Layout"))
+        self.title("Layout")
         self.resizable(False, False)
         self.transient(parent)
         self.on_pick = on_pick
@@ -161,24 +202,24 @@ class OverwriteDialog(tk.Toplevel):
 
     def __init__(self, parent, name, folder):
         super().__init__(parent)
-        self.title(tr("Replace file?"))
+        self.title("Replace file?")
         self.resizable(False, False)
         self.transient(parent)
         self.replace = False
         self.dont_ask = tk.BooleanVar(value=False)
         body = ttk.Frame(self, padding=14)
         body.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(body, text=tr("{name} already exists in {folder}.", name=name, folder=folder),
+        ttk.Label(body, text=f"{name} already exists in {folder}.",
                   wraplength=360).pack(anchor=tk.W)
-        ttk.Label(body, text=tr("Replace it with this figure?"),
+        ttk.Label(body, text="Replace it with this figure?",
                   foreground=theme.MUTED).pack(anchor=tk.W, pady=(4, 0))
-        ttk.Checkbutton(body, text=tr("Don't ask me again"), variable=self.dont_ask).pack(
+        ttk.Checkbutton(body, text="Don't ask me again", variable=self.dont_ask).pack(
             anchor=tk.W, pady=(12, 0))
         buttons = ttk.Frame(body)
         buttons.pack(anchor=tk.E, pady=(14, 0))
-        ttk.Button(buttons, text=tr("Cancel"), command=self.destroy).pack(side=tk.RIGHT)
+        ttk.Button(buttons, text="Cancel", command=self.destroy).pack(side=tk.RIGHT)
         # Not the default: Enter shouldn't write over data by accident.
-        ttk.Button(buttons, text=tr("Replace"), command=self._replace).pack(
+        ttk.Button(buttons, text="Replace", command=self._replace).pack(
             side=tk.RIGHT, padx=(0, 6))
         self.bind("<Escape>", lambda _: self.destroy())
         self.grab_set()
@@ -194,7 +235,7 @@ class FitResultsPopup(tk.Toplevel):
 
     def __init__(self, parent, text, report, export):
         super().__init__(parent)
-        self.title(tr("Fit Results"))
+        self.title("Fit Results")
         self.transient(parent)
         body = ttk.Frame(self, padding=14)
         body.pack(fill=tk.BOTH, expand=True)
@@ -205,10 +246,10 @@ class FitResultsPopup(tk.Toplevel):
         box.pack(fill=tk.BOTH, expand=True)
         buttons = ttk.Frame(body)
         buttons.pack(anchor=tk.E, pady=(10, 0))
-        ttk.Button(buttons, text=tr("Close"), command=self.destroy).pack(side=tk.RIGHT)
-        ttk.Button(buttons, text=tr("Export"), command=lambda: export(report, self)).pack(
+        ttk.Button(buttons, text="Close", command=self.destroy).pack(side=tk.RIGHT)
+        ttk.Button(buttons, text="Export", command=lambda: export(report, self)).pack(
             side=tk.RIGHT, padx=(0, 6))
-        ttk.Button(buttons, text=tr("Copy"), command=lambda: self._copy(text)).pack(
+        ttk.Button(buttons, text="Copy", command=lambda: self._copy(text)).pack(
             side=tk.RIGHT, padx=(0, 6))
         self.bind("<Escape>", lambda _: self.destroy())
         self.focus_set()
@@ -229,7 +270,7 @@ class SaveOptionsPopup(tk.Toplevel):
 
     def __init__(self, parent, options, screen_inches, on_change):
         super().__init__(parent)
-        self.title(tr("Save options"))
+        self.title("Save options")
         self.resizable(False, False)
         self.transient(parent)
         self.on_change, self.screen = on_change, screen_inches
@@ -243,18 +284,18 @@ class SaveOptionsPopup(tk.Toplevel):
         body = ttk.Frame(self, padding=12)
         body.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(body, text=tr("Size"), foreground=theme.MUTED).pack(anchor=tk.W)
+        ttk.Label(body, text="Size", foreground=theme.MUTED).pack(anchor=tk.W)
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(2, 0))
         for key, text in (("screen", "As on screen"), ("custom", "Custom")):
-            ttk.Radiobutton(row, text=tr(text), variable=self.size_choice, value=key,
+            ttk.Radiobutton(row, text=text, variable=self.size_choice, value=key,
                             style="Toolbutton", command=self._apply).pack(side=tk.LEFT, padx=(0, 4))
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(6, 0))
-        ttk.Label(row, text=tr("Width")).pack(side=tk.LEFT)
+        ttk.Label(row, text="Width").pack(side=tk.LEFT)
         self.boxes = [ttk.Entry(row, textvariable=self.width, width=7)]
         self.boxes[0].pack(side=tk.LEFT, padx=(4, 8))
-        ttk.Label(row, text=tr("Height")).pack(side=tk.LEFT)
+        ttk.Label(row, text="Height").pack(side=tk.LEFT)
         self.boxes.append(ttk.Entry(row, textvariable=self.height, width=7))
         self.boxes[1].pack(side=tk.LEFT, padx=(4, 8))
         self.units = []
@@ -264,26 +305,26 @@ class SaveOptionsPopup(tk.Toplevel):
             button.pack(side=tk.LEFT, padx=(0, 4))
             self.units.append(button)
 
-        ttk.Label(body, text=tr("Resolution"), foreground=theme.MUTED).pack(
+        ttk.Label(body, text="Resolution", foreground=theme.MUTED).pack(
             anchor=tk.W, pady=(10, 0))
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(2, 0))
-        ttk.Label(row, text=tr("DPI")).pack(side=tk.LEFT)
+        ttk.Label(row, text="DPI").pack(side=tk.LEFT)
         dpi = ttk.Entry(row, textvariable=self.dpi, width=7)
         dpi.pack(side=tk.LEFT, padx=(4, 8))
         self.pixels = ttk.Label(row, foreground=theme.HINT)
         self.pixels.pack(side=tk.LEFT)
 
-        ttk.Label(body, text=tr("Background"), foreground=theme.MUTED).pack(
+        ttk.Label(body, text="Background", foreground=theme.MUTED).pack(
             anchor=tk.W, pady=(10, 0))
-        ttk.Checkbutton(body, text=tr("Transparent"), variable=self.transparent,
+        ttk.Checkbutton(body, text="Transparent", variable=self.transparent,
                         command=self._apply).pack(anchor=tk.W, pady=(2, 0))
 
         self.problem = ttk.Label(body, foreground=theme.ERROR, wraplength=300)
         self.problem.pack(anchor=tk.W, pady=(10, 0))
-        ttk.Label(body, text=tr("Enter in a box applies; kept for every figure"),
+        ttk.Label(body, text="Enter in a box applies; kept for every figure",
                   foreground=theme.HINT).pack(anchor=tk.W)
-        ttk.Button(body, text=tr("Close"), command=self.destroy).pack(anchor=tk.E, pady=(6, 0))
+        ttk.Button(body, text="Close", command=self.destroy).pack(anchor=tk.E, pady=(6, 0))
         for box in (*self.boxes, dpi):
             for key in ("<Return>", "<KP_Enter>"):
                 box.bind(key, lambda _: self._apply())
@@ -307,15 +348,15 @@ class SaveOptionsPopup(tk.Toplevel):
         try:
             width, height = float(self.width.get()) / scale, float(self.height.get()) / scale
         except ValueError:
-            raise ValueError(tr("Width and height need to be numbers.")) from None
+            raise ValueError("Width and height need to be numbers.") from None
         try:
             dpi = int(float(self.dpi.get()))
         except ValueError:
-            raise ValueError(tr("DPI needs to be a number.")) from None
+            raise ValueError("DPI needs to be a number.") from None
         if not (width > 0 and height > 0):
-            raise ValueError(tr("Width and height need to be more than 0."))
+            raise ValueError("Width and height need to be more than 0.")
         if not 10 <= dpi <= 2400:
-            raise ValueError(tr("DPI needs to be from 10 to 2400."))
+            raise ValueError("DPI needs to be from 10 to 2400.")
         return {"size": self.size_choice.get(), "width": width, "height": height,
                 "unit": self.unit.get(), "dpi": dpi, "transparent": self.transparent.get()}
 
@@ -339,8 +380,7 @@ class SaveOptionsPopup(tk.Toplevel):
             self.pixels["text"] = ""
             return
         inches = (options["width"], options["height"]) if custom else self.screen
-        self.pixels["text"] = tr("{w} x {h} pixels", w=round(inches[0] * options["dpi"]),
-                                 h=round(inches[1] * options["dpi"]))
+        self.pixels["text"] = f'{round(inches[0] * options["dpi"])} x {round(inches[1] * options["dpi"])} pixels'
 
 
 # Dash patterns for the previews, in multiples of the line width (as matplotlib's).
@@ -414,7 +454,7 @@ class LineStylePopup(tk.Toplevel):
 
     def __init__(self, parent, on_change, on_colour, on_reset, on_map):
         super().__init__(parent)
-        self.title(tr("Line"))
+        self.title("Line")
         self.resizable(False, False)
         self.transient(parent)
         self.on_change = on_change
@@ -426,7 +466,7 @@ class LineStylePopup(tk.Toplevel):
         body = ttk.Frame(self, padding=12)
         body.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(body, text=tr("Colour"), foreground=theme.MUTED).pack(anchor=tk.W)
+        ttk.Label(body, text="Colour", foreground=theme.MUTED).pack(anchor=tk.W)
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(2, 10))
         self.picker = ColourPicker(row, on_colour)
@@ -437,7 +477,7 @@ class LineStylePopup(tk.Toplevel):
         self.swatch.pack(anchor=tk.W)
         self.hex = ttk.Label(side, font="TkFixedFont")
         self.hex.pack(anchor=tk.W, pady=(4, 0))
-        ttk.Button(side, text=tr("Automatic"), command=on_reset).pack(anchor=tk.W, pady=(8, 0))
+        ttk.Button(side, text="Automatic", command=on_reset).pack(anchor=tk.W, pady=(8, 0))
         # Where Automatic's colours come from: a menu of maps, each with its picture.
         self.colour_map = tk.StringVar()
         self.map_menu = tk.Menu(self, tearoff=0)
@@ -445,26 +485,26 @@ class LineStylePopup(tk.Toplevel):
             self.images["map", key] = map_sample(key)
             self.images["map ticked", key] = map_sample(key, ticked=True)
             self.map_menu.add_radiobutton(
-                label=" " + tr(name), value=key, variable=self.colour_map,
+                label=" " + name, value=key, variable=self.colour_map,
                 image=self.images["map", key], selectimage=self.images["map ticked", key],
                 compound=tk.LEFT, indicatoron=False, command=lambda key=key: on_map(key))
-        maps = ttk.Button(side, text=tr("Colour Maps"))
+        maps = ttk.Button(side, text="Colour Maps")
         maps.configure(command=lambda: self.map_menu.tk_popup(
             maps.winfo_rootx(), maps.winfo_rooty() + maps.winfo_height()))
         maps.pack(anchor=tk.W, pady=(4, 0))
 
-        ttk.Label(body, text=tr("Line"), foreground=theme.MUTED).pack(anchor=tk.W)
+        ttk.Label(body, text="Line", foreground=theme.MUTED).pack(anchor=tk.W)
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(2, 10))
         self.style_buttons = {}
         for key in STYLES:
             button = ttk.Radiobutton(row, variable=self.style, value=key, style="Toolbutton",
-                                     compound=tk.TOP, text=tr(STYLES[key]),
+                                     compound=tk.TOP, text=STYLES[key],
                                      command=lambda: self._changed(style=self.style.get()))
             button.pack(side=tk.LEFT, padx=(0, 4))
             self.style_buttons[key] = button
 
-        ttk.Label(body, text=tr("Width"), foreground=theme.MUTED).pack(anchor=tk.W)
+        ttk.Label(body, text="Width", foreground=theme.MUTED).pack(anchor=tk.W)
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, fill=tk.X, pady=(2, 10))
         self.scale = ttk.Scale(row, from_=self.WIDTHS[0], to=self.WIDTHS[1], length=220,
@@ -473,23 +513,23 @@ class LineStylePopup(tk.Toplevel):
         self.scale.bind("<ButtonRelease-1>", lambda _: self._changed())  # the drag ends
         self.width_label = ttk.Label(row, width=9)
         self.width_label.pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(row, text=tr("Auto"), command=lambda: self._changed(width=None)).pack(
+        ttk.Button(row, text="Auto", command=lambda: self._changed(width=None)).pack(
             side=tk.LEFT)
 
-        ttk.Label(body, text=tr("Marker"), foreground=theme.MUTED).pack(anchor=tk.W)
+        ttk.Label(body, text="Marker", foreground=theme.MUTED).pack(anchor=tk.W)
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(2, 4))
         self.marker_buttons = {}
         for key in MARKERS:
             button = ttk.Radiobutton(row, variable=self.marker, value=key, style="Toolbutton",
-                                     compound=tk.TOP, text=tr(MARKERS[key]),
+                                     compound=tk.TOP, text=MARKERS[key],
                                      command=lambda: self._changed(marker=self.marker.get()))
             button.pack(side=tk.LEFT, padx=(0, 4))
             self.marker_buttons[key] = button
         # Its size, like Width: the slider's text says when it's the automatic one.
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, fill=tk.X, pady=(0, 10))
-        ttk.Label(row, text=tr("Size"), width=5).pack(side=tk.LEFT)
+        ttk.Label(row, text="Size", width=5).pack(side=tk.LEFT)
         self.size_scale = ttk.Scale(row, from_=self.SIZES[0], to=self.SIZES[1], length=180,
                                     variable=self.marker_size,
                                     command=lambda _: self._slide("size"))
@@ -497,22 +537,22 @@ class LineStylePopup(tk.Toplevel):
         self.size_scale.bind("<ButtonRelease-1>", lambda _: self._changed())
         self.size_label = ttk.Label(row, width=9)
         self.size_label.pack(side=tk.LEFT, padx=(8, 0))
-        self.size_auto = ttk.Button(row, text=tr("Auto"),
+        self.size_auto = ttk.Button(row, text="Auto",
                                     command=lambda: self._changed(marker_size=None))
         self.size_auto.pack(side=tk.LEFT)
 
-        ttk.Label(body, text=tr("Name in the legend"), foreground=theme.MUTED).pack(anchor=tk.W)
+        ttk.Label(body, text="Name in the legend", foreground=theme.MUTED).pack(anchor=tk.W)
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(2, 0))
         entry = ttk.Entry(row, textvariable=self.name, width=40)
         entry.pack(side=tk.LEFT)
-        ttk.Button(row, text=tr("Auto"), command=lambda: self._changed(label=None)).pack(
+        ttk.Button(row, text="Auto", command=lambda: self._changed(label=None)).pack(
             side=tk.LEFT, padx=(6, 0))
-        ttk.Label(body, text=tr("Enter applies; clear it for none, Auto for the automatic one"),
+        ttk.Label(body, text="Enter applies; clear it for none, Auto for the automatic one",
                   foreground=theme.HINT).pack(anchor=tk.W)
         for key in ("<Return>", "<KP_Enter>"):
             entry.bind(key, lambda _: self._changed(label=self.name.get().strip()))
-        ttk.Button(body, text=tr("Close"), command=self.destroy).pack(anchor=tk.E, pady=(10, 0))
+        ttk.Button(body, text="Close", command=self.destroy).pack(anchor=tk.E, pady=(10, 0))
         self.bind("<Escape>", lambda _: self.destroy())
 
     def _slide(self, which):
@@ -545,11 +585,11 @@ class LineStylePopup(tk.Toplevel):
             self.marker.set(line.marker)
             width = line.auto_width if line.width is None else line.width
             self.width.set(width)
-            self.width_label["text"] = f"{width:g}" + (tr(" (auto)") if line.width is None else "")
+            self.width_label["text"] = f"{width:g}" + (" (auto)" if line.width is None else "")
             size = AUTO_MARKER_SIZE if line.marker_size is None else line.marker_size
             self.marker_size.set(size)
             self.size_label["text"] = (f"{size:g}"
-                                       + (tr(" (auto)") if line.marker_size is None else ""))
+                                       + (" (auto)" if line.marker_size is None else ""))
             # Only a line with markers has a size to set.
             for widget in (self.size_scale, self.size_auto):
                 widget.state(["!disabled" if line.marker else "disabled"])
@@ -589,64 +629,64 @@ class AxesPopup(tk.Toplevel):
         body = ttk.Frame(self, padding=12)
         body.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(body, text=tr("Range"), foreground=theme.MUTED).pack(anchor=tk.W)
+        ttk.Label(body, text="Range", foreground=theme.MUTED).pack(anchor=tk.W)
         boxes = []
         for axis in "xy":
             row = ttk.Frame(body)
             row.pack(anchor=tk.W, pady=(2, 0))
-            ttk.Label(row, text=tr(f"{axis} from"), width=7).pack(side=tk.LEFT)
+            ttk.Label(row, text=f"{axis} from", width=7).pack(side=tk.LEFT)
             for end, name in (("from", f"{axis}_min"), ("to", f"{axis}_max")):
                 if end == "to":
-                    ttk.Label(row, text=tr("to")).pack(side=tk.LEFT, padx=(6, 6))
+                    ttk.Label(row, text="to").pack(side=tk.LEFT, padx=(6, 6))
                 box = ttk.Entry(row, textvariable=self.ranges[name], width=12)
                 box.pack(side=tk.LEFT)
                 boxes.append(box)
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(6, 10))
-        ttk.Button(row, text=tr("Use current view"), command=on_use_view).pack(side=tk.LEFT)
-        ttk.Label(row, text=tr("blank: automatic"), foreground=theme.HINT).pack(
+        ttk.Button(row, text="Use current view", command=on_use_view).pack(side=tk.LEFT)
+        ttk.Label(row, text="blank: automatic", foreground=theme.HINT).pack(
             side=tk.LEFT, padx=(8, 0))
 
-        ttk.Label(body, text=tr("Text"), foreground=theme.MUTED).pack(anchor=tk.W)
+        ttk.Label(body, text="Text", foreground=theme.MUTED).pack(anchor=tk.W)
         for name, label in self.TEXTS:
             row = ttk.Frame(body)
             row.pack(anchor=tk.W, pady=(2, 0))
-            ttk.Label(row, text=tr(label), width=7).pack(side=tk.LEFT)
+            ttk.Label(row, text=label, width=7).pack(side=tk.LEFT)
             box = ttk.Entry(row, textvariable=self.texts[name], width=30)
             box.pack(side=tk.LEFT)
             boxes.append(box)
-            ttk.Button(row, text=tr("Auto"), width=5, command=lambda name=name: on_auto(name)).pack(
+            ttk.Button(row, text="Auto", width=5, command=lambda name=name: on_auto(name)).pack(
                 side=tk.LEFT, padx=(6, 0))
-        ttk.Label(body, text=tr("clear for none, Auto for the automatic text; $B$ for maths"),
+        ttk.Label(body, text="clear for none, Auto for the automatic text; $B$ for maths",
                   foreground=theme.HINT).pack(anchor=tk.W, pady=(0, 10))
 
-        ttk.Label(body, text=tr("Legend"), foreground=theme.MUTED).pack(anchor=tk.W)
+        ttk.Label(body, text="Legend", foreground=theme.MUTED).pack(anchor=tk.W)
         keys = list(LEGENDS)
         for chunk in (keys[:3], keys[3:]):  # two rows, to keep the window narrow
             row = ttk.Frame(body)
             row.pack(anchor=tk.W, pady=(2, 0))
             for key in chunk:
-                ttk.Radiobutton(row, text=tr(LEGENDS[key]), variable=self.legend, value=key,
+                ttk.Radiobutton(row, text=LEGENDS[key], variable=self.legend, value=key,
                                 style="Toolbutton", command=on_apply).pack(
                     side=tk.LEFT, padx=(0, 4))
 
-        ttk.Label(body, text=tr("Grid"), foreground=theme.MUTED).pack(anchor=tk.W, pady=(10, 0))
+        ttk.Label(body, text="Grid", foreground=theme.MUTED).pack(anchor=tk.W, pady=(10, 0))
         for name, label, texts in self.GRID_ROWS:
             row = ttk.Frame(body)
             row.pack(anchor=tk.W, pady=(2, 0))
-            ttk.Label(row, text=tr(label), width=7).pack(side=tk.LEFT)
+            ttk.Label(row, text=label, width=7).pack(side=tk.LEFT)
             for key, text in texts.items():
-                ttk.Radiobutton(row, text=tr(text), variable=self.choices[name], value=key,
+                ttk.Radiobutton(row, text=text, variable=self.choices[name], value=key,
                                 style="Toolbutton", command=on_apply).pack(
                     side=tk.LEFT, padx=(0, 4))
-        ttk.Label(body, text=tr("Ticks"), foreground=theme.MUTED).pack(anchor=tk.W, pady=(10, 0))
+        ttk.Label(body, text="Ticks", foreground=theme.MUTED).pack(anchor=tk.W, pady=(10, 0))
         self.ticks_in = tk.BooleanVar(value=ticks_in)
-        ttk.Checkbutton(body, text=tr("Point inward (all panels)"), variable=self.ticks_in,
+        ttk.Checkbutton(body, text="Point inward (all panels)", variable=self.ticks_in,
                         command=lambda: on_ticks(self.ticks_in.get())).pack(
             anchor=tk.W, pady=(2, 0))
-        ttk.Label(body, text=tr("Enter in a box applies"), foreground=theme.HINT).pack(
+        ttk.Label(body, text="Enter in a box applies", foreground=theme.HINT).pack(
             anchor=tk.W, pady=(10, 0))
-        ttk.Button(body, text=tr("Close"), command=self.destroy).pack(anchor=tk.E, pady=(6, 0))
+        ttk.Button(body, text="Close", command=self.destroy).pack(anchor=tk.E, pady=(6, 0))
         for box in boxes:
             for key in ("<Return>", "<KP_Enter>"):
                 box.bind(key, lambda _: on_apply())
@@ -667,7 +707,7 @@ class AxesPopup(tk.Toplevel):
     def show(self, panel, number, auto):
         """Fill the boxes from `panel`, number `number` in the grid; a text left
         automatic shows the one drawn, from `auto` ({name: text})."""
-        self.title(tr("Axes of panel {n}", n=number))
+        self.title(f"Axes of panel {number}")
         for name, var in self.ranges.items():
             value = getattr(panel, name)
             var.set("" if value is None else f"{value:.6g}")

@@ -326,17 +326,9 @@ stay until it's done or cancelled.
   first if anything's plotted in it, as it can't be brought back). The
   data folder and the controls' tab are shared. Save session and Open
   session work on the plot shown. Switching resets the zoom.
-- **Language**: the flag beside Layout shows the window's language; click it
-  for English or 简体中文 (Simplified Chinese). The window opens again in
-  the language chosen, carrying on where it was (panels, selection, tab and
-  the undo step), and the choice is kept in `settings.json`. Only the
-  window's own text changes: what's drawn on the plot (titles, labels,
-  legends, Measure's marks, and so the names in the Lines list), file
-  names, exported measurements and the reasons a line can't be drawn stay
-  English, as do the plot toolbar, the Yes/No buttons on questions and the
-  inside of the file chooser (Tk's own).
-- **Layout**: hover to size the grid, click to apply. Click a panel to select it.
-- **Delete panel** (beside Layout, at the bottom of the column): deletes the selected panel. The
+- **Layout** (the four-pane button on the bar above the plot, left of the
+  toolbar's): hover to size the grid, click to apply. Click a panel to select it.
+- **Delete panel** (the button beside Layout): deletes the selected panel. The
   panels after it, across then down, move back one place, and the grid loses
   the row or column that leaves empty (a 3 x 1 stack becomes 2 x 1); in a
   grid of both rows and columns the last cell gets an empty panel instead.

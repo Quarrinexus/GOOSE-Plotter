@@ -1,6 +1,7 @@
 """The window, driven as a user would, on the made-up data in conftest."""
 
 import json
+import tkinter as tk
 from types import SimpleNamespace
 
 import numpy as np
@@ -853,7 +854,6 @@ def test_only_a_cut_step_shows_the_cut_boxes(app):
     assert "Pick" in buttons(app.tabs["Process"])
 
 
-@pytest.mark.parametrize("language", ["en", "zh"])
 def test_no_tab_widens_the_controls_column(app):
     """Every tab leaves the column as wide as the controls above the tabs make
     it, so switching tabs never pushes the plot over."""
@@ -906,7 +906,6 @@ def test_no_tab_widens_the_controls_column(app):
     assert len(set(widths.values())) == 1, widths
 
 
-@pytest.mark.parametrize("language", ["en", "zh"])
 def test_save_area_does_not_widen_the_column(app):
     """The Save area below fits the controls and the scrollbar's slot, leaving
     no gap between the scrollbar and the plot."""
@@ -950,3 +949,47 @@ def test_popups_keep_tks_size_method(app):
         assert isinstance(popup.size(), tuple)
     assert app.style_popup.marker_size.get() == model.AUTO_MARKER_SIZE
     assert app.save_popup.options()["size"] == app._save_options()["size"]
+
+
+def test_panel_buttons_sit_by_the_plot(app):
+    """Layout and Delete panel are on the plot's bar, Delete panel only usable
+    with a panel to spare, and the coordinates growing never moves them."""
+    plot(app)
+    assert app.delete_button.master is app.toolbar
+    assert not app.delete_button.enabled
+    app.delete_button.invoke()  # does nothing with one panel
+    assert len(app.panels) == 1
+    app.set_layout(1, 2)
+    assert app.delete_button.enabled
+    app.deiconify()  # hidden, the plot's side is never laid out
+    app.update()
+    coordinates = next(w for w in app.toolbar.pack_slaves() if isinstance(w, tk.Label))
+    where = app.delete_button.winfo_x()
+    coordinates["text"] = "x=0.123456789   y=0.000123456789   " * 3
+    app.update()
+    assert app.delete_button.winfo_x() == where
+    app.delete_button.invoke()
+    assert len(app.panels) == 1 and not app.delete_button.enabled
+
+
+def test_toolbar_is_drawn_in_the_windows_style(app):
+    """matplotlib's buttons carry GOOSE's icons; Back is faint, not stippled,
+    until there's a view to go back to, and Zoom shows its on look while on."""
+    from goose_plotter.toolbar import ICONS
+    plot(app)
+    bar = app.toolbar
+    for text, button in bar._buttons.items():
+        assert text in ICONS and button in bar.icons
+        assert str(button["image"]) in {str(image) for image in bar.icons[button][:2]}
+    back = bar._buttons["Back"]
+    assert str(back["state"]) == "normal" and not back.enabled
+    assert str(back["image"]) == str(bar.icons[back][1])  # the faint one
+    bar.push_current()  # the home view
+    bar.push_current()  # and one after it, to go back from
+    assert back.enabled and str(back["image"]) == str(bar.icons[back][0])
+    zoom = bar._buttons["Zoom"]
+    assert str(zoom["selectimage"]) == str(bar.icons[zoom][2])
+    bar.zoom()
+    assert zoom.var.get() == 1
+    bar.zoom()
+    assert zoom.var.get() == 0
