@@ -44,7 +44,6 @@ from goose_plotter.datasets import (
 )
 from goose_plotter.format_dialog import FormatDialog
 from goose_plotter.model import (
-    DATA_VIEW,
     GRID_AXES,
     GRID_STYLES,
     GRIDS,
@@ -53,18 +52,19 @@ from goose_plotter.model import (
     MAX_GRID,
     RANGES,
     SYNC,
+    TRANSFORMS,
     Layout,
     Link,
     Panel,
     Step,
-    clear_data_ranges,
     clear_ranges,
     curve_colours,
     legend_labels,
     line_colours,
     overlay,
     shared,
-    swap_data_view,
+    split_steps,
+    view,
     without_x_units,
 )
 from goose_plotter.profile import load_profile, save_format, save_recipes
@@ -333,12 +333,10 @@ class Plotter(tk.Tk):
         ttk.Separator(controls).pack(fill=tk.X, pady=(10, 8))
         self.tab = tk.StringVar()
         self.tabs = {name: ttk.Frame(controls)
-                     for name in ("Process", "Derive", "Linking", "Measure")}
+                     for name in ("Process", "Linking", "Measure")}
         self._tab_strip(controls)
         self._steps_box(self.tabs["Process"])
         # FFT's toggle adds the 10 px above it.
-        self._fft_box(self.tabs["Derive"])
-        self._derivative_box(self.tabs["Derive"])
         self._link_box(self.tabs["Linking"])
         self._measure_box(self.tabs["Measure"])
         self.tab.set("Process")
@@ -515,14 +513,13 @@ class Plotter(tk.Tk):
             self.side.yview_moveto(0)
 
     def _tab_font(self):
-        """The tabs' font: a point smaller than the window's, so five names fit."""
+        """The tabs' font: the window's, as three names fit at that size."""
         base = tkfont.nametofont("TkDefaultFont").actual()
-        size = base["size"] - 1 if base["size"] > 0 else base["size"] + 1
-        return tkfont.Font(self, family=base["family"], size=size)
+        return tkfont.Font(self, family=base["family"], size=base["size"])
 
     def _tab_strip(self, parent):
         """The controls' tabs, one section shown at a time."""
-        strip = TabStrip(parent, self._tab_font(), self._choose_tab)
+        strip = TabStrip(parent, self._tab_font(), self._choose_tab, pad=10, above=10)
         strip.pack(anchor=tk.W, fill=tk.X)
         strip.set_tabs([(name, name) for name in self.tabs], self.tab.get())
         self.tab_strip = strip
@@ -655,7 +652,15 @@ class Plotter(tk.Tk):
         self.copied = None  # (steps, x, x_fn) from Copy steps, for Paste steps
         self.add_menu = tk.Menu(self, tearoff=0)
         for kind, name in KINDS.items():
+            if kind == TRANSFORMS[0]:
+                self.add_menu.add_separator()
             self.add_menu.add_command(label=name, command=lambda kind=kind: self.add_step(kind))
+        self.add_menu.add_separator()
+        for kind in TRANSFORMS:
+            self.add_menu.add_command(label=f"{KINDS[kind]} in a new panel",
+                                      command=lambda kind=kind: self.new_derived_panel(kind))
+            self.add_menu.add_command(label=f"{KINDS[kind]} in another panel...",
+                                      command=lambda kind=kind: self.existing_derived_panel(kind))
         add = ttk.Button(row, text="Add step", width=1)
         add.configure(command=lambda: self.add_menu.tk_popup(
             add.winfo_rootx(), add.winfo_rooty() + add.winfo_height()))
@@ -693,13 +698,15 @@ class Plotter(tk.Tk):
         holder.pack(anchor=tk.W, fill=tk.X)
         self.editors = {}
         for kind, build in (("cut", self._cut_editor), ("despike", self._despike_editor),
-                            ("smooth", self._smoothing_editor), ("fit", self._fit_editor)):
+                            ("smooth", self._smoothing_editor), ("fit", self._fit_editor),
+                            ("fft", self._fft_editor), ("derivative", self._derivative_editor)):
             self.editors[kind] = ttk.Frame(holder)
             build(self.editors[kind])
         self.editors["subtract"] = self.editors["fit"]  # the same boxes; see _show_step
         self.no_steps = ttk.Label(holder, foreground=theme.HINT, wraplength=WRAP,
                                   text=("No steps: Add step cuts, despikes, subtracts, "
-                                          "smooths or fits a curve to the line."))
+                                          "smooths, fits a curve to, or takes the FFT or "
+                                          "derivative of the line."))
 
     def _despike_editor(self, body):
         """A Despike step: turn points far off the median around them into gaps."""
@@ -873,17 +880,9 @@ class Plotter(tk.Tk):
             out.writerows((n, v, "" if e is None else e) for n, v, e in report["parameters"])
 
     def _cut_editor(self, body):
-        """A Cut step: the one x range it removes, typed or picked. Or an FFT
-        panel's cut of its spectrum, which also has a mode (keep or remove)
-        and any number of ranges, in a list; those widgets only show for it."""
-        self.cut_mode = tk.StringVar(value=splicing.MODES[""])
+        """A Cut step: the one x range it removes, typed or picked."""
         self.cut_from, self.cut_to = tk.StringVar(), tk.StringVar()
-        self.cut_index = None  # the spectrum's range chosen in the list, which Enter changes
-        self.cut_owner = None  # what the boxes were last filled from
-        self.cut_mode_box = ttk.Combobox(body, textvariable=self.cut_mode, state="readonly",
-                                         width=14, values=list(splicing.MODES.values()))
-        self.cut_mode_box.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
-        row = self.cut_boxes = ttk.Frame(body)
+        row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text="x").pack(side=tk.LEFT)
         start = ttk.Entry(row, textvariable=self.cut_from, width=7)
@@ -893,52 +892,73 @@ class Plotter(tk.Tk):
         end.pack(side=tk.LEFT, padx=(4, 0))
         for box in (start, end):
             for key in ("<Return>", "<KP_Enter>"):
-                box.bind(key, lambda _: self.add_cut(replace=True))
-        # Their own row, in equal shares of whatever width the column has
-        # (width 1), as beside the boxes they'd widen it.
-        buttons = ttk.Frame(body)
-        buttons.pack(fill=tk.X, pady=(6, 0))
-        buttons.columnconfigure((0, 1, 2), weight=1, uniform="cut")
-        self.cut_buttons = {text: ttk.Button(buttons, text=text, width=1, command=command)
-                            for text, command in (("Add", self.add_cut),
-                                                  ("Pick", lambda: self.pick_range("cut")),
-                                                  ("Delete", self.delete_cut))}
-        # The spectrum's ranges. Width 1: the list takes the room the column leaves it.
-        row = self.cut_list_row = ttk.Frame(body)
-        # Plain text, so the chosen row in the theme's colours (the Lines list
-        # picks each row's own foreground instead).
-        self.cut_list = tk.Listbox(row, height=3, width=1, exportselection=False,
-                                   activestyle="none", foreground=theme.TEXT,
-                                   selectbackground=theme.ACCENT_SOFT,
-                                   selectforeground=theme.TEXT)
-        scroll = ttk.Scrollbar(row, orient=tk.VERTICAL, command=self.cut_list.yview)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.cut_list.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.cut_list["yscrollcommand"] = scroll.set
-        self.cut_list.bind("<<ListboxSelect>>", lambda _: self._choose_cut())
+                box.bind(key, lambda _: self.add_cut())
+        ttk.Button(body, text="Pick", command=lambda: self.pick_range("cut")).pack(
+            anchor=tk.W, pady=(6, 0))
 
-    def _spectrum_row(self):
-        """Whether the Process tab shows an FFT panel's cut of its spectrum, the
-        row after its line's steps, rather than one of them."""
-        return self.panel.operation == "fft" and self.panel.line.step >= len(self.panel.line.steps)
+    def _fft_editor(self, body):
+        """An FFT step: the line becomes its spectrum against its x, so with
+        1/x on the field, in F; the steps after it work on that."""
+        self.fft_window, self.fft_pad, self.f_max = tk.StringVar(), tk.StringVar(), tk.StringVar()
+        row = ttk.Frame(body)
+        row.pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(row, text="Window").pack(side=tk.LEFT)
+        window = ttk.Combobox(row, textvariable=self.fft_window, state="readonly", width=5,
+                              values=list(spectrum.WINDOWS.values()))
+        window.pack(side=tk.LEFT, padx=(4, 10))
+        ttk.Label(row, text="Padding").pack(side=tk.LEFT)
+        pad = ttk.Combobox(row, textvariable=self.fft_pad, state="readonly", width=2,
+                           values=[str(n) for n in spectrum.PADDING])
+        pad.pack(side=tk.LEFT, padx=(4, 0))
+        row = ttk.Frame(body)
+        row.pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(row, text="F max").pack(side=tk.LEFT)
+        f_max = ttk.Entry(row, textvariable=self.f_max, width=8)
+        f_max.pack(side=tk.LEFT, padx=(4, 8))
+        ttk.Label(row, text="blank: all", foreground=theme.HINT).pack(side=tk.LEFT)
+        for box in (window, pad):
+            box.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
+        for key in ("<Return>", "<KP_Enter>"):
+            f_max.bind(key, lambda _: self.apply_controls())
+        self.fft_found = ttk.Label(body, foreground=theme.HINT)
+        self.fft_found.pack(anchor=tk.W, pady=(2, 0))
+
+    def _derivative_editor(self, body):
+        """A Derivative step: the line becomes dy/dx or d2y/dx2 against its x."""
+        self.derivative_order, self.derivative_window = tk.StringVar(value="d1"), tk.StringVar()
+        row = ttk.Frame(body)
+        row.pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(row, text="Order").pack(side=tk.LEFT, padx=(0, 6))
+        for key, name in derivative.ORDERS.items():
+            ttk.Radiobutton(row, text=name, variable=self.derivative_order, value=key,
+                            style="Toolbutton", command=self.apply_controls).pack(
+                side=tk.LEFT, padx=(0, 4))
+        row = ttk.Frame(body)
+        row.pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(row, text="Window").pack(side=tk.LEFT)
+        window = ttk.Spinbox(row, textvariable=self.derivative_window, from_=5, to=100001,
+                             increment=2, width=6, command=lambda: self._soon(self.apply_controls))
+        window.pack(side=tk.LEFT, padx=(4, 6))
+        ttk.Label(row, text="points, odd", foreground=theme.HINT).pack(side=tk.LEFT)
+        for key in ("<Return>", "<KP_Enter>"):
+            window.bind(key, lambda _: self.apply_controls())
+        ttk.Label(body, text="wider for less noise; 2nd needs more",
+                  foreground=theme.HINT).pack(anchor=tk.W)
 
     def _show_steps(self):
         """The selected line's steps in the list, and the chosen one's settings."""
-        p, l = self.panel, self.panel.line
-        l.step = max(0, min(l.step, len(l.steps) - (p.operation != "fft")))
+        l = self.panel.line
+        l.step = max(0, min(l.step, len(l.steps) - 1))
         rows = [f"{i + 1}  {KINDS[s.kind]}  {plain(s.describe())}"
                 + ("" if s.on else "  " + "(off)") for i, s in enumerate(l.steps)]
-        if p.operation == "fft":
-            cut = splicing.describe(p.cut, p.cuts) if p.cut and p.cuts else "none"
-            rows.append(f"Cut spectrum (F)  {plain(cut)}")
         self.step_list.show(rows, l.step, off={i for i, s in enumerate(l.steps) if not s.on},
-                            fixed=len(l.steps), picked=l.picks)
-        step = l.chosen if not self._spectrum_row() else None
+                            picked=l.picks)
+        step = l.chosen
         for state, widget in ((step is not None, self.remove_step_button),
                               (step is not None, self.step_on_box)):
             widget.state(["!disabled" if state else "disabled"])
         self.step_on.set(step.on if step else True)
-        kind = "cut" if self._spectrum_row() else step.kind if step else None
+        kind = step.kind if step else None
         for name, frame in self.editors.items():
             if name != kind and frame.winfo_manager():
                 frame.pack_forget()
@@ -946,8 +966,7 @@ class Plotter(tk.Tk):
             self.editors[kind].pack(anchor=tk.W, fill=tk.X)
             self.no_steps.pack_forget()
             self.step_title.pack(anchor=tk.W, pady=(6, 0), before=self.step_holder)
-            self.step_title["text"] = ("Cut spectrum (F)" if step is None else
-                                       f"Step {l.step + 1}: {KINDS[kind]}")
+            self.step_title["text"] = f"Step {l.step + 1}: {KINDS[kind]}"
             self._show_step(step)
         else:
             # In the title's place, so no empty line above it.
@@ -955,12 +974,22 @@ class Plotter(tk.Tk):
             self.step_title.pack_forget()
 
     def _show_step(self, step):
-        """Fill the chosen step's editor from it (None: the spectrum's cut)."""
+        """Fill the chosen step's editor from it."""
         l = self.panel.line
-        found = l.found[l.step] if step is not None and l.step < len(l.found) else None
-        if step is None or step.kind == "cut":
-            self._show_cut_editor(spectrum=step is None)
-            self._show_cuts()
+        found = l.found[l.step] if l.step < len(l.found) else None
+        if step.kind == "cut":
+            start, end = step.cuts[0] if step.cuts else (None, None)
+            self.cut_from.set("" if start is None else f"{start:.12g}")
+            self.cut_to.set("" if end is None else f"{end:.12g}")
+        elif step.kind == "fft":
+            self.fft_window.set(spectrum.WINDOWS[step.fft_window])
+            self.fft_pad.set(str(step.pad))
+            self.f_max.set("" if step.f_max is None else f"{step.f_max:g}")
+            self.fft_found["text"] = ("" if found is None or not l.shown
+                                      else f"resolution: {found:.3g} (1 / x range)")
+        elif step.kind == "derivative":
+            self.derivative_order.set(step.d_order)
+            self.derivative_window.set(step.d_window)
         elif step.kind == "despike":
             self.despike_window.set(step.spike_window)
             self.despike_threshold.set(f"{step.threshold:g}")
@@ -1006,6 +1035,18 @@ class Plotter(tk.Tk):
             return value if ok(value) else old
         if step.kind == "cut":
             return step  # its range is set by add_cut
+        if step.kind == "fft":
+            f_max = step.f_max
+            if not self.f_max.get().strip():
+                f_max = None
+            else:
+                f_max = number(self.f_max, float, f_max, lambda v: v > 0 and math.isfinite(v))
+            return replace(step, fft_window=key_of(spectrum.WINDOWS, self.fft_window.get()),
+                           pad=number(self.fft_pad, int, step.pad), f_max=f_max)
+        if step.kind == "derivative":
+            return replace(step, d_order=self.derivative_order.get(),
+                           d_window=number(self.derivative_window, int, step.d_window,
+                                           lambda v: v > 0))
         if step.kind == "despike":
             return replace(step, spike_window=max(3, number(self.despike_window, int,
                                                             step.spike_window)),
@@ -1062,18 +1103,24 @@ class Plotter(tk.Tk):
         self._show_steps()
 
     def add_step(self, kind):
-        """Add a step of `kind` after the chosen one, and choose it."""
+        """Add a step of `kind` after the chosen one, and choose it. An FFT or
+        Derivative goes on every line in the panel (at the end of the others'),
+        as a panel shows one kind of x."""
         l = self.panel.line
         before = l.steps
         at = min(l.step + 1, len(l.steps)) if l.steps else 0
         l.steps = l.steps[:at] + (Step(kind),) + l.steps[at:]
         l.step, l.picked = at, ()
+        if kind in TRANSFORMS:
+            for other in self.panel.lines:
+                if other is not l:
+                    other.steps, other.picked = other.steps + (Step(kind),), ()
         self._steps_changed(before)
 
     def remove_step(self):
         """Remove the picked steps (the chosen one, and any picked with it)."""
         l = self.panel.line
-        if l.chosen is None or self._spectrum_row():
+        if l.chosen is None:
             return
         before, gone = l.steps, set(l.picks)
         l.steps = tuple(s for i, s in enumerate(l.steps) if i not in gone)
@@ -1092,7 +1139,7 @@ class Plotter(tk.Tk):
     def toggle_step(self):
         """Turn the picked steps on or off, as the On box says."""
         l = self.panel.line
-        if l.chosen is None or self._spectrum_row():
+        if l.chosen is None:
             return
         before, on = l.steps, self.step_on.get()
         for i in l.picks:
@@ -1107,7 +1154,7 @@ class Plotter(tk.Tk):
         Linked panels get a line too, as with + (add_line), the fit moved
         wherever their line has the same steps."""
         l = self.panel.line
-        if l.chosen is None or l.chosen.kind != "fit" or self._spectrum_row():
+        if l.chosen is None or l.chosen.kind != "fit":
             return
         at, k, steps = self.panel.selected + 1, l.step, l.steps
         for lines in self._group_lists(self.selected):
@@ -1136,7 +1183,7 @@ class Plotter(tk.Tk):
         """Remember the picked steps (Ctrl- or Shift-click for several, Ctrl+A
         for all), and the line's x, for Paste."""
         l = self.panel.line
-        if not l.steps or self._spectrum_row():
+        if not l.steps:
             self._say("Choose the steps to copy first.", error=True)
             return
         self.copied = (tuple(l.steps[i] for i in l.picks), l.x, l.x_fn)
@@ -1225,7 +1272,7 @@ class Plotter(tk.Tk):
         """Keep the picked steps under a name, in the data folder's profile, so
         any line in any session can have them (Recipes)."""
         l = self.panel.line
-        if not l.steps or self._spectrum_row():
+        if not l.steps:
             self._say("Choose the steps to save first.", error=True)
             return
         if not self.data_dir:
@@ -1274,83 +1321,25 @@ class Plotter(tk.Tk):
         kept zoom could hide it, or show nothing); else x only."""
         def active(steps, kinds):
             return [s for s in steps if s.active and s.kind in kinds]
+        if view(before) != view(after):  # a spectrum, a slope or the data: new axes
+            p = self.panel
+            clear_ranges(p)
+            p.title = p.x_label = p.y_label = None
+            return "", ""
+        if active(before, TRANSFORMS) != active(after, TRANSFORMS):
+            return "", ""
         if active(before, ("subtract",)) != active(after, ("subtract",)):
             self._clear_ranges(self.panel.lines, "y")
         if active(before, ("cut",)) != active(after, ("cut",)):
             return "", ""
-        if self.panel.derived:  # any change reshapes a spectrum or derivative
+        if view(after):  # any change reshapes a spectrum or derivative
             return "x", "x"
         unfitted = lambda steps: [s for s in steps if not overlay(s)]
         return ("xy" if unfitted(before) == unfitted(after) else "x"), "x"
 
-    def _show_cut_editor(self, spectrum):
-        """The Cut editor for a Cut step (x boxes and Pick), or for an FFT
-        panel's spectrum (its mode, Add and Delete, and the list as well)."""
-        widgets = ({"Add": (0, 0), "Pick": (1, 6), "Delete": (2, 6)} if spectrum
-                   else {"Pick": (0, 0)})
-        for text, button in self.cut_buttons.items():
-            if text in widgets:
-                column, pad = widgets[text]
-                button.grid(row=0, column=column, sticky="ew", padx=(pad, 0))
-            else:
-                button.grid_remove()
-        if spectrum:
-            self.cut_mode.set(splicing.MODES[self.panel.cut])
-            self.cut_mode_box.pack(anchor=tk.W, pady=(4, 0), before=self.cut_boxes)
-            self.cut_list_row.pack(anchor=tk.W, fill=tk.X, pady=(6, 0))
-        else:
-            self.cut_mode_box.pack_forget()
-            self.cut_list_row.pack_forget()
-
-    def _show_cuts(self):
-        """Fill the boxes with the chosen Cut step's range; for an FFT panel's
-        spectrum, the list with its ranges and the boxes with the chosen one."""
-        _mode, cuts = self._cut_ranges()
-        if not self._spectrum_row():
-            start, end = cuts[0] if cuts else (None, None)
-            self.cut_owner, self.cut_index = None, None
-            self.cut_from.set("" if start is None else f"{start:.12g}")
-            self.cut_to.set("" if end is None else f"{end:.12g}")
-            return
-        owner = (id(self.panel), self.panel.line.step)
-        if owner != self.cut_owner:  # another step: start at its first range
-            self.cut_owner, self.cut_index = owner, 0 if cuts else None
-            self.cut_from.set("")
-            self.cut_to.set("")
-        if self.cut_index is not None and not 0 <= self.cut_index < len(cuts):
-            self.cut_index = len(cuts) - 1 if cuts else None
-        self.cut_list.delete(0, tk.END)
-        for start, end in cuts:
-            self.cut_list.insert(tk.END, f"x from {start:.6g}" if end is None
-                                 else f"x up to {end:.6g}" if start is None
-                                 else f"x {start:.6g} to {end:.6g}")
-        if self.cut_index is not None:
-            self.cut_list.selection_set(self.cut_index)
-            self.cut_list.see(self.cut_index)
-            start, end = cuts[self.cut_index]
-            self.cut_from.set("" if start is None else f"{start:.12g}")
-            self.cut_to.set("" if end is None else f"{end:.12g}")
-
-    def _choose_cut(self):
-        chosen = self.cut_list.curselection()
-        if chosen:
-            self.cut_index = chosen[0]
-            self._show_cuts()
-
-    def _cut_ranges(self):
-        """(mode, ranges) of what the cut editor edits: an FFT panel's spectrum
-        cut, or the chosen Cut step."""
-        if self._spectrum_row():
-            return self.panel.cut, self.panel.cuts
-        step = self.panel.line.chosen
-        return step.cut, step.cuts
-
     def _set_cuts(self, cuts):
-        if self._spectrum_row():
-            self.panel.cuts = cuts
-        else:
-            l = self.panel.line
-            self._set_step(l, l.step, replace(l.chosen, cuts=cuts))
+        l = self.panel.line
+        self._set_step(l, l.step, replace(l.chosen, cuts=cuts))
 
     def _typed_cut(self):
         """The range typed in the cut boxes, or None, saying why, if it isn't one."""
@@ -1370,245 +1359,17 @@ class Plotter(tk.Tk):
             return None
         return tuple(ends)
 
-    def add_cut(self, pair=None, replace=False):
+    def add_cut(self, pair=None):
         """Set the chosen Cut step's range to `pair`, else the typed one (both
-        ends blank: none). For an FFT panel's spectrum cut, add it to its
-        ranges, or with `replace` (Enter) put it in place of the one chosen in
-        the list."""
-        if not self._spectrum_row():
-            if pair is None and not (self.cut_from.get().strip() or self.cut_to.get().strip()):
-                self._set_cuts(())
-            else:
-                pair = pair or self._typed_cut()
-                if pair is None:
-                    return
-                self._set_cuts(splicing.tidy([pair]))
-            self.apply_controls()
-            return
-        pair = pair or self._typed_cut()
-        if pair is None:
-            return
-        mode, cuts = self._cut_ranges()
-        cuts = list(cuts)
-        if replace and self.cut_index is not None:
-            del cuts[self.cut_index]
-        cuts = splicing.tidy(cuts + [pair])
-        self._set_cuts(cuts)
-        self.cut_index = cuts.index(splicing.tidy([pair])[0])
-        switched = not mode  # the spectrum's, off: adding a range means cutting with it
-        if switched:
-            self.cut_mode.set(splicing.MODES["keep"])
-        self.apply_controls()
-        if switched:  # after the redraw, which clears the status
-            self._say("Keeping the range; choose Remove ranges to cut it out instead.")
-
-    def delete_cut(self):
-        """Delete the range chosen in the list from the chosen Cut step (an
-        FFT panel's spectrum cut)."""
-        if self.cut_index is None:
-            self._say("Click a range in the list to delete it.", error=True)
-            return
-        _, cuts = self._cut_ranges()
-        self._set_cuts(cuts[:self.cut_index] + cuts[self.cut_index + 1:])
-        self.apply_controls()
-
-    def _fft_box(self, parent):
-        """A collapsed 'FFT' toggle: make an FFT panel of this one, or set one up."""
-        self.fft_window, self.fft_pad, self.f_max = tk.StringVar(), tk.StringVar(), tk.StringVar()
-
-        def text(is_open):
-            p = self.panel
-            if is_open or p.operation != "fft":
-                return "FFT"
-            if p.data_view is not None:
-                return "FFT: this panel"
-            if p.source is not None:
-                return f"FFT: of panel {self._number(p.source)}"
-            return "FFT"
-
-        body = self._collapsible(parent, (10, 0), text, start_open=True)
-        show_here = self._here_button(body, lambda: "fft")
-        # For a data panel: the two ways to make its FFT.
-        make = ttk.Frame(body)
-        self._make_buttons(make, lambda: "fft")
-        # For an FFT panel: its settings.
-        settings = ttk.Frame(body)
-        source_label = ttk.Label(settings, foreground=theme.MUTED, wraplength=230)
-        source_label.pack(anchor=tk.W, pady=(2, 0))
-        row = ttk.Frame(settings)
-        row.pack(anchor=tk.W, pady=(4, 0))
-        ttk.Label(row, text="Window").pack(side=tk.LEFT)
-        window = ttk.Combobox(row, textvariable=self.fft_window, state="readonly", width=5,
-                              values=list(spectrum.WINDOWS.values()))
-        window.pack(side=tk.LEFT, padx=(4, 10))
-        ttk.Label(row, text="Padding").pack(side=tk.LEFT)
-        pad = ttk.Combobox(row, textvariable=self.fft_pad, state="readonly", width=2,
-                           values=[str(n) for n in spectrum.PADDING])
-        pad.pack(side=tk.LEFT, padx=(4, 0))
-        row = ttk.Frame(settings)
-        row.pack(anchor=tk.W, pady=(4, 0))
-        ttk.Label(row, text="F max").pack(side=tk.LEFT)
-        f_max = ttk.Entry(row, textvariable=self.f_max, width=8)
-        f_max.pack(side=tk.LEFT, padx=(4, 8))
-        ttk.Label(row, text="blank: all", foreground=theme.HINT).pack(side=tk.LEFT)
-        back = ttk.Button(settings, text="Back to data", command=self.back_to_data)
-        for box in (window, pad):
-            box.bind("<<ComboboxSelected>>", lambda _: self.apply_fft())
-        for key in ("<Return>", "<KP_Enter>"):
-            f_max.bind(key, lambda _: self.apply_fft())
-
-        # For a derivative panel: where to make an FFT instead.
-        other = ttk.Label(body, foreground=theme.MUTED, wraplength=230)
-
-        def refresh():
-            body.refresh()
-            p = self.panel
-            visible = make if not p.derived else settings if p.operation == "fft" else other
-            for frame in (make, settings, other):
-                if frame is not visible:
-                    frame.pack_forget()
-            visible.pack(anchor=tk.W, fill=tk.X, pady=(2, 0) if visible is other else 0)
-            show_here(p)
-            if visible is make:
-                return
-            if visible is other:
-                other["text"] = ("Click This panel for its FFT instead."
-                                 if p.data_view is not None else
-                                 f"Select {self._data_panel_name(p)} to make its FFT.")
-                return
-            self._show_back(back, p)
-            source_label["text"] = f"FFT of {self._derived_from(p)}"
-            self.fft_window.set(spectrum.WINDOWS[p.window])
-            self.fft_pad.set(str(p.pad))
-            self.f_max.set("" if p.f_max is None else f"{p.f_max:g}")
-        self.fft_window.show = refresh
-
-    def _make_buttons(self, parent, operation):
-        """'New panel' and 'Existing panel...' on a row, making the derived panel
-        `operation()` names; the section's toggle says which it is."""
-        row = ttk.Frame(parent)
-        row.pack(anchor=tk.W, pady=(4, 0))
-        ttk.Button(row, text="New panel",
-                   command=lambda: self.new_derived_panel(operation())).pack(side=tk.LEFT)
-        ttk.Button(row, text="Existing panel...",
-                   command=lambda: self.existing_derived_panel(operation())).pack(
-            side=tk.LEFT, padx=(6, 0))
-
-    def _here_button(self, parent, operation):
-        """'This panel', to turn the selected data panel into the derived panel
-        `operation()` names in place, and then Undo. Returns what updates it
-        for a panel; it stays at the top of its section either way."""
-        row = ttk.Frame(parent)
-        row.pack(anchor=tk.W, fill=tk.X, pady=(4, 0))
-        button = ttk.Button(row)
-        button.pack(side=tk.LEFT)
-        hint = ttk.Label(row, foreground=theme.HINT)
-        hint.pack(side=tk.LEFT, padx=(6, 0))
-
-        def undoes(p):  # turned into this section's kind here, so the button undoes it
-            return p.data_view is not None and (p.operation == "fft") == (operation() == "fft")
-
-        def press():
-            if undoes(self.panel):
-                self.undo_in_place()
-            else:
-                self.in_place(operation())
-        button["command"] = press
-
-        def show(p):
-            usable = not p.derived or p.data_view is not None
-            button["text"] = "Undo" if undoes(p) else "This panel"
-            button.state(["!disabled" if usable else "disabled"])
-            hint["text"] = ("back to its data" if undoes(p) else
-                            "" if not usable else
-                            "in place of its data" if not p.derived else
-                            "in its place")
-        return show
-
-    @staticmethod
-    def _show_back(button, p):
-        """'Back to data' for a derived panel, except one This panel made, which has Undo."""
-        if p.data_view is None:
-            button.pack(anchor=tk.W, pady=(6, 0))
+        ends blank: none)."""
+        if pair is None and not (self.cut_from.get().strip() or self.cut_to.get().strip()):
+            self._set_cuts(())
         else:
-            button.pack_forget()
-
-    def _derivative_box(self, parent):
-        """A 'Derivative' toggle: make a derivative panel of this one, or set one up."""
-        self.derivative_order = tk.StringVar(value="d1")  # also the new panel's, for a data panel
-        self.derivative_window = tk.StringVar()
-
-        def text(is_open):
-            p = self.panel
-            if is_open or not p.derived or p.operation == "fft":
-                return "Derivative"
-            kind = self._kind(p.operation)
-            if p.data_view is not None:
-                return f"Derivative: {kind}, this panel"
-            if p.source is not None:
-                return f"Derivative: {kind} of panel {self._number(p.source)}"
-            return "Derivative"
-
-        body = self._collapsible(parent, (10, 0), text, start_open=True)
-        # The order: which derivative to make, or which this derivative panel shows.
-        row = ttk.Frame(body)
-        row.pack(anchor=tk.W, pady=(2, 0))
-        ttk.Label(row, text="Order").pack(side=tk.LEFT, padx=(0, 6))
-        orders = []
-        for key, name in derivative.ORDERS.items():
-            button = ttk.Radiobutton(row, text=name, variable=self.derivative_order,
-                                     value=key,
-                                     style="Toolbutton", command=self.apply_derivative)
-            button.pack(side=tk.LEFT, padx=(0, 4))
-            orders.append(button)
-        show_here = self._here_button(body, self.derivative_order.get)
-        # For a data panel: the two ways to make its derivative.
-        make = ttk.Frame(body)
-        self._make_buttons(make, self.derivative_order.get)
-        # For a derivative panel: its settings.
-        settings = ttk.Frame(body)
-        source_label = ttk.Label(settings, foreground=theme.MUTED, wraplength=230)
-        source_label.pack(anchor=tk.W, pady=(4, 0))
-        row = ttk.Frame(settings)
-        row.pack(anchor=tk.W, pady=(4, 0))
-        ttk.Label(row, text="Window").pack(side=tk.LEFT)
-        window = ttk.Spinbox(row, textvariable=self.derivative_window, from_=5, to=100001,
-                             increment=2, width=6,
-                             command=lambda: self._soon(self.apply_derivative))
-        window.pack(side=tk.LEFT, padx=(4, 6))
-        ttk.Label(row, text="points, odd", foreground=theme.HINT).pack(side=tk.LEFT)
-        ttk.Label(settings, text="wider for less noise; 2nd needs more",
-                  foreground=theme.HINT).pack(anchor=tk.W)
-        back = ttk.Button(settings, text="Back to data", command=self.back_to_data)
-        for key in ("<Return>", "<KP_Enter>"):
-            window.bind(key, lambda _: self.apply_derivative())
-        # For an FFT panel: where to make a derivative instead.
-        other = ttk.Label(body, foreground=theme.MUTED, wraplength=230)
-
-        def refresh():
-            body.refresh()
-            p = self.panel
-            derived = p.derived
-            visible = make if not derived else other if p.operation == "fft" else settings
-            for frame in (make, settings, other):
-                if frame is not visible:
-                    frame.pack_forget()
-            visible.pack(anchor=tk.W, fill=tk.X, pady=(2, 0) if visible is other else 0)
-            # An FFT panel has no order to choose, unless This panel can swap it for one.
-            choose = visible is not other or p.data_view is not None
-            for button in orders:
-                button.state(["!disabled" if choose else "disabled"])
-            show_here(p)
-            if visible is other:
-                other["text"] = ("Click This panel for its derivative instead."
-                                 if p.data_view is not None else
-                                 f"Select {self._data_panel_name(p)} to make its derivative.")
-            elif derived:
-                self.derivative_order.set(p.operation)
-                source_label["text"] = f"{self._kind(p.operation)} of {self._derived_from(p)}"
-                self.derivative_window.set(p.derivative_window)
-                self._show_back(back, p)
-        self.derivative_order.show = refresh
+            pair = pair or self._typed_cut()
+            if pair is None:
+                return
+            self._set_cuts(splicing.tidy([pair]))
+        self.apply_controls()
 
     def _link_box(self, parent):
         """Links: which panels the selected one is linked to, a tab per link,
@@ -1815,8 +1576,6 @@ class Plotter(tk.Tk):
         self.y_fn.show_label()
         self._show_steps()
         self._show_axes()
-        self.fft_window.show()
-        self.derivative_order.show()
         self._show_measure()
         self.link_status()
         self.toolbar.enable(self.delete_button, len(self.panels) > 1)
@@ -1858,15 +1617,11 @@ class Plotter(tk.Tk):
         self.stop_picking()
         l = self.panel.line
         before, old_x, old_y = l.shown, (l.x, l.x_fn), (l.y, l.y_fn)
-        spectrum_cut = (self.panel.cut, self.panel.cuts)
         l.run = self.run.get()
         l.x, l.y = without_unit(self.x.get()) or l.x, without_unit(self.y.get()) or l.y
         l.x_fn, l.y_fn = self.x_fn.get().strip(), self.y_fn.get().strip()
         steps = l.steps
-        if self._spectrum_row():
-            spectrum_cut = (self.panel.cut, self.panel.cuts)
-            self.panel.cut = key_of(splicing.MODES, self.cut_mode.get())
-        elif l.chosen is not None:
+        if l.chosen is not None:
             self._set_step(l, l.step, self._read_step(l.chosen))
         if (l.x, l.x_fn) != old_x:
             # A window or range in the old x means nothing in the new one.
@@ -1891,8 +1646,6 @@ class Plotter(tk.Tk):
         keep, others = "", ""
         if before and before[:5] == (l.run, l.x, l.x_fn, l.y, l.y_fn):
             keep, others = self._zoom_kept(steps, l.steps)
-            if (self.panel.cut, self.panel.cuts) != spectrum_cut:  # an FFT's: fit to it
-                keep = ""
         self._redraw_selected(keep, others)
 
     def _redraw_selected(self, keep="", others="x", merge=False):
@@ -2014,7 +1767,8 @@ class Plotter(tk.Tk):
 
     # The stage named in a step's errors, by kind.
     STAGES: ClassVar = {"cut": "Splicing", "despike": "Despike", "subtract": "Fit",
-                        "smooth": "Smoothing", "fit": "Fit"}
+                        "smooth": "Smoothing", "fit": "Fit", "fft": "FFT",
+                        "derivative": "Derivative"}
 
     def _line_data(self, l):
         """(x, y, x labels, y labels, curves, fit error) for a line: its columns
@@ -2057,6 +1811,20 @@ class Plotter(tk.Tk):
                         step = replace(step, span=smoothing.span_for(x, step.window))
                         l.steps = l.steps[:j] + (step,) + l.steps[j + 1:]
                     y = smoothing.smooth(x, y, *step.smoothing)
+                elif step.kind == "fft":  # x becomes frequency, y amplitude
+                    found[j] = spectrum.resolution(x[np.isfinite(y)])
+                    x, y = spectrum.spectrum(x, y, step.fft_window, step.pad)
+                    if step.f_max:
+                        below = x <= step.f_max
+                        x, y = x[below], y[below]
+                    unit, _ = lookup(self.profile.units, l.x)
+                    x_label = (spectrum.frequency_label(l.x_fn, unit),) * 2
+                    y_label = ("FFT amplitude  (units of y)",) * 2
+                    curves = {}  # fits so far are of the data, not its spectrum
+                elif step.kind == "derivative":
+                    x, y = derivative.derivative(x, y, int(step.d_order[1]), step.d_window)
+                    y_label = (derivative.LABELS[step.d_order],) * 2
+                    curves = {}
                 elif step.only:  # the line becomes the fit
                     before = y
                     y, found[j] = background.apply(x, y, *step.fitting)
@@ -2096,16 +1864,14 @@ class Plotter(tk.Tk):
             del self.fit_reports[key]
 
     def _draw_panel(self, cell):
-        """Draw a panel's lines; problems are written into the panel itself.
-
-        A derived panel draws each line's spectrum or derivative."""
+        """Draw a panel's lines, each as its steps leave it (a spectrum after an
+        FFT step); problems are written into the panel itself."""
         ax, p = self.axes[cell], self.panels[cell]
-        derived, fft = p.derived, p.operation == "fft"
         ax.clear()
         self.artists[cell] = {}
         self.curves[cell] = {}  # fit curves' artists, kept apart from the lines'
         self.marks[cell] = []  # cleared with the axes
-        drawn, indices, x_labels, y_labels, errors, resolutions = [], [], [], [], [], []
+        drawn, indices, x_labels, y_labels, errors = [], [], [], [], []
         self.auto_text[cell], self.auto_names[cell] = {}, {}
         colours, curve_colours = self._curve_colours(p)
         curves = []  # (line index, step index, x, y) for each fit curve, drawn after the lines
@@ -2119,44 +1885,13 @@ class Plotter(tk.Tk):
                 l.error = str(err)
                 errors.append(l.error)
                 continue
-            if fft:
-                try:
-                    frequency, amplitude = spectrum.spectrum(x, y, p.window, p.pad)
-                except ValueError as err:
-                    l.error = f"FFT error: {err}"
-                    errors.append(l.error)
-                    continue
-                if p.f_max:
-                    below = frequency <= p.f_max
-                    frequency, amplitude = frequency[below], amplitude[below]
-                if p.cut and p.cuts:  # the Splicing tab's, on the spectrum
-                    try:
-                        frequency, amplitude = splicing.cut(frequency, amplitude, p.cut, p.cuts)
-                    except ValueError as err:
-                        l.error = f"Splicing error: {err}"
-                        errors.append(l.error)
-                        continue
-                resolutions.append(spectrum.resolution(x[np.isfinite(y)]))
-                x, y = frequency, amplitude
-                unit, _ = lookup(self.profile.units, l.x)
-                x_label = (spectrum.frequency_label(l.x_fn, unit),) * 2
-                y_label = ("FFT amplitude  (units of y)",) * 2
-            elif derived:
-                try:
-                    x, y = derivative.derivative(x, y, int(p.operation[1]), p.derivative_window)
-                except ValueError as err:
-                    l.error = f"Derivative error: {err}"
-                    errors.append(l.error)
-                    continue
-                y_label = (derivative.LABELS[p.operation],) * 2
             # What's on screen, so Save names the plot shown rather than
             # whatever is typed but not yet applied.
             l.shown = self._data_key(l)
             (artist,) = ax.plot(x, y, color=colour, **l.plot_style())
             self.artists[cell][artist] = i
-            if not derived:  # fit curves are of the data, not its spectrum or slope
-                curves += [(i, j, *fits[j]) for j in sorted(fits)]
-                l.error = fit_error
+            curves += [(i, j, *fits[j]) for j in sorted(fits)]
+            l.error = fit_error
             drawn.append(l)
             indices.append(i)
             x_labels.append(x_label)
@@ -2164,12 +1899,14 @@ class Plotter(tk.Tk):
 
         if drawn:
             heading = title(dict.fromkeys(l.run for l in drawn))
-            if derived:  # short, as these often sit beside or under their data
-                heading = "FFT" if fft else derivative.HEADINGS[p.operation]
+            kind = view(drawn[0].steps)
+            if kind:  # short, as these often sit beside or under their data
+                heading = "FFT" if kind == "fft" else derivative.HEADINGS[kind]
                 if p.source is not None:
                     heading += f" of panel {self._number(p.source)}"
-            if fft and np.isfinite(resolutions[0]):  # the frequency resolution
-                heading += f" · ΔF {resolutions[0]:.3g}"
+            resolution = self._resolution(drawn[0]) if kind == "fft" else np.nan
+            if np.isfinite(resolution):  # the frequency resolution
+                heading += f" · ΔF {resolution:.3g}"
             auto = self.auto_text[cell] = {"title": heading, "x_label": shared(x_labels),
                                            "y_label": shared(y_labels)}
             self.auto_names[cell] = dict(zip(indices, legend_labels(drawn)))
@@ -2204,7 +1941,7 @@ class Plotter(tk.Tk):
                 ax.set_xlim(p.x_min, p.x_max)
             if p.y_min is not None or p.y_max is not None:
                 ax.set_ylim(p.y_min, p.y_max)
-            if derived and errors:  # some lines drawn, others not: say why
+            if kind and errors:  # some lines drawn, others not: say why
                 ax.text(0.01, 0.99, errors[0], ha="left", va="top", transform=ax.transAxes,
                         color=theme.ERROR, fontsize=8)
         elif errors:
@@ -2214,6 +1951,14 @@ class Plotter(tk.Tk):
         self._draw_marks(cell)
         self._frame(cell)
         self.toolbar.update()  # new data, so reset the toolbar's zoom history
+
+    @staticmethod
+    def _resolution(l):
+        """The frequency resolution its last FFT step found, or NaN."""
+        last = next((j for j in reversed(range(len(l.steps)))
+                     if l.steps[j].active and l.steps[j].kind == "fft"), None)
+        found = l.found[last] if last is not None and last < len(l.found) else None
+        return found if found is not None else np.nan
 
     @staticmethod
     def _hint(ax, text, colour=theme.HINT, size=14):
@@ -2452,9 +2197,8 @@ class Plotter(tk.Tk):
     def swap(self):
         """Swap X and Y, with their functions (x <-> y), for every line in the panel."""
         p = self.panel
-        if p.derived:  # a spectrum or derivative of the other axis: nothing like the old one
+        if any(view(l.steps) for l in p.lines):  # of the other axis: nothing like the old one
             clear_ranges(p)
-            swap_data_view(p)  # what Undo brings back swaps as a data panel's would
         else:  # its ranges swap with its axes; linked panels' clear as their x and y change
             p.x_min, p.x_max, p.y_min, p.y_max = p.y_min, p.y_max, p.x_min, p.x_max
             p.x_label, p.y_label = p.y_label, p.x_label
@@ -2472,173 +2216,69 @@ class Plotter(tk.Tk):
         """A panel's number as the user sees it: 1, 2, ... across then down."""
         return self.layout.number(cell)
 
-    def _derived_from(self, p):
-        """'panel 1, linked to it' for a derived panel, or what it is without one."""
-        if p.data_view is not None:
-            return "this panel's lines, drawn in their place; Undo brings them back."
-        if p.source is None:
-            return "its own lines; it no longer follows a panel."
-        return f"panel {self._number(p.source)}, linked to it (see Linking)."
+    NAMES: ClassVar = {"fft": "FFT", "derivative": "derivative"}  # for messages
 
-    def _data_panel_name(self, p):
-        return (f"panel {self._number(p.source)}" if p.source is not None
-                else "a data panel")
-
-    KINDS: ClassVar = {"fft": "FFT", "d1": "first derivative", "d2": "second derivative"}
-
-    @classmethod
-    def _kind(cls, operation):
-        """'FFT', 'first derivative' or 'second derivative', for messages."""
-        return cls.KINDS[operation]
-
-    def _derive_source(self, operation):
-        """The selected panel, if it can have a derived panel made of it."""
-        if self.panel.derived:
-            current = ("an FFT" if self.panel.operation == "fft"
-                       else f"a {self._kind(self.panel.operation)}")
-            self._say(f"This panel is already {current}; select its data panel to make its "
-                      f"{self._kind(operation)}.", error=True)
-            return None
-        return self.selected
-
-    def _derived(self, source, operation):
-        """A new derived panel of `source`: copies of its lines, linked to it with
-        every Sync box ticked, so it follows every change; the link's ticks can
-        then be trimmed, or it frozen, like any link."""
+    def _derived(self, source, kind):
+        """A new panel of `source`'s lines, each with an FFT or Derivative step
+        (`kind`) added at its end, linked to it with every Sync box ticked. A
+        link shares the steps before such a step (model.split_steps), so the
+        new panel follows its data panel's processing and keeps its own FFT."""
         p = self.panels[source]
-        derived = Panel([l.copy() for l in p.lines], p.selected, source=source,
-                        operation=operation)
+        lines = []
+        for l in p.lines:
+            new = l.copy()
+            new.steps, new.step, new.picked = l.steps + (Step(kind),), len(l.steps), ()
+            lines.append(new)
+        derived = Panel(lines, p.selected, source=source)
         self.links[frozenset((p.id, derived.id))] = Link(" ".join(SYNC))
         return derived
 
-    def new_derived_panel(self, operation):
-        """Add a row below the grid, with the selected panel's FFT or derivative under it."""
+    def new_derived_panel(self, kind):
+        """Add a row below, like the selected panel's, with its FFT or
+        derivative (`kind`, a step kind) under it and the rest empty."""
         self.stop_picking()
-        source = self._derive_source(operation)
-        if source is None:
-            return
+        source = self.selected
         if self.layout.rows >= MAX_GRID:
-            self._say("The layout is full; put it in an existing panel.", error=True)
+            self._say("The layout is full; put it in another panel.", error=True)
             return
-        # A row like the source's, the new panel under it and the rest empty.
         row, count = self.layout.rows, self.layout.counts[source[0]]
         for c in range(count):
             self.panels[row, c] = Panel()
-        self.panels[row, source[1]] = self._derived(source, operation)
+        self.panels[row, source[1]] = self._derived(source, kind)
         self.layout = self.layout.with_counts((*self.layout.counts, count))
         self.selected = (row, source[1])
         self._build_axes()
         self._load_controls()
 
-    def existing_derived_panel(self, operation):
+    def existing_derived_panel(self, kind):
         """Wait for a click on the panel the selected one's FFT or derivative should go in."""
         self.stop_picking()
-        source = self._derive_source(operation)
-        if source is None:
-            return
         if len(self.panels) == 1:
             self._say("There's only one panel; put it in a new panel.", error=True)
             return
-        self.derive_pick = source, operation
-        self._say(f"Click the panel to put the {self._kind(operation)} in; Esc cancels.")
+        self.derive_pick = self.selected, kind
+        self._say(f"Click the panel to put the {self.NAMES[kind]} in; Esc cancels.")
 
-    def _put_derived(self, source, target, operation):
+    def _put_derived(self, source, target, kind):
         self.stop_picking()
         old = self.panels[target]
         if target == source:
-            self._say(f"Click a different panel for the {self._kind(operation)}.",
-                      error=True)
+            self._say(f"Click a different panel for the {self.NAMES[kind]}.", error=True)
             return
+        dependents = [c for c, p in self.panels.items() if p.source == target]
         replaced = ""
-        if old.derived and old.source == source:  # derived from it: change what it shows
-            if old.operation != operation:
-                clear_ranges(old)  # in the old operation's units
-                old.title = old.x_label = old.y_label = None
-                old.operation = operation
-        else:
-            dependents = [c for c, p in self.panels.items() if p.source == target]
-            own = not old.derived or old.data_view is not None  # its lines are its own data
-            if (own and any(l.shown for l in old.lines)) or dependents:
-                replaced = (f"Panel {self._number(target)}'s lines were replaced"
-                            + (", and the panels derived from it no longer follow it"
-                               if dependents else "") + "; Ctrl+Z puts them back.")
-            for c in dependents:  # derived from what's replaced: they keep their lines
-                self.panels[c].source = None
-            self.panels[target] = self._derived(source, operation)
+        if any(l.shown for l in old.lines) or dependents:
+            replaced = (f"Panel {self._number(target)}'s lines were replaced"
+                        + (", and the panels made from it no longer follow it"
+                           if dependents else "") + "; Ctrl+Z puts them back.")
+        for c in dependents:  # made from what's replaced: they keep their lines
+            self.panels[c].source = None
+        self.panels[target] = self._derived(source, kind)
         self.selected = target
         self._build_axes()
         self._load_controls()
         if replaced:
             self._say(replaced)
-
-    def in_place(self, operation):
-        """Turn the selected data panel into its own FFT or derivative, keeping its
-        typed ranges and texts for Undo; on one turned already, change which it is."""
-        self.stop_picking()
-        p = self.panel
-        if p.data_view is None:
-            if self._derive_source(operation) is None:
-                return
-            p.data_view = tuple(getattr(p, name) for name in DATA_VIEW)
-        elif p.operation == operation:
-            return
-        clear_ranges(p)  # in the data's units, or the other operation's
-        p.title = p.x_label = p.y_label = None
-        p.operation = operation
-        self._build_axes()
-        self._load_controls()
-
-    def undo_in_place(self):
-        """Turn a panel This panel made back into the data panel it was."""
-        p = self.panel
-        if p.data_view is None:
-            return
-        for name, value in zip(DATA_VIEW, p.data_view):
-            setattr(p, name, value)
-        p.operation, p.data_view = "", None
-        self._build_axes()
-        self._load_controls()
-
-    def apply_fft(self):
-        """Copy the FFT box into the selected FFT panel and redraw it."""
-        p = self.panel
-        if p.operation != "fft":
-            return
-        p.window = key_of(spectrum.WINDOWS, self.fft_window.get())
-        p.pad = int(self.fft_pad.get())
-        try:
-            f_max = float(self.f_max.get()) if self.f_max.get().strip() else None
-            p.f_max = f_max if f_max is None or f_max > 0 else None
-        except ValueError:  # not a number: keep the old one (shown again below)
-            pass
-        self._redraw_selected()
-
-    def apply_derivative(self):
-        """Copy the Derivative box into the selected derivative panel and redraw it.
-        On a data panel the order only sets which derivative the buttons make."""
-        p = self.panel
-        if not p.derived or p.operation == "fft":
-            return
-        if self.derivative_order.get() != p.operation:
-            clear_ranges(p, "y")  # dy/dx and d2y/dx2 are in different units
-            p.operation = self.derivative_order.get()
-        try:
-            window = int(self.derivative_window.get())
-            p.derivative_window = window if window > 0 else p.derivative_window
-        except ValueError:  # not a number: keep the old one (shown again below)
-            pass
-        self._redraw_selected(keep="x")
-
-    def back_to_data(self):
-        """Make the selected derived panel plot its lines themselves. It stays in
-        its link group, as a linked data panel."""
-        p = self.panel
-        if p.derived:
-            p.operation, p.source, p.data_view = "", None, None
-            clear_ranges(p)  # in frequency or dy/dx; it's back to plotting the data
-            p.title = p.x_label = p.y_label = None
-            self._build_axes()
-            self._load_controls()
 
     # --- axes -------------------------------------------------------------
 
@@ -2750,7 +2390,6 @@ class Plotter(tk.Tk):
         for p in self.panels.values():
             if p.lines is lines:
                 clear_ranges(p, axes)
-                clear_data_ranges(p, axes)  # and those Undo would bring back
 
     def _sync_inputs(self, cell):
         """Copy `cell`'s lines' settings along its links and on from each panel
@@ -2780,9 +2419,12 @@ class Plotter(tk.Tk):
             for key in keys:
                 for attr in SYNC[key]:
                     value = getattr(theirs, attr)
-                    # A value in the plotted x only means the same with the same x.
-                    if attr == "steps" and (mine.x, mine.x_fn) != (theirs.x, theirs.x_fn):
-                        value = without_x_units(value)
+                    if attr == "steps":  # those before an FFT or Derivative; the rest are its own
+                        value = split_steps(value)[0]
+                        # A value in the plotted x only means the same with the same x.
+                        if (mine.x, mine.x_fn) != (theirs.x, theirs.x_fn):
+                            value = without_x_units(value)
+                        value += split_steps(mine.steps)[1]
                     setattr(mine, attr, value)
                 if key in ("x", "x_fn") and (mine.x, mine.x_fn) != old_x:
                     # In the old x; x comes before the keys that could set them.
@@ -2910,9 +2552,11 @@ class Plotter(tk.Tk):
         self.stop_picking()
         ax = self.axes[self.selected]
         what = {"cut": "cut", "measure": "measuring"}[target]
-        if target == "cut" and self.panel.derived and self.panel.operation != "fft":
-            self._say(f"Pick the {what} range on the data panel, not its "
-                      f"{self._kind(self.panel.operation)}.", error=True)
+        l = self.panel.line
+        if target == "cut" and any(s.active and s.kind == "fft" for s in l.steps[l.step + 1:]):
+            self._say("This cut comes before the FFT, so it's in the data's x, not the "
+                      "spectrum's: type its range, or pick it where the data is drawn.",
+                      error=True)
             return
         if not self.panel.line.shown:
             self._say(f"Plot the line first, then pick its {what} range.", error=True)
@@ -3065,7 +2709,7 @@ class Plotter(tk.Tk):
         xy, _ = drawn
         p, ax = self.panels[cell], self.axes[cell]
         ax.get_xlim(), ax.get_ylim()  # brings the view up to date, for snapping in pixels
-        fft = p.operation == "fft"
+        fft = view(p.line.steps) == "fft"
         x, y = xy[:, 0], xy[:, 1]
         points = [measure.snap(xy, point, ax.transData.transform) for point in p.points]
         return {"extremes": measure.extremes(x, y, p.region, even=fft),
@@ -3132,7 +2776,7 @@ class Plotter(tk.Tk):
         self.peak_count.set(p.peak_count)
         self.peak_floor.set(f"{p.peak_floor:g}")
         read = self.measured.get(self.selected)
-        fft = p.operation == "fft"
+        fft = view(p.line.steps) == "fft"
         self.mark_button["text"] = ("Mark the peaks on the plot" if fft else
                                       "Mark the max and min on the plot")
         name = self.auto_names.get(self.selected, {}).get(p.selected, "")
@@ -3478,8 +3122,11 @@ class Plotter(tk.Tk):
             data = json.loads(Path(path).read_text(encoding="utf-8"))
             if not isinstance(data, dict) or session.KEY not in data:
                 raise ValueError("it isn't a GOOSE Plotter session")
-            if not isinstance(data[session.KEY], int) or data[session.KEY] > session.VERSION:
-                raise ValueError("it's from a newer version of the plotter")
+            version = data[session.KEY]
+            if not isinstance(version, int) or version != session.VERSION:
+                raise ValueError("it's from an older version of the plotter"
+                                 if isinstance(version, int) and version < session.VERSION
+                                 else "it's from a newer version of the plotter")
             session.load(data)  # check it all before changing anything
         except (OSError, ValueError) as err:
             self._say(f"Couldn't open {Path(path).name}: {err}",
@@ -3681,8 +3328,6 @@ class Plotter(tk.Tk):
             return ""
         run, y, x, steps = first.parts()
         tail = "".join(f"_{s.file_part()}" for s in steps)  # in the order they're done
-        corner = self.panels[0, 0]
-        tail += f"_{corner.operation}" if corner.derived else ""  # _fft, _d1 or _d2
         return f"{describe(run).replace(' ', '_')}_{y}_vs_{x}{tail}.png"
 
     def _update_filename(self):

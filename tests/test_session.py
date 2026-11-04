@@ -1,4 +1,4 @@
-"""Sessions and undo snapshots: the panels to plain data and back, old formats included."""
+"""Sessions and undo snapshots: the panels to plain data and back."""
 
 import json
 
@@ -27,7 +27,9 @@ def state(**panel_kw):
     line = Line(run="r.005", x="B", x_fn="1/x", y="M006_AH", steps=STEPS,
                 colour="#123456", label="mine")
     data = Panel([line, Line(run="r.003")], **panel_kw)
-    fft = Panel([l.copy() for l in data.lines], source=(0, 0), operation="fft", pad=4)
+    fft = Panel([l.copy() for l in data.lines], source=(0, 0))
+    for l in fft.lines:
+        l.steps += (Step("fft", pad=4),)
     links = {frozenset((data.id, fft.id)): Link(" ".join(SYNC))}
     return {(0, 0): data, (1, 0): fft}, links
 
@@ -39,7 +41,8 @@ def test_round_trip_through_json():
     assert layout == Layout.grid(2, 1)
     assert loaded[(0, 0)].lines[0].steps == STEPS
     assert loaded[(0, 0)].title == "$B$ sweep" and loaded[(0, 0)].x_min == 0.1
-    assert loaded[(1, 0)].operation == "fft" and loaded[(1, 0)].source == (0, 0)
+    assert loaded[(1, 0)].lines[0].steps[-1] == Step("fft", pad=4)
+    assert loaded[(1, 0)].source == (0, 0)
     assert loaded_links == links
     # Undo compares dumps, so a loaded state must dump the same as the original.
     assert session.dump(loaded, layout, loaded_links) == dumped
@@ -61,11 +64,19 @@ def test_bad_values_are_dropped_not_fatal():
 
 
 def test_not_a_session():
-    for bad in ({}, {"rows": 1}, {"rows": "x", "cols": 1, "panels": {}}, [1, 2]):
+    for bad in ({}, {"rows": 1}, [1, 2], {"format": session.FORMAT, "panels": {}}):
         with pytest.raises(ValueError):
             session.load(bad)
     with pytest.raises(ValueError, match="bigger"):
-        session.load({"rows": 99, "cols": 1, "panels": {}})
+        session.load({"format": session.FORMAT, "layout": {"counts": [7]}, "panels": {}})
+
+
+def test_older_formats_are_refused():
+    panels, links = state()
+    dumped = json.loads(json.dumps(session.dump(panels, Layout.grid(2, 1), links)))
+    for fmt in (None, 9, 11):
+        with pytest.raises(ValueError, match="this plotter's format"):
+            session.load({**dumped, "format": fmt})
 
 
 def test_duplicate_ids_are_made_distinct():
@@ -75,136 +86,6 @@ def test_duplicate_ids_are_made_distinct():
     loaded = session.load(dumped)[1]
     assert loaded[(0, 0)].id != loaded[(1, 0)].id
 
-
-def old(fmt, **line):
-    """A session from before format 10: a data panel whose line has `line`'s
-    old fields, and its FFT, linked sharing everything there was then."""
-    words = "run x x_fn y y_fn colour smoothing background style cut despike"
-    return {"format": fmt, "rows": 2, "cols": 1, "links": [{"a": "d", "b": "f", "sync": words}],
-            "panels": {"0,0": {"id": "d", "lines": [{"run": "r.005", **line}]},
-                       "1,0": {"id": "f", "operation": "fft", "source": "0,0",
-                               "lines": [{"run": "r.005", **line}]}}}
-
-
-def removes(*ranges):
-    """Cut steps removing each of `ranges`, as a Keep of what's between them becomes."""
-    return tuple(Step("cut", cuts=(r,)) for r in ranges)
-
-
-def test_cut_steps_become_one_removed_range_each():
-    """Steps saved before Cut steps were one Remove each: a Keep becomes
-    Removes of what's outside it, several ranges a step per range."""
-    panels, links = state()
-    dumped = json.loads(json.dumps(session.dump(panels, Layout.grid(2, 1), links)))
-    dumped["panels"]["0,0"]["lines"][0]["steps"] = [
-        {"kind": "cut", "cut": "keep", "cuts": [[0.1, 0.2]], "on": False},
-        {"kind": "smooth"},
-        {"kind": "cut", "cut": "remove", "cuts": [[1, 2], [3, 4]]}]
-    steps = session.load(dumped)[1][(0, 0)].lines[0].steps
-    assert steps == (Step("cut", cuts=((None, 0.1),), on=False),
-                     Step("cut", cuts=((0.2, None),), on=False), Step("smooth"),
-                     *removes((1.0, 2.0), (3.0, 4.0)))
-
-
-def test_format_5_single_cut_becomes_one_range():
-    loaded = session.load(old(5, cut="keep", cut_from=0.5, cut_to=0.2))[1][(0, 0)].lines[0]
-    assert loaded.steps == removes((None, 0.2), (0.5, None))  # kept 0.2 to 0.5
-
-
-@pytest.mark.parametrize("cut, cuts, wanted", [  # wanted: what's removed, as one range each
-    ("", [], removes((None, 0.2), (0.5, None))),
-    ("keep", [[0.1, 0.3], [0.4, None]], removes((None, 0.2), (0.3, 0.4), (0.5, None))),
-    ("remove", [[0.3, 0.4]], removes((None, 0.2), (0.3, 0.4), (0.5, None))),
-])
-def test_format_6_fit_range_becomes_a_cut(cut, cuts, wanted):
-    loaded = session.load(old(6, background="subtract", fit_from=0.5, fit_to=0.2, cut=cut,
-                              cuts=cuts))[1][(0, 0)].lines[0]
-    assert loaded.steps == wanted + (Step("subtract"),)
-
-
-def test_format_6_fit_range_is_ignored_with_the_background_off():
-    loaded = session.load(old(6, background="", fit_from=0.2, fit_to=0.5, cut="remove",
-                              cuts=[[1, 2]]))[1][(0, 0)].lines[0]
-    assert loaded.steps == (Step("cut", cut="remove", cuts=((1.0, 2.0),)),)
-
-
-def test_before_format_10_settings_become_steps_in_the_old_order():
-    line = {"cut": "keep", "cuts": [[0.1, 0.2]], "despike": True, "despike_window": 31,
-                "despike_threshold": 4.5, "despiked": 7, "background": "subtract", "advanced": True,
-                "fit_function": "A + B * x", "fit_start": "B=2", "fit_values": [["A", 1]],
-                "smooth": "median", "window": 41, "in_x": True, "span": 0.01}
-    loaded = session.load(old(9, **line))[1][(0, 0)].lines[0]
-    assert loaded.steps == removes((None, 0.1), (0.2, None)) + (
-                            Step("despike", spike_window=31, threshold=4.5),
-                            Step("subtract", advanced=True, function="A + B * x", start="B=2"),
-                            Step("smooth", method="median", window=41, in_x=True, span=0.01))
-    assert loaded.found == ()
-    # Show fit: a fit drawn instead of the data, where the background was;
-    # nothing on: no steps.
-    shown = session.load(old(8, background="fit", degree=3))[1][(0, 0)].lines[0]
-    assert shown.steps == (Step("fit", degree=3, only=True),)
-    assert session.load(old(8, cut="", smooth=""))[1][(0, 0)].lines[0].steps == ()
-
-
-def test_before_format_5_derived_links_share_the_cut():
-    dumped = old(4)
-    dumped["links"][0]["sync"] = "run x x_fn y y_fn colour style"  # nothing of the steps
-    loaded_links = session.load(dumped)[2]
-    assert all("steps" in link.synced for link in loaded_links.values())
-
-
-def test_before_format_5_partial_links_between_data_panels_stay_partial():
-    a, b = Panel([Line(run="r")]), Panel([Line(run="r")])
-    dumped = session.dump({(0, 0): a, (0, 1): b}, Layout.grid(1, 2),
-                          {frozenset((a.id, b.id)): Link("run x y")})
-    dumped["format"] = 4
-    (link,) = session.load(dumped)[2].values()
-    assert link.synced == {"run", "x", "y"}
-
-
-def test_version_1_layout():
-    """Derived panels had a source and no lines; they get copies, linked."""
-    old = {"rows": 2, "cols": 1, "panels": {
-        "0,0": {"lines": [{"run": "r.005", "y": "M006_AH"}], "link_group": None},
-        "1,0": {"source": "0,0"}}}
-    _layout, panels, links = session.load(old)
-    fft = panels[(1, 0)]
-    assert fft.operation == "fft" and fft.lines[0].y == "M006_AH"
-    (link,) = links.values()
-    assert link.synced == set(SYNC)
-
-
-def test_format_2_blank_text_was_automatic():
-    old = {"format": 2, "rows": 1, "cols": 1,
-           "panels": {"0,0": {"title": "", "lines": [{"label": ""}]}}}
-    panel = session.load(old)[1][(0, 0)]
-    assert panel.title is None and panel.lines[0].label is None
-
-
-def test_format_8_auto_style_is_solid_or_dashed_for_a_shown_fit():
-    old = {"format": 8, "rows": 1, "cols": 1,
-           "panels": {"0,0": {"lines": [{"style": "auto"},
-                                        {"style": "auto", "background": "fit"},
-                                        {"style": ":", "background": "fit"}]}}}
-    lines = session.load(old)[1][(0, 0)].lines
-    assert [l.style for l in lines] == ["-", "--", ":"]
-
-
-def test_format_8_keeps_its_settings_and_links():
-    """Format 9 only changed the line style; a format 8 session isn't the old
-    version 1 layout, which reads no links and takes a blank title for the
-    automatic one."""
-    a, b = Panel([Line(run="r")], title=""), Panel([Line(run="r")])
-    dumped = json.loads(json.dumps(session.dump(
-        {(0, 0): a, (0, 1): b}, Layout.grid(1, 2), {frozenset((a.id, b.id)): Link("run x y")})))
-    dumped["format"] = 8
-    dumped["panels"]["0,0"]["lines"] = [{"run": "r", "despike": True}]  # as format 8 had it
-    _, loaded, links = session.load(dumped)
-    assert links == {frozenset((a.id, b.id)): Link("run x y")}
-    assert loaded[(0, 0)].title == "" and loaded[(0, 0)].lines[0].steps == (Step("despike"),)
-
-
-# --- model ------------------------------------------------------------------
 
 def test_legend_names_only_what_differs():
     base = ("r.005", "B", "x", "M006_AH", "y")
@@ -238,8 +119,8 @@ def test_line_colours_from_a_colour_map():
     assert again == [colours[0], "#000000", colours[2]]
     lines[1].steps = (Step("fit", colour="#ff0000"),)
     assert curve_colours(Panel(lines), {}, "viridis")[1] == {(1, 0): "#ff0000"}
-    derived = Panel(lines, operation="fft")  # no fit curves on an FFT
-    assert curve_colours(derived, {}, "viridis")[1] == {}
+    lines[1].steps += (Step("fft"),)  # no fit curves once the line is a spectrum
+    assert curve_colours(Panel(lines), {}, "viridis")[1] == {}
     assert line_colours(Panel([Line()]), {}, "viridis") == ["#440154"]  # one line: the start
     stepped = line_colours(Panel([Line() for _ in range(11)]), {}, "tab10")
     assert stepped[0] == stepped[10] == "#1f77b4" and len(set(stepped)) == 10
@@ -260,18 +141,6 @@ def test_what_a_draw_found_and_the_chosen_step_are_not_saved():
     assert loaded.found == () and loaded.step == 0 and line.copy().found == ()
 
 
-
-
-def test_old_link_keys_for_steps_share_steps():
-    dumped = old(8)
-    dumped["links"][0]["sync"] = "run x smoothing"
-    assert session.load(dumped)[2][frozenset("df")].synced == {"run", "x", "steps"}
-    dumped = old(7)
-    del dumped["panels"]["1,0"]["source"]  # not known as derived: judged by what it shares
-    dumped["links"][0]["sync"] = "run x x_fn y y_fn colour style"  # all but the steps
-    assert "steps" in session.load(dumped)[2][frozenset("df")].synced
-    dumped["links"][0]["sync"] = "run x y"  # partial links stay partial
-    assert "steps" not in session.load(dumped)[2][frozenset("df")].synced
 
 
 def test_changing_x_clears_every_x_unit_setting():

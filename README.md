@@ -92,8 +92,8 @@ keeps them.
 At the top of the controls column, **Files** opens to the folders, Data
 format and sessions (it starts closed once both folders are chosen). Under
 it Dataset, the Lines list and the axes are always shown, and the rest is in
-four tabs: **Process** (how each line is processed: cut, despiked,
-background subtracted, smoothed, fitted), **Derive** (FFT, Derivative),
+three tabs: **Process** (everything done to each line, in order: cut,
+despiked, background subtracted, smoothed, fitted, its FFT or derivative),
 **Linking** (Linked data) and **Measure** (reading numbers off the plot).
 If the selected line can't be drawn (a bad function, a
 file that won't load, a smoothing window that's too big), the reason shows
@@ -187,12 +187,38 @@ stay until it's done or cancelled.
   unticked: typed out as powers of x, degree 15 or more can't be fitted as
   precisely as Polynomial degree fits it.
 
-  On an **FFT panel** the list ends with **Cut spectrum (F)**, after the
-  line's steps: a cut of the spectrum itself, in F. Pick a stretch of
-  frequency and the plot fits itself to it, an easier zoom than the
-  toolbar's; Remove ranges hides, e.g., the low-frequency end. It's the FFT
-  panel's own, so its data panel and lines aren't cut. Changing x or its
-  function clears it, as it does every step's ranges and x-unit windows.
+  - **FFT**: the line becomes its spectrum, against its plotted x, so
+    with `1/x` on the field it's in F (T); amplitude is in y's units.
+    **Window** (Hann or none), **Padding** (zero-padding, for smoother
+    peaks) and **F max** (blank: all) are the step's own; the title gives
+    the frequency resolution, ΔF = 1 / (x range), and the editor shows it
+    too. The steps after it work on the spectrum, in F: a **Cut** there
+    cuts out a stretch of frequency (Pick works on the spectrum), a Fit
+    curve fits a peak, a Smooth smooths it.
+  - **Derivative**: the line becomes dy/dx or d²y/dx² (**Order**: First
+    or Second) against its plotted x. As the rows jitter and double back
+    in x, it's first averaged onto an even grid in x, and each point's
+    derivative is read off a Savitzky–Golay fit over **Window** grid
+    points around it (odd; 51 to start). Derivatives magnify noise, the
+    second much more than the first, so widen the window until the curve
+    is steady; a jump in the data shows as a spike. A derivative can
+    follow an FFT, and steps can follow it.
+
+  An FFT or Derivative goes on every line in the panel, as a panel shows
+  one kind of x, and turns the panel into the spectrum or derivative:
+  typed ranges and titles go, as they were in the old units (Ctrl+Z
+  brings them back). Remove the step to see the data again. Fit curves
+  before it aren't drawn, being in the data's units. To see the data and
+  its FFT side by side, Add step's **FFT in a new panel** (or **Derivative
+  in a new panel**) adds a row like the selected panel's, with a panel
+  under it holding copies of its lines with the step at their end;
+  **...in another panel...** puts them in the panel you click next
+  (replacing its lines; Ctrl+Z puts them back). The two are linked (see
+  Linked data below) with every Sync box ticked, and a link shares only
+  the steps *before* an FFT or Derivative: change the smoothing on either
+  and both redraw, while the FFT, and anything after it, stays the FFT
+  panel's own. A Cut before the FFT is in the data's x, so pick it on the
+  data panel, or type it.
 
   **Picking several steps**: Ctrl+click adds a step to the one chosen (or
   takes it out again), Shift+click picks every step from the chosen one to
@@ -221,11 +247,6 @@ stay until it's done or cancelled.
   replaces that recipe; Ctrl+Z straight after a save or a delete puts the
   recipes back as they were. A recipe remembers the x it was made on
   and keeps its cut ranges only on a line with the same x, as Paste does.
-
-  Sessions saved before steps open with each line's old settings as steps,
-  in the order they were done: cut, despike, background, smoothing (a Show
-  fit becomes a Fit curve with Show only fit ticked). A cut that kept
-  ranges, or held several, opens as one Cut step per range it cuts out.
 - **Line editor**: the box under + and -, which shows the selected line's
   look, opens it. **Colour** (drag in the field and the brightness strip;
   **Automatic** goes back to the colour map's; **Colour Maps** picks the map
@@ -263,36 +284,6 @@ stay until it's done or cancelled.
   click. **Ticks**: **Point inward** turns every panel's tick marks to point
   into the plot instead of out (off to start with); it's a preference for
   all panels, kept in `settings.json` until you untick it.
-- **FFT** (Derive tab): **New panel** adds a row like the selected panel's,
-  with its spectrum under it; **Existing panel...** puts it in the panel you click next
-  (replacing any lines of its own; Ctrl+Z puts them back). The new panel is linked
-  to the data panel (see Linked data below, and the Linking tab) with every
-  Sync box ticked on both, so changing a line's axes, steps or
-  colour in either redraws both, and adding or removing a line does too; untick
-  a box on it to keep that setting its own (e.g. untick Steps to give the
-  FFT steps of its own), or **Freeze** it. The spectrum is of each line as plotted (after its functions
-  and steps) against its plotted x, so with `1/x` on the field
-  it's in F (T); amplitude is in y's units. Select the FFT panel for its
-  settings: Window (Hann or none), Padding (zero-padding, for smoother
-  peaks), F max, and **Back to data**, which turns it back into an ordinary
-  panel plotting its lines (still linked). Its title gives the frequency resolution,
-  ΔF = 1 / (x range).
-
-  **This panel** turns the selected panel into its own FFT instead, with no
-  new panel. The button then reads **Undo**, which turns it back into the
-  data, with the ranges and titles it had. While it's an FFT, the
-  Derivative section's **This panel** swaps it for a derivative, and Undo
-  still goes back to the data.
-- **Derivative** (Derive tab): works like FFT. Choose the **Order**
-  (First or Second), then **This panel**, **New panel** or **Existing panel...** (clicking
-  an FFT panel of the same data turns it into the derivative). The panel shows dy/dx or d²y/dx² of each line as plotted,
-  against its plotted x, linked to its data panel the same way. As the rows
-  jitter and double back in x, each line is first averaged onto an even grid
-  in x, and each point's derivative is read off a Savitzky–Golay fit over
-  **Window** grid points around it (odd; 51 to start). Select the derivative
-  panel to change its order or window, or go **Back to data**. Derivatives magnify
-  noise, the second much more than the first, so widen the window until
-  the curve is steady; a jump in the data shows as a spike.
 - **Links** (Linking tab): **Link...** then click another panel, and the
   two are linked: they share their lines' settings, line by line (the
   selected panel, and any panels linked to it, take the other's number of
@@ -303,8 +294,8 @@ stay until it's done or cancelled.
   panel gets a heavier dashed frame. The chosen link's **Sync** boxes say
   what it shares: **Dataset**, **X axis**, **X function**, **Y axis**, **Y
   function**, **Colour** and **Line style** (line, width, marker and its
-  size) are ticked to start with; **Steps** (the whole list, in its order)
-  isn't.
+  size) are ticked to start with; **Steps** (the list up to any FFT or
+  Derivative, in its order; what follows one is each panel's own) isn't.
   The link is the same seen from either panel: panel 1's **Panel 2** tab
   shows the ticks of panel 2's **Panel 1** tab. So e.g. one panel shows the
   raw data, a linked one the same data with the background subtracted, and
@@ -315,8 +306,9 @@ stay until it's done or cancelled.
   Y axis in 1 reaches 2 and then the FFT, while 2's steps stay its own
   and still reach the FFT. A frozen link stops them. Adding or removing a line, though, happens in every
   panel joined through links, so lines stay paired. Cut ranges and x-unit
-  windows only cross between panels with the same x. FFT and derivative
-  panels are linked to their data panel, with every box ticked. Axis ranges
+  windows only cross between panels with the same x. A panel made by FFT
+  (or Derivative) in a new panel is linked to its data panel, with every
+  box ticked. Axis ranges
   and zoom stay each panel's own. **Unlink** removes the chosen link, and
   **Freeze** pauses it, sharing nothing either way until **Unfreeze**, which
   sends the selected panel's settings across, carrying over what changed
@@ -327,14 +319,15 @@ stay until it's done or cancelled.
   - **Region**: an x range typed, or dragged with **Pick**, shaded on the
     plot; blank is the whole line, **Clear** goes back to it.
   - **Readout**: the line's **Max** and **Min** (x and y), **Peak to peak**,
-    **Mean** and number of **Points** in the region. On an FFT panel the max is
+    **Mean** and number of **Points** in the region. On a spectrum the max is
     refined with a parabola through its top three points, finer than one bin.
     **Mark the max and min on the plot** shows where they are.
   - **Points**: **Read points**, then click near the line: each click snaps
     to the nearest drawn point, keeping the last two, with dx, dy and 1/dx
     between them (on 1/B, 1/dx between neighbouring peaks is the frequency
     F, to check against the FFT). Esc stops.
-  - **Peaks** (FFT panels): up to so many peaks in the region, highest first,
+  - **Peaks** (a line whose last FFT or Derivative is an FFT): up to so
+    many peaks in the region, highest first,
     above a percentage of the highest, each refined like the max; **Mark
     the peaks on the plot** labels them.
   - **Marks in saved figures** keeps the marks in what Save figure writes
@@ -393,9 +386,11 @@ stay until it's done or cancelled.
   every figure until changed.
 - **Open session... / Save session...** (under Files): a session
   is a `.json` file holding the layout and every panel and line, with its
-  settings, FFT and derivative panels, links, ranges, labels and styles, plus the data
-  folder and a typed Save as name. Opening one switches to its data folder if
-  that's still there. The data itself isn't in it, only which files to read.
+  steps, links, ranges, labels and styles, plus the data folder and a
+  typed Save as name. Opening one switches to its data folder if that's
+  still there. The data itself isn't in it, only which files to read. Only
+  sessions saved by this version open; one from an older version is
+  refused, with a message saying so.
 
 ### Keyboard
 

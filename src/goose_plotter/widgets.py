@@ -781,13 +781,13 @@ class StepList(ttk.Frame):
     with `how` "" (that one), "toggle" (Ctrl-click: pick it too, or unpick
     it), "range" (Shift-click: every row from the chosen one) or "all"
     (Ctrl+A, index None); a drag moves one, `on_move(old, new)` when the
-    button is let go. Rows from `fixed` on (an FFT panel's spectrum cut,
-    after the steps) can be chosen but not moved, nor moved past, nor
-    picked with others. Width 1: it takes the column's width."""
+    button is let go. It grows with its rows from `height` up to `most`,
+    then scrolls. Width 1: it takes the column's width."""
 
-    def __init__(self, parent, on_choose, on_move, height=4):
+    def __init__(self, parent, on_choose, on_move, height=4, most=8):
         super().__init__(parent)
         self.on_choose, self.on_move = on_choose, on_move
+        self.least, self.most = height, most
         self.list = tk.Listbox(self, height=height, width=1, exportselection=False,
                                activestyle="none", foreground=theme.TEXT,
                                selectbackground=theme.ACCENT_SOFT, selectforeground=theme.TEXT)
@@ -795,7 +795,6 @@ class StepList(ttk.Frame):
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.list.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.list["yscrollcommand"] = scroll.set
-        self.fixed = 0
         self.drag = self.target = None  # the row picked up, and where it's been moved to
         self.list.bind("<Button-1>", self._press)
         self.list.bind("<B1-Motion>", self._motion)
@@ -803,15 +802,14 @@ class StepList(ttk.Frame):
         for key in ("<Control-a>", "<Control-A>"):
             self.list.bind(key, lambda _: self.on_choose(None, "all") or "break")
 
-    def show(self, rows, chosen, off=(), fixed=None, picked=()):
-        """`rows`' texts, `chosen` and those in `picked` selected, those in
-        `off` greyed; rows from `fixed` on can't be moved (None: all can)."""
+    def show(self, rows, chosen, off=(), picked=()):
+        """`rows`' texts, `chosen` and those in `picked` selected, those in `off` greyed."""
+        self.list["height"] = min(max(len(rows), self.least), self.most)
         self.list.delete(0, tk.END)
         for i, text in enumerate(rows):
             self.list.insert(tk.END, text)
             if i in off:
                 self.list.itemconfigure(i, foreground=theme.HINT, selectforeground=theme.HINT)
-        self.fixed = len(rows) if fixed is None else fixed
         if rows:
             for i in {chosen, *picked}:
                 self.list.selection_set(i)
@@ -829,16 +827,14 @@ class StepList(ttk.Frame):
         if i is None:
             return "break"  # a click below the rows chooses nothing
         how = ("toggle" if event.state & 0x4 else "range" if event.state & 0x1 else "")
-        if i >= self.fixed:
-            how = ""  # the spectrum cut is chosen on its own
-        self.drag = self.target = i if i < self.fixed and not how else None
+        self.drag = self.target = None if how else i
         self.on_choose(i, how)
         return "break"  # on_choose shows the rows again, choice included
 
     def _motion(self, event):
         if self.drag is None:
             return
-        i = min(max(self.list.nearest(event.y), 0), self.fixed - 1)
+        i = min(max(self.list.nearest(event.y), 0), self.list.size() - 1)
         if i != self.target:  # move the row on screen; the steps move when it's let go
             text = self.list.get(self.target)
             colour = self.list.itemcget(self.target, "foreground")

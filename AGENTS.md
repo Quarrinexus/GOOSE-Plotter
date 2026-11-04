@@ -70,16 +70,12 @@ mirror. If that folder isn't around this repo, use whatever data folder
 2. the line's **steps** (`Line.steps`, a tuple of frozen `model.Step`s), in
    order, skipping those that aren't `active` (off, or a Cut with no
    ranges). One `Step` class holds every kind's settings (`kind`: "cut",
-   "despike", "subtract", "smooth", "fit"), and gives the tuples the
+   "despike", "subtract", "smooth", "fit", "fft", "derivative"), and gives the tuples the
    calculation modules take (`cutting`, `despiking`, `fitting`, `smoothing`):
    - cut (`splicing.cut`, "remove"): one range per step; the rows in it turn
      to NaN in x and y, so it's drawn as a gap and fits and x-unit windows
      leave it out (SG in points still interpolates across it, as across any
-     NaN). Cut steps once kept ranges or held several; `session._line` turns
-     any such into one Remove step per range (`model.one_range_cuts`, a Keep
-     as `splicing.gaps` of it). Only an FFT panel's spectrum cut (`Panel.cut`
-     / `cuts`) still keeps or removes several ranges, so the Cut editor shows
-     its mode, Add / Delete and range list just for it (`_show_cut_editor`).
+     NaN).
    - despike (`despike.despike`): spikes turn to NaN in x and y, like a
      removed cut
    - subtract (`background.apply` in "subtract" mode): the polynomial, or with
@@ -97,16 +93,21 @@ mirror. If that folder isn't around this repo, use whatever data folder
      `_zoom_kept` leave out of the line's data. `fit_to_line` (Make fit new
      line) moves the chosen fit to a copy of the line, steps up to the fit,
      `only` ticked, as `add_line` does across linked panels.
-   What steps found (spikes removed, fit values) is `Line.found`, one entry
-   per step, not saved.
-3. in a derived panel only, `spectrum.spectrum` or `derivative.derivative` of
-   that against x (and fit curves aren't drawn)
-4. one `ax.plot` call per line, then, after every line, one per fit curve,
+   - fft (`spectrum.spectrum`, then `f_max`): x becomes frequency and y
+     amplitude, with labels to match (`spectrum.frequency_label` from the
+     profile's unit for x); the resolution goes in `found`, for the title
+   - derivative (`derivative.derivative`, `d_order` "d1" / "d2")
+   Both (`model.TRANSFORMS`) drop the fit curves made before them, being
+   in the old units (`model.fit_curves` leaves them out the same way), and
+   the steps after them work on what they made.
+   What steps found (spikes removed, fit values, an FFT's resolution) is
+   `Line.found`, one entry per step, not saved.
+3. one `ax.plot` call per line, then, after every line, one per fit curve,
    kept in `self.curves[cell]` ({artist: (line index, step index)})
 
 `_line_data` caches all that per line, keyed on `_data_key` (run, axes and
-steps; steps are frozen, so the tuple hashes), so a data panel and its
-derived panels do the work once; `_reload_folder` clears it.
+steps; steps are frozen, so the tuple hashes), so linked panels with the
+same line do the work once; `_reload_folder` clears it.
 
 Things that depend on it:
 
@@ -136,9 +137,7 @@ Things that depend on it:
   syncs links and redraws, keeping the zoom as `_zoom_kept` says (only fit
   curves changed: both axes; a cut changed: neither; else x). The editors
   are frames per kind, one packed at a time; Subtract and Fit curve share
-  one. On an FFT panel the row after the steps (`_spectrum_row`, `l.step ==
-  len(l.steps)`) is the panel's own cut of its spectrum (`Panel.cut` /
-  `cuts`), edited with the Cut editor (`_cut_ranges`, `_set_cuts`).
+  one. Adding an FFT or Derivative puts one on every line in the panel.
 - **Picking several steps**: `Line.picked` (not saved, like `step`) holds
   the steps picked with the chosen one; read it through `Line.picks`, which
   adds `step` and drops indices past the end (a link may have shortened the
@@ -169,37 +168,28 @@ Things that depend on it:
   it runs from `_load_controls`, which every redraw path ends in, so there's
   no popup.
 
-## Derived panels are linked panels
+## FFT and derivative are steps
 
-`Panel.operation` makes a derived panel: "fft", "d1" or "d2" ("" is a data
-panel; `Panel.derived`). It draws that of its own lines. `_derived` makes
-one with copies of its data panel's lines, linked to it with every SYNC key
-ticked, so it follows every change through the link (see below) and can be
-frozen or partly synced like any link. `source` is only the cell it was
-made from, for "FFT of panel N"; `_tidy_links` clears it once no link joins
-them (unlinked, deleted, removed by the layout). So:
+An FFT or Derivative is a step like any other (`model.TRANSFORMS`); what a
+line draws is `model.view(steps)`: "" its data, "fft", "d1" or "d2", by its
+last active one. Nothing about the panel says it's a spectrum. So:
 
-- Check `derived` / `operation`, never `source`, for whether a panel is
-  derived. `operation` only matters where FFTs and derivatives differ
-  (drawing, the Derive tab's boxes, `_default_name`, the spectrum row).
-- Derived panels are only made from data panels (no FFT of a derivative),
-  and there's no cut-range picking on derivative panels. On an FFT panel the
-  Process tab's last row edits `Panel.cut` / `Panel.cuts`, a cut of the
-  spectrum in F applied after F max, not its lines' Cut steps, which stay
-  the data's (and follow the data panel through the link); `clear_ranges`
-  clears it with x. Putting one on a panel already
-  derived from the same data just changes its `operation`. **Back to data**
-  (`back_to_data`) sets it to "".
-- **This panel** (`in_place`) is the exception: it turns a data panel into
-  its own FFT or derivative, with no link and no `source`. `Panel.data_view`
-  keeps its `DATA_VIEW` values (typed ranges and texts) from before, for
-  **Undo** (`undo_in_place`). Its being set is what marks such a panel, so
-  it's saved in sessions (a tuple, via `session.TIDY`), and so it survives
-  the global undo. Such a panel has Undo in place of Back to data; the other
-  section's This panel changes its operation and keeps `data_view`.
-- `_line_data` caches by `_data_key` (axes and steps), not by line, so a data panel and its derived panels do the work once; a hit
-  also fills in an x-unit span the line hasn't got yet. `_changed` prunes it
-  to the lines still in the panels.
+- Check `view(line.steps)` for what's drawn: Measure's peaks (the selected
+  line's), the title ("FFT · ΔF ..." from the first drawn line's `found`),
+  ⇅ (clears ranges instead of swapping them), `_zoom_kept` (a new `view`
+  clears the panel's ranges and typed texts and keeps no zoom; any change
+  in front of one keeps x only).
+- **Links share the steps before the first FFT or Derivative**, on or off
+  (`model.split_steps`): `_sync_across` gives the other side the head and
+  keeps its own tail. Counting off ones too matters: an FFT turned off
+  must not be overwritten by the next sync. A data panel and its FFT panel
+  share their processing; the FFT and what follows is the FFT panel's.
+- "FFT in a new panel" / "in another panel..." (`_derived`) copy the lines
+  with the step added at the end and link them with every SYNC key; `source`
+  is only for "FFT of panel N" in the title, and `_tidy_links` clears it
+  once no link joins them.
+- A Cut's range is in the x at its place in the steps; Pick reads the
+  drawn x, so it's refused for a Cut with an active FFT after it.
 - `spectrum.even_grid` bins at bin centres for FFTs; derivatives pass
   `at_mean_x`, since the half-step error there becomes noise once
   differentiated. Keep the FFT's binning as it is unless you mean to change
@@ -210,8 +200,8 @@ them (unlinked, deleted, removed by the layout). So:
 The Measure tab reads each panel's selected line **as drawn** (the artist's
 `get_xydata()`, so after F max and with a removed cut's NaN gaps), never
 from `_line_data`. What it holds is the panel's (`Panel.region`, `points`,
-`marks`, `marks_saved`, `peak_count`, `peak_floor`), not the line's, as a
-derived panel's lines are copies in other x units. So:
+`marks`, `marks_saved`, `peak_count`, `peak_floor`), not the line's, as
+linked panels' lines are copies that may be drawn in other x units. So:
 
 - **Its marks are never lines.** `_draw_marks` uses `scatter`, `annotate` and
   `axvspan` (clipped to the data, so it can't widen x), kept per cell in
@@ -258,28 +248,17 @@ objects, and axis ranges and zoom are each panel's own. So:
   and the Sync boxes act on it; ticking a box or unfreezing sends the
   selected panel's settings across it.
 - `_tidy_links`, run by `_build_axes`, drops links to panels that are gone
-  and clears a derived panel's `source` once no link joins them.
-- Before format 10, links shared "cut", "despike", "smoothing" and
-  "background" separately; `_new_words` makes any of them "steps". Before 5
-  there was no cut to share, and before 8 no despiking, so `load`
-  (`_share_new`) adds "steps" to links that shared everything else (derived
-  panels' included), so an FFT still follows its data panel. A new SYNC key
-  needs the same.
+  and clears a panel's `source` once no link joins it to that panel.
 - `session.dump` / `load` carry the links (sorted, so undo compares equal
-  states equal); sessions before format 4 had groups (`link_group`, and
-  `sync` / `frozen` on each panel), which `load` turns into a link between
-  every pair in a group, sharing what both ticked and frozen if either was.
+  states equal).
 
 ## Typed axis ranges
 
 `Panel.x_min` ... `y_max` (`model.RANGES`) are in the plotted units, like
 the x-unit line settings, so they're cleared the same way: `_clear_ranges`
 when a line's x or y changes, including a linked member's in
-`_sync_inputs`; ⇅ swaps a data panel's (a derived panel's are cleared);
-changing a derived panel's operation, or `back_to_data`, clears them.
-The ranges a turned panel keeps for Undo (`Panel.data_view`) go the same
-way: `_clear_ranges` clears them too, and ⇅ swaps them (`clear_data_ranges`,
-`swap_data_view`). `_draw_panel`
+`_sync_inputs`; ⇅ swaps them (a spectrum's or derivative's are cleared);
+adding or removing an FFT or Derivative clears them (`_zoom_kept`). `_draw_panel`
 applies them after drawing, which turns autoscaling off, so the zoom-keeping
 in `_redraw_selected` treats them as user-set: after changing them, redraw
 with `keep=""` (as `apply_axes` does) or the old range comes back.
@@ -287,30 +266,25 @@ with `keep=""` (as `apply_axes` does) or the old range comes back.
 The title, labels and legend names (`Panel.title`, `x_label`, `y_label`,
 `Line.label`) are None for the automatic text and "" for none. `_draw_panel`
 keeps what it drew in `auto_text` / `auto_names` for the editors to show;
-Enter on a box still showing that text leaves it None. Sessions before
-format 3 used "" for automatic, and `load` converts them. Typed texts are
+Enter on a box still showing that text leaves it None. Typed texts are
 checked with `text_problem` before they're stored: bad mathtext only fails when the
 canvas draws, and on the real figure that would break every redraw after.
 
 ## Sessions
 
 `session.dump` / `session.load` turn `self.panels` and `self.layout` into plain data and back;
-`Plotter._restore` swaps it and the links in. `dump` marks its output with `FORMAT`;
-without it `load` reads the version 1 layout (`_load_old`), where a derived
-panel had no lines of its own and every panel an "fft" operation. `load` drops unknown or mistyped fields and menu values that
-aren't keys, and raises ValueError for anything that isn't a session, before
-anything changes. A new `Line` or `Panel` field is saved automatically unless
+`Plotter._restore` swaps it and the links in. `dump` marks its output with
+`FORMAT`, and session files carry `KEY: VERSION` too. **Only the current
+format is read**: `load` raises ValueError for any other (an older
+plotter's included, which `open_session` says is older), before anything
+changes; nothing converts old sessions. So a change to what's saved that
+an older session can't be read as needs `FORMAT` and `VERSION` raised.
+`load` drops unknown or mistyped fields and menu values that aren't keys. A new `Line` or `Panel` field is saved automatically unless
 it's in `session.SKIP`; one whose value must be a menu key goes in
 `session.CHOICES` too, and one holding a list (JSON gives lists, undo
 tuples) in `session.TIDY`, with what checks it: `Line.steps` (`_steps`,
 each a `Step` built field by field) and `Step.cuts`. `dump` writes steps as
-a list of objects. Before format 10 a line had fixed fields (`cut`, `cuts`,
-`despike*`, `background`, `degree`, `advanced`, `fit_*`, `smooth`, `window`,
-`in_x`, `span`, `order`, and Fit as new line's `fits_drawn` / `first_fit`);
-`_old_steps` turns them into steps in the order they were done, an old fit
-(Show fit, or a fit line's) as a Fit curve with `only`, as it drew. Session
-files' own marker (`KEY`, `VERSION`) went to 9 with steps, so an older
-plotter refuses them instead of misreading them.
+a list of objects.
 
 ## Undo
 
@@ -358,8 +332,6 @@ order and `layout.number` the panel number. So:
   so one opening of it is one undo step; `_changed`'s `merge` is a name, so
   the colour picker's merging (True) doesn't join it. `_load_controls`
   keeps the window showing the layout.
-- Sessions before format 11 had `rows` and `cols`; `load` makes them
-  `Layout.grid`. `VERSION` went to 10 with it.
 
 ## Plots
 

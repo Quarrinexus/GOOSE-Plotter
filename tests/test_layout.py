@@ -7,7 +7,6 @@ import pytest
 from conftest import plot
 from matplotlib.backend_bases import MouseButton, MouseEvent
 
-from goose_plotter import session
 from goose_plotter.model import Layout
 
 
@@ -64,7 +63,7 @@ def test_one_go_in_the_layout_picker_is_one_undo_step(app):
     assert app.layout.counts == (1,) and picker.counts == (1,)
 
 
-def test_sizes_are_saved_and_older_sessions_open_as_grids(app, tmp_path):
+def test_sizes_are_saved_with_the_session(app, tmp_path):
     plot(app)
     app.set_counts((2, 1))
     app.layout = app.layout.resized(heights=(3, 1))
@@ -74,11 +73,6 @@ def test_sizes_are_saved_and_older_sessions_open_as_grids(app, tmp_path):
     app.set_counts((1,))
     app.open_session(path)
     assert app.layout == Layout((2, 1), heights=(3, 1))
-    old = json.loads(path.read_text())
-    del old["layout"]
-    old.update(format=10, rows=2, cols=2)
-    layout, panels, _ = session.load(old)
-    assert layout == Layout((2, 2)) and len(panels) == 4
 
 
 def drag(app, start, end):

@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 from conftest import B_HIGH, B_LOW, F, add_step, cutting, drawn, plot, steps_of
 
-from goose_plotter import background, model, session, splicing
+from goose_plotter import background, model, session
+from goose_plotter.model import Step
 
 
 def test_plots_the_profile_default_axes(app):
@@ -53,9 +54,7 @@ def test_cut_steps_each_remove_one_range(app):
     assert [s.cuts for s in app.panel.line.steps] == [((10.0, 12.0),), ((20.0, 22.0),)]
     assert app.step_list.list.get(0) == "1  Cut  without x 10-12"
     assert app.filename.get().endswith("_no10-12_no20-22.png")
-    # Just the boxes and Pick: no mode, no list of ranges.
-    assert not app.cut_mode_box.winfo_manager() and not app.cut_list_row.winfo_manager()
-    assert buttons(app.editors["cut"]) == ["Pick"]
+    assert buttons(app.editors["cut"]) == ["Pick"]  # just the boxes and Pick
 
 
 def test_cutting_both_ends_sets_the_fft_resolution(app):
@@ -66,38 +65,32 @@ def test_cutting_both_ends_sets_the_fft_resolution(app):
     assert app.axes[(1, 0)].get_title().endswith("ΔF 10")
 
 
-def test_splicing_an_fft_cuts_its_spectrum_in_f(app):
+def test_cut_steps_after_an_fft_cut_its_spectrum_in_f(app):
+    """Steps after an FFT work on the spectrum: two Cut steps keep F 30 to 70.
+    They're the FFT panel's own, so the data panel isn't cut."""
     plot(app, x_fn="1/x")
     add_step(app, "subtract")
     app.new_derived_panel("fft")
     fft = app.panels[(1, 0)]
-    assert app.step_list.list.get("end").startswith("Cut spectrum (F)")  # after the steps
-    app.choose_step(len(fft.line.steps))
-    assert app.editors["cut"].winfo_manager() and app.cut_mode.get() == splicing.MODES[""]
+    assert [s.kind for s in fft.line.steps] == ["subtract", "fft"]
     app.axes[(1, 0)].set_xlim(0, 5000)  # zoomed out: the cut fits the view to it
-    app.cut_from.set("30")
-    app.cut_to.set("70")
-    app.add_cut()  # off, so it switches to keeping the range
+    add_step(app, "cut", cuts=((None, 30.0),))
+    add_step(app, "cut", cuts=((70.0, None),))
     frequency, amplitude = drawn(app, (1, 0))
-    assert frequency.min() >= 30 and frequency.max() <= 70
-    assert frequency[np.argmax(amplitude)] == pytest.approx(F, rel=0.05)
+    finite = frequency[np.isfinite(frequency)]
+    assert finite.min() >= 30 and finite.max() <= 70
+    assert frequency[np.nanargmax(amplitude)] == pytest.approx(F, rel=0.05)
     low, high = app.axes[(1, 0)].get_xlim()
     assert low > 25 and high < 75
-    assert fft.cuts == ((30.0, 70.0),) and fft.cut == "keep"
-    assert all(not steps_of(l, "cut") for p in app.panels.values() for l in p.lines)  # data uncut
-    saved = json.loads(json.dumps(session.dump(app.panels, app.layout, app.links)))
-    _, panels, _ = session.load(saved)  # as a session file gives it back
-    assert (panels[(1, 0)].cut, panels[(1, 0)].cuts) == ("keep", ((30.0, 70.0),))
-    app.pick_range("cut")  # picking works on an FFT panel
+    assert not steps_of(app.panels[(0, 0)].line, "cut")  # the data panel's stay its own
+    app.pick_range("cut")  # picking works after the FFT: the plot is in F
     assert app.picker is not None
     app.stop_picking()
-    app.selected = (0, 0)  # a data panel has no spectrum row
+    app.selected = (0, 0)
     app._load_controls()
-    assert app.step_list.list.size() == 1 and app.editors["fit"].winfo_manager()
-    app.x_fn.set("x")  # F in 1/T, not T: the spectrum's cut goes
+    app.x_fn.set("x")  # F in 1/T, not T: the spectrum's cuts go
     app.apply_controls()
-    assert fft.cuts == ()
-
+    assert [s.cuts for s in steps_of(fft.line, "cut")] == [] and fft.line.steps[2].cuts == ()
 
 def test_typing_picking_and_clearing_a_cut(app):
     plot(app)
@@ -171,7 +164,7 @@ def test_links_share_what_they_tick(app):
 
 def test_derived_panels_follow_every_setting(app):
     plot(app)
-    app.new_derived_panel("d1")
+    app.new_derived_panel("derivative")
     app.selected = (0, 0)
     app._load_controls()
     add_step(app, "cut")
@@ -199,67 +192,62 @@ def buttons(widget):
     return found
 
 
-def test_this_panel_turns_into_its_fft_and_undo_turns_it_back(app):
+def test_an_fft_step_turns_the_line_into_its_spectrum(app):
     plot(app, x_fn="1/x")
     add_step(app, "subtract", degree=10)  # the 1/x background needs more than 5
     panel = app.panel
     panel.x_min, panel.title = 0.05, "My data"
-    app.in_place("fft")
-    assert len(app.panels) == 1 and app.panel is panel and panel.operation == "fft"
-    assert panel.x_min is None and panel.title is None  # in T, not frequency
+    app._changed()  # as the axes editor's redraw does
+    app.add_step("fft")
+    assert len(app.panels) == 1 and [s.kind for s in panel.line.steps] == ["subtract", "fft"]
+    assert panel.x_min is None and panel.title is None  # in 1/T, not frequency
     frequency, amplitude = drawn(app)
     assert frequency[np.argmax(amplitude)] == pytest.approx(F, rel=0.05)
-    derive = buttons(app.tabs["Derive"])
-    assert derive.count("Undo") == 1 and "Back to data" not in derive
-    # The Derivative section's This panel swaps it for a derivative; Undo still
-    # goes back to the data.
-    app.in_place("d1")
-    assert panel.operation == "d1" and buttons(app.tabs["Derive"]).count("Undo") == 1
-    app.undo_in_place()
-    assert panel.operation == "" and panel.data_view is None
-    assert (panel.x_min, panel.title) == (0.05, "My data")
-    assert "Undo" not in buttons(app.tabs["Derive"])
+    assert app.axes[(0, 0)].get_title().startswith("FFT · ΔF")
+    assert app.step_list.list.get(1) == "2  FFT  Hann" and app.editors["fft"].winfo_manager()
+    app.undo()  # the data, with its range and title (in a panel made afresh)
+    panel = app.panel
+    assert len(panel.line.steps) == 1 and (panel.x_min, panel.title) == (0.05, "My data")
 
 
-def test_this_panel_is_only_for_data_panels(app):
+def test_an_fft_or_derivative_goes_on_every_line(app):
     plot(app)
-    app.new_derived_panel("fft")
-    app.in_place("d1")
-    assert app.panel.operation == "fft" and app.panel.data_view is None
-    assert "Back to data" in buttons(app.tabs["Derive"])
+    app.add_line()
+    app.add_step("derivative")
+    assert [[s.kind for s in l.steps] for l in app.panel.lines] == [["derivative"]] * 2
 
 
-def test_this_panel_survives_undo_and_sessions(app, tmp_path):
-    plot(app)
-    app.panel.y_max = 3.0
-    app.in_place("d2")
+def test_steps_after_a_transform_work_on_what_it_made(app):
+    """A derivative of a spectrum, and a fit of it: steps can follow an FFT."""
+    plot(app, x_fn="1/x")
+    app.add_step("fft")
+    spectrum_x, _ = drawn(app)
+    app.add_step("derivative")
+    x, _ = drawn(app)
+    assert x.max() == pytest.approx(spectrum_x.max(), rel=0.01)  # still in F
+    assert app.axes[(0, 0)].get_title().startswith("d/dx")
+    add_step(app, "fit", degree=1)
+    assert app.curves[(0, 0)]  # drawn: it's of the derivative, as plotted
+
+
+def test_fft_and_derivative_settings_are_the_steps_own(app, tmp_path):
+    plot(app, x_fn="1/x")
+    app.add_step("fft")
+    app.fft_pad.set("4")
+    app.f_max.set("150")
+    app.apply_controls()
+    assert app.panel.line.chosen == Step("fft", pad=4, f_max=150.0)
+    assert drawn(app)[0].max() <= 150
+    app.add_step("derivative")
+    app.derivative_order.set("d2")
     app.derivative_window.set("101")
-    app.apply_derivative()
-    app.undo()  # the window change, not the turning
-    assert app.panel.operation == "d2" and app.panel.derivative_window == 51
-    assert buttons(app.tabs["Derive"]).count("Undo") == 1
+    app.apply_controls()
+    assert app.panel.line.chosen == Step("derivative", d_order="d2", d_window=101)
     path = tmp_path / "s.json"
     app.save_session(path)
     app.open_session(path)
-    assert app.panel.data_view == (None, None, None, 3.0, None, None, None)
-    app.undo_in_place()
-    assert app.panel.y_max == 3.0 and not app.panel.derived
-
-
-def test_undo_forgets_ranges_in_an_x_that_changed(app):
-    plot(app)
-    app.panel.x_min, app.panel.y_max, app.panel.x_label = 5.0, 3.0, "B"
-    app.in_place("fft")
-    app.x_fn.set("1/x")  # F needs 1/B; 5 T means nothing there
-    app.apply_controls()
-    app.undo_in_place()
-    assert (app.panel.x_min, app.panel.y_max) == (None, 3.0)
-    app.panel.x_min = 0.1
-    app.in_place("d1")
-    app.swap()
-    app.undo_in_place()
-    assert (app.panel.x_max, app.panel.y_min, app.panel.y_max) == (3.0, 0.1, None)
-    assert app.panel.y_label == "B"
+    assert app.panel.line.steps == (Step("fft", pad=4, f_max=150.0),
+                                        Step("derivative", d_order="d2", d_window=101))
 
 
 def click(app, x, y, cell=None):
@@ -320,7 +308,7 @@ def test_measure_reads_points_and_their_difference(app):
 def test_measure_lists_an_ffts_peaks(app, tmp_path):
     plot(app, x_fn="1/x")
     add_step(app, "subtract", degree=10)  # the 1/x background needs more than 5
-    app.in_place("fft")
+    app.add_step("fft")
     read = app.measured[(0, 0)]
     assert read["peaks"][0][0] == pytest.approx(F, rel=0.02)
     assert read["extremes"]["max"][0] == pytest.approx(F, rel=0.02)
@@ -430,7 +418,7 @@ def test_a_change_goes_down_a_chain_of_links(app):
     app.y.set(next(v for v in app.y.box["values"] if "M011" in v))
     app.apply_controls()
     assert app.panels[(1, 0)].line.y == "M011_AH"
-    assert fft.line.y == "M011_AH" and [s.kind for s in fft.line.steps] == ["subtract"]
+    assert fft.line.y == "M011_AH" and [s.kind for s in fft.line.steps] == ["subtract", "fft"]
     assert app.panels[(0, 0)].line.steps == ()  # 2-3 shares them, 1-2 doesn't
 
 
@@ -482,19 +470,22 @@ def test_clicking_a_tab_shows_it(app):
     app.update()
     strip = app.tab_strip
     assert max(right for _, right in strip.spans.values()) <= strip.winfo_width()  # all fit
-    left, right = strip.spans["Derive"]
+    left, right = strip.spans["Linking"]
     strip.event_generate("<Button-1>", x=(left + right) // 2, y=10)
-    assert app.tab.get() == "Derive"
-    assert app.tabs["Derive"].winfo_manager() and not app.tabs["Process"].winfo_manager()
+    assert app.tab.get() == "Linking"
+    assert app.tabs["Linking"].winfo_manager() and not app.tabs["Process"].winfo_manager()
 
 
 def test_tab_order(app):
-    assert [name for name, _ in app.tab_strip.tabs] == ["Process", "Derive", "Linking", "Measure"]
+    assert [name for name, _ in app.tab_strip.tabs] == ["Process", "Linking", "Measure"]
     assert app.tab.get() == "Process"
     menu = app.add_menu
-    assert [menu.entrycget(i, "label") for i in range(menu.index("end") + 1)] == [
-        "Cut", "Despike", "Smooth", "Fit curve", "Subtract"]
-    assert app.step_list.list["height"] == 4  # rows; more scroll
+    labels = [menu.entrycget(i, "label") if menu.type(i) != "separator" else "-"
+              for i in range(menu.index("end") + 1)]
+    assert labels == ["Cut", "Despike", "Smooth", "Fit curve", "Subtract", "-", "FFT",
+                      "Derivative", "-", "FFT in a new panel", "FFT in another panel...",
+                      "Derivative in a new panel", "Derivative in another panel..."]
+    assert app.step_list.list["height"] == 4  # rows, growing to 8; more scroll
 
 
 def test_advanced_fitting_fits_the_typed_function(app):
@@ -714,31 +705,16 @@ def test_make_fit_new_line_moves_the_fit_to_its_own_line(app):
     assert len(colours) == 2  # a colour of its own
 
 
-def test_fit_lines_and_old_settings_load_as_steps(app, tmp_path):
-    """A format 9 session: a line's fixed settings, and a Fit as new line line."""
-    old = {"goose_plotter_session": 8, "format": 9, "rows": 1, "cols": 1, "panels": {"0,0": {"lines": [
-        {"run": "Cambridge_Sep_26.005", "x_fn": "1/x", "cut": "keep", "cuts": [[0.05, 0.2]],
-         "despike": True, "despike_window": 31, "background": "subtract", "degree": 4,
-         "smooth": "median", "window": 41},
-        {"run": "Cambridge_Sep_26.005", "x_fn": "1/x", "background": "fit", "fits_drawn": True,
-         "first_fit": ["subtract", 4, "", ""], "advanced": True,
-         "fit_function": "A * sin(B * x + C)", "fit_start": "B=314", "smooth": "mean"}]}},
-        "links": []}
-    path = tmp_path / "old.json"
-    path.write_text(json.dumps(old))
+def test_a_session_from_an_older_plotter_is_refused(app, tmp_path):
+    plot(app)
+    path = tmp_path / "s.json"
+    app.save_session(path)
+    data = json.loads(path.read_text())
+    data["goose_plotter_session"] -= 1
+    path.write_text(json.dumps(data))
+    app.set_layout(1, 2)
     app.open_session(path)
-    data, fit = app.panel.lines
-    # The kept range: everything either side of it cut out.
-    assert [s.kind for s in data.steps] == ["cut", "cut", "despike", "subtract", "smooth"]
-    assert [s.cutting for s in data.steps[:2]] == [("remove", ((None, 0.05),)),
-                                                    ("remove", ((0.2, None),))]
-    assert data.steps[2].spike_window == 31
-    assert data.steps[3].fitting == ("subtract", 4, "", "") and data.steps[4].method == "median"
-    assert [s.kind for s in fit.steps] == ["subtract", "smooth", "fit"]
-    assert fit.steps[2].fitting == ("fit", None, "A * sin(B * x + C)", "B=314")
-    assert fit.steps[2].only  # drawn instead of its data, as it was
-    assert not app.curves[(0, 0)] and app.error_label["text"] == ""
-
+    assert "older version" in app.status["text"] and app.layout.counts == (2,)
 
 def test_colour_maps_colour_every_panel_and_are_remembered(app, settings_file):
     from goose_plotter import colourmaps
@@ -831,15 +807,16 @@ def test_advanced_fitting_goes_along_the_chain_to_the_fft(app):
     app._load_controls()
     add_step(app, "subtract")
     app.new_derived_panel("fft")
-    fft = next(p for p in app.panels.values() if p.operation == "fft")
+    fft = next(p for p in app.panels.values() if p.source is not None)
     app.selected = (1, 0)
     app._load_controls()
     app.advanced.set(True)
     app.apply_controls()
     app.fit_function.set("A + B / x")  # conftest's background, exactly
     app.apply_controls()
-    assert fft.lines[0].steps == app.panels[(1, 0)].lines[0].steps
-    assert fft.lines[0].found == app.panels[(1, 0)].lines[0].found
+    data = app.panels[(1, 0)].lines[0]
+    assert fft.lines[0].steps == (*data.steps, Step("fft"))  # shared up to its own FFT
+    assert fft.lines[0].found[:-1] == data.found
     assert app.panels[(0, 0)].lines[0].steps == ()  # Steps isn't ticked on 1-2
     cell = next(c for c, p in app.panels.items() if p is fft)
     frequency, amplitude = drawn(app, cell)
@@ -895,17 +872,16 @@ def test_no_tab_widens_the_controls_column(app):
     app.stop_picking()
     app.update_idletasks()
     widths["Measure, filled in"] = app.side_inner.winfo_reqwidth()
-    app.in_place("fft")
+    app.add_step("fft")
     app.update_idletasks()
     widths["Measure, peaks"] = app.side_inner.winfo_reqwidth()
-    app.undo_in_place()
-    # The Derive tab's This panel row, on panels it has turned.
-    app.tab.set("Derive")
+    # The FFT and Derivative editors, with eight steps in the list.
+    app.tab.set("Process")
     app._show_tab()
-    for operation in ("fft", "d2"):
-        app.in_place(operation)
+    for kind in ("fft", "derivative"):
+        app.add_step(kind)
         app.update_idletasks()
-        widths[f"Derive, {operation} here"] = app.side_inner.winfo_reqwidth()
+        widths[f"Steps, {kind}"] = app.side_inner.winfo_reqwidth()
     assert len(set(widths.values())) == 1, widths
 
 
@@ -1007,9 +983,9 @@ def test_making_an_fft_over_a_plotted_panel_asks_nothing(app):
     app._load_controls()
     plot(app, run="Cambridge_Sep_26.003")
     app._put_derived((0, 0), (0, 1), "fft")
-    assert app.panels[0, 1].operation == "fft" and "Ctrl+Z" in app.status["text"]
+    assert app.panels[0, 1].line.steps == (Step("fft"),) and "Ctrl+Z" in app.status["text"]
     app.undo()
-    assert not app.panels[0, 1].derived
+    assert app.panels[0, 1].line.steps == ()
     assert app.panels[0, 1].line.run == "Cambridge_Sep_26.003"
 
 

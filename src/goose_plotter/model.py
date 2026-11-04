@@ -31,7 +31,9 @@ PALETTE = ("#2464d6", "#eb6834", "#2e9e5b", "#8e5bd1", "#c23b6e", "#1a9aa0",
 
 # Step kind -> its name in the list and the Add step menu.
 KINDS = {"cut": "Cut", "despike": "Despike", "smooth": "Smooth", "fit": "Fit curve",
-         "subtract": "Subtract"}
+         "subtract": "Subtract", "fft": "FFT", "derivative": "Derivative"}
+# Kinds that turn the line into something else: its spectrum, or its slope.
+TRANSFORMS = ("fft", "derivative")
 
 
 @dataclass(frozen=True)
@@ -45,7 +47,7 @@ class Step:
     was, or with `only` puts the fit in the data's place, so the line is its fit."""
     kind: str = "smooth"  # a key of KINDS
     on: bool = True
-    cut: str = "remove"  # cut: what it does to its range; "keep" only in old sessions
+    cut: str = "remove"  # cut: what it does to its range (always "remove")
     cuts: tuple = ()  # cut: its x range, a (start, end) pair as splicing.tidy makes it; () for none
     spike_window: int = 21  # despike: points around each one, for its median
     threshold: float = 5.0  # despike: how many local spreads off it makes a spike
@@ -60,6 +62,11 @@ class Step:
     order: int = 2  # smooth: Savitzky–Golay polynomial order
     colour: str | None = None  # fit: its curve's; None: picked automatically
     only: bool = False  # fit: the line becomes the fit, drawn instead of the data
+    fft_window: str = "hann"  # fft: a key of spectrum.WINDOWS
+    pad: int = 1  # fft: zero-padding factor, one of spectrum.PADDING
+    f_max: float | None = None  # fft: the highest frequency kept; None: all
+    d_order: str = "d1"  # derivative: a key of derivative.ORDERS
+    d_window: int = 51  # derivative: grid points per fit, odd
 
     @property
     def cutting(self):
@@ -104,6 +111,13 @@ class Step:
         if self.fitting:
             fitted = background.describe(*self.fitting)
             return fitted if self.kind == "subtract" else fitted.removeprefix("fit ")
+        if self.kind == "fft":
+            parts = ["Hann" if self.fft_window == "hann" else "no window"]
+            parts += [f"pad ×{self.pad}"] if self.pad > 1 else []
+            parts += [f"F max {self.f_max:g}"] if self.f_max else []
+            return ", ".join(parts)
+        if self.kind == "derivative":
+            return f"{'dy/dx' if self.d_order == 'd1' else 'd2y/dx2'}, window {self.d_window}"
         return smoothing.describe(*self.smoothing) if self.smoothing else ""
 
     def file_part(self):
@@ -114,6 +128,12 @@ class Step:
             return despike.file_part(*self.despiking)
         if self.fitting:
             return background.file_part(*self.fitting)
+        if self.kind == "fft":
+            return ("fft" + ("" if self.fft_window == "hann" else "_nowindow")
+                    + (f"_pad{self.pad}" if self.pad > 1 else "")
+                    + (f"_fmax{self.f_max:g}" if self.f_max else ""))
+        if self.kind == "derivative":
+            return f"{self.d_order}_w{self.d_window}"
         return smoothing.file_part(*self.smoothing) if self.smoothing else ""
 
 
@@ -182,18 +202,19 @@ class Line:
                 tuple(s for s in steps if s.active))
 
 
-def one_range_cuts(steps):
-    """`steps` with every Cut step removing one range, as the Cut editor makes
-    them: a Keep becomes Removes of what's outside its ranges (`splicing.gaps`),
-    and a step with several ranges one step per range, in their place."""
-    out = []
-    for s in steps:
-        if s.kind != "cut" or (s.cut == "remove" and len(s.cuts) <= 1):
-            out.append(s)
-            continue
-        ranges = splicing.gaps(s.cuts, None, None) if s.cut == "keep" and s.cuts else s.cuts
-        out += [replace(s, cut="remove", cuts=(r,)) for r in ranges] or [replace(s, cut="remove")]
-    return tuple(out)
+def split_steps(steps):
+    """(before, from): `steps` before the first FFT or Derivative step, on or
+    off, and from it on. A link shares the first part; the rest is each
+    panel's own, so a data panel and its FFT panel share their processing."""
+    at = next((i for i, s in enumerate(steps) if s.kind in TRANSFORMS), len(steps))
+    return steps[:at], steps[at:]
+
+
+def view(steps):
+    """What a line with these steps draws: "" its data, "fft" a spectrum, or
+    "d1" / "d2" a derivative, by its last active FFT or Derivative step."""
+    last = next((s for s in reversed(steps) if s.active and s.kind in TRANSFORMS), None)
+    return "" if last is None else "fft" if last.kind == "fft" else last.d_order
 
 
 def without_x_units(steps):
@@ -323,28 +344,13 @@ class Link:
 class Panel:
     """One subplot: its lines and which of them the controls edit.
 
-    A derived panel (an FFT or a derivative, by `operation`) draws that of its
-    lines. It's made in its data panel's link group, with copies of its lines,
-    so the two stay in step through the link (and can be frozen or partly
-    synced); `source` is that data panel's cell while it still follows it.
-    A data panel can also be turned into its own FFT or derivative, keeping
-    what Undo needs in `data_view`.
+    A panel made by "FFT in a new panel" (or a derivative) holds copies of its
+    data panel's lines with that step added, linked to it; `source` is that
+    data panel's cell while the link lasts, for its title.
     `id` names the panel for its links, as its cell can change."""
     lines: list = field(default_factory=lambda: [Line()])
     selected: int = 0
     source: tuple | None = None
-    operation: str = ""  # a key of OPERATIONS; "" for a data panel
-    window: str = "hann"  # FFT window, a key of spectrum.WINDOWS
-    pad: int = 1  # FFT zero-padding factor
-    f_max: float | None = None  # highest frequency drawn; None: all
-    # FFT panels: the Splicing tab's cut of the spectrum itself, in its F, as a
-    # line's cut is of the data (a key of splicing.MODES, and splicing.tidy ranges).
-    cut: str = ""
-    cuts: tuple = ()
-    derivative_window: int = 51  # derivative panels: grid points per fit, odd
-    # A data panel turned into its own FFT or derivative ("This panel"): its
-    # DATA_VIEW values from before, for Undo. None for any other panel.
-    data_view: tuple | None = None
     id: str = field(default_factory=lambda: uuid4().hex[:8])
     # Typed axis ranges, in the plotted units; None: that end is automatic.
     x_min: float | None = None
@@ -365,16 +371,12 @@ class Panel:
     points: tuple = ()
     marks: bool = False  # mark the max and min (or the peaks) on the plot
     marks_saved: bool = False  # and keep them in saved figures
-    peak_count: int = 5  # FFT panels: how many peaks to list
+    peak_count: int = 5  # a spectrum's: how many peaks to list
     peak_floor: float = 10.0  # ignoring those under this % of the highest
 
     @property
     def line(self):
         return self.lines[self.selected]
-
-    @property
-    def derived(self):
-        return bool(self.operation)
 
     def copy(self):
         """An independent data panel with copies of the lines (and nothing else of
@@ -389,32 +391,13 @@ MARKERS = {"": "None", ".": "Dots", "o": "Circles", "s": "Squares", "^": "Triang
            "x": "Crosses"}
 
 RANGES = ("x_min", "x_max", "y_min", "y_max")
-# What a data panel turned into its own FFT or derivative gets back on Undo.
-DATA_VIEW = RANGES + ("title", "x_label", "y_label")
 
-
-def tidy_data_view(saved):
-    """`Panel.data_view` from a session: numbers or None for the ranges, text or
-    None for the rest, else None (and the panel has no Undo)."""
-    if not isinstance(saved, (list, tuple)) or len(saved) != len(DATA_VIEW):
-        return None
-    ranges, texts = saved[:len(RANGES)], saved[len(RANGES):]
-    if not all(v is None or (isinstance(v, (int, float)) and not isinstance(v, bool)
-                             and math.isfinite(v)) for v in ranges):
-        return None
-    if not all(v is None or isinstance(v, str) for v in texts):
-        return None
-    return tuple(None if v is None else float(v) for v in ranges) + tuple(texts)
 
 # Legend placement -> the text in its menu. "auto": only with two or more
 # lines, wherever there's room; a placement shows it even for one line.
 LEGENDS = {"auto": "Auto", "off": "Off", "upper right": "Top right",
            "upper left": "Top left", "lower left": "Bottom left",
            "lower right": "Bottom right", "outside": "Outside right"}
-
-
-# What a panel draws of its lines: the lines themselves, their FFT, or a derivative.
-OPERATIONS = ("", "fft", "d1", "d2")
 
 # Grid lines -> the text on their buttons. "minor" draws the major lines too.
 GRIDS = {"off": "Off", "major": "Major", "minor": "Major + minor"}
@@ -434,23 +417,6 @@ def clear_ranges(panel, axes="xy"):
     panel.points = ()
 
 
-def clear_data_ranges(panel, axes="xy"):
-    """Forget the ranges Undo would give a panel This panel turned, on those axes,
-    when what they'd be plotted against changes (as `clear_ranges` does for its own)."""
-    if panel.data_view is not None:
-        panel.data_view = tuple(None if name in RANGES and name[0] in axes else value
-                                for name, value in zip(DATA_VIEW, panel.data_view))
-
-
-def swap_data_view(panel):
-    """A turned panel's ranges and axis labels for Undo, swapped with its lines' x and y."""
-    if panel.data_view is not None:
-        v = dict(zip(DATA_VIEW, panel.data_view))
-        for x, y in (("x_min", "y_min"), ("x_max", "y_max"), ("x_label", "y_label")):
-            v[x], v[y] = v[y], v[x]
-        panel.data_view = tuple(v[name] for name in DATA_VIEW)
-
-
 def near(colour, others, distance=0.25):
     """True if `colour` is hard to tell from any of `others` (RGB distance)."""
     rgb = np.array(to_rgb(colour))
@@ -459,12 +425,11 @@ def near(colour, others, distance=0.25):
 
 def fit_curves(panel):
     """(line index, step index) of each fit curve the panel draws, in order:
-    the fit steps that are on and drawn over their line (not `only`), on a
-    data panel only."""
-    if panel.derived:
-        return []
+    the fit steps that are on and drawn over their line (not `only`), and no
+    FFT or Derivative after them (which would leave them in other units)."""
     return [(i, j) for i, l in enumerate(panel.lines) for j, s in enumerate(l.steps)
-            if s.kind == "fit" and s.on and not s.only]
+            if s.kind == "fit" and s.on and not s.only
+            and not any(t.active and t.kind in TRANSFORMS for t in l.steps[j + 1:])]
 
 
 def overlay(step):

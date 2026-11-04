@@ -43,8 +43,6 @@ def exercise(app, tmp_path):
     app.cut_from.set("0.05")
     app.cut_to.set("0.1")
     app.add_cut()
-    app.cut_index = 0
-    app.delete_cut()
     app.pick_range("cut")
     app.stop_picking()
     app.set_region((0.05, 0.1))
@@ -57,15 +55,14 @@ def exercise(app, tmp_path):
     app.stop_picking()
     app.copy_measurements()
     app.export_measurements(tmp_path / "m.csv")
-    app.in_place("fft")
-    app.in_place("d1")
-    app.undo_in_place()
+    app.add_step("fft")
+    app.add_step("derivative")
+    app.undo()
     app.new_derived_panel("fft")
-    app.choose_step(len(app.panel.line.steps))  # its spectrum's cut
-    app.in_place("d2")  # refused: a derived panel
-    app.existing_derived_panel("d1")
+    app.add_step("cut")  # of the spectrum
+    app.existing_derived_panel("derivative")
     app.stop_picking()
-    app.new_derived_panel("d1")
+    app.new_derived_panel("derivative")
     app.link_panels()
     app.stop_picking()
     app.freeze()
