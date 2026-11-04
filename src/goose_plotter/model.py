@@ -127,6 +127,7 @@ class Line:
     y_fn: str = "y"
     steps: tuple = ()  # its processing, Steps in the order they're done
     step: int = 0  # the step the Process tab shows; not saved, like Panel.selected
+    picked: tuple = ()  # steps picked with it (Ctrl/Shift-click); not saved, see picks
     # What the last draw found, per step: spikes removed, or a fit's
     # ((name, value), ...); None for the rest. Not saved.
     found: tuple = ()
@@ -159,6 +160,15 @@ class Line:
     def chosen(self):
         """The step the Process tab shows, or None if it has none."""
         return self.steps[min(self.step, len(self.steps) - 1)] if self.steps else None
+
+    @property
+    def picks(self):
+        """The picked steps' indices, in order, the chosen one included: what
+        Copy, Remove and On act on."""
+        if not self.steps:
+            return ()
+        n = len(self.steps)
+        return tuple(sorted({i for i in self.picked if i < n} | {min(self.step, n - 1)}))
 
     def clear_x_units(self):
         """Forget the step settings in the plotted x (X_UNITS), when x or its function changes."""

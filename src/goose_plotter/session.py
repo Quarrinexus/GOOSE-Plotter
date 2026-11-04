@@ -46,7 +46,7 @@ OLD_FORMATS = (2, 3, 4, 5, 6, 7, 8, 9)  # read and brought up to date; others ar
 TEXTS = {Panel: ("title", "x_label", "y_label"), Line: ("label",)}
 
 # Not saved: what the last draw found, and what the controls show.
-SKIP = {"shown", "error", "found", "step", "lines", "selected", "source"}
+SKIP = {"shown", "error", "found", "step", "picked", "lines", "selected", "source"}
 # Settings that must be one of a menu's keys; anything else gets the default.
 # Per class: a Panel's window is the FFT's.
 CHOICES = {Line: {"style": STYLES, "marker": MARKERS},
@@ -65,6 +65,16 @@ def _steps(saved):
         return ()
     return tuple(_build(Step, data) for data in saved
                  if isinstance(data, dict) and data.get("kind") in KINDS)
+
+
+def dump_steps(steps):
+    """Steps as plain data, as a session holds them (for recipes too)."""
+    return [_plain(s) for s in steps]
+
+
+def load_steps(saved):
+    """Steps from `dump_steps`'s data, dropping anything that isn't one."""
+    return _steps(saved)
 
 
 # Fields holding a list, and what makes the saved one fit, per class as for CHOICES.
@@ -101,7 +111,7 @@ def dump(panels, rows, cols, links):
     out = {}
     for cell, p in sorted(panels.items()):
         data = _plain(p)
-        data["lines"] = [{**_plain(l), "steps": [_plain(s) for s in l.steps]} for l in p.lines]
+        data["lines"] = [{**_plain(l), "steps": dump_steps(l.steps)} for l in p.lines]
         if p.source is not None:
             data["source"] = cell_key(p.source)
         out[cell_key(cell)] = data

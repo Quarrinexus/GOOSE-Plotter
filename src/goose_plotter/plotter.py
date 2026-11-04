@@ -7,7 +7,7 @@ import math
 import tkinter as tk
 from dataclasses import replace
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 from tkinter import font as tkfont
 from typing import ClassVar
 
@@ -65,7 +65,7 @@ from goose_plotter.model import (
     swap_data_view,
     without_x_units,
 )
-from goose_plotter.profile import load_profile, save_format
+from goose_plotter.profile import load_profile, save_format, save_recipes
 from goose_plotter.settings import load_settings, save_settings
 from goose_plotter.toolbar import Toolbar
 from goose_plotter.widgets import (
@@ -79,6 +79,7 @@ from goose_plotter.widgets import (
     SaveOptionsPopup,
     StepList,
     TabStrip,
+    Tooltip,
     key_of,
     line_sample,
 )
@@ -431,6 +432,8 @@ class Plotter(tk.Tk):
             self.bind(f"<Control-{key}>", lambda _: self.add_line())
         for key in ("z", "Z"):
             self.bind(f"<Control-{key}>", lambda _: self.undo())
+        self.bind("<Control-Shift-C>", lambda e: self._typing(e) or self.copy_steps())
+        self.bind("<Control-Shift-V>", lambda e: self._typing(e) or self.paste_steps())
         # Entries delete a character on Ctrl+D; here it copies the line instead.
         for cls in ("TEntry", "TSpinbox", "TCombobox"):
             for key in ("d", "D"):
@@ -634,6 +637,7 @@ class Plotter(tk.Tk):
         row = ttk.Frame(parent)
         row.pack(fill=tk.X, pady=(6, 0))
         row.columnconfigure((0, 1, 2), weight=1, uniform="step")
+        self.copied = None  # (steps, x, x_fn) from Copy steps, for Paste steps
         self.add_menu = tk.Menu(self, tearoff=0)
         for kind, name in KINDS.items():
             self.add_menu.add_command(label=name, command=lambda kind=kind: self.add_step(kind))
@@ -648,8 +652,25 @@ class Plotter(tk.Tk):
         self.step_on_box = ttk.Checkbutton(row, text="On", variable=self.step_on,
                                            command=self.toggle_step)
         self.step_on_box.grid(row=0, column=2, sticky=tk.W)
+        # Reusing steps: on another line, panel or plot (Copy, Paste), or by
+        # name from the data folder's profile (Recipes).
+        row = ttk.Frame(parent)
+        row.pack(fill=tk.X, pady=(6, 0))
+        row.columnconfigure((0, 1, 2), weight=1, uniform="step")
+        copy = ttk.Button(row, text="Copy", width=1, command=self.copy_steps)
+        copy.grid(row=0, column=0, sticky="ew")
+        self.paste_button = ttk.Button(row, text="Paste", width=1)
+        self.paste_button.configure(command=lambda: self._popup_or(
+            self.paste_button, self._paste_menu(), self.paste_steps))
+        self.paste_button.grid(row=0, column=1, sticky="ew", padx=6)
+        recipes = ttk.Button(row, text="Recipes", width=1)
+        recipes.configure(command=lambda: self._popup_or(recipes, self._recipes_menu()))
+        recipes.grid(row=0, column=2, sticky="ew")
+        Tooltip(copy, "Copy this line's steps (Ctrl+Shift+C)")
+        Tooltip(self.paste_button, "Put the copied steps on this line (Ctrl+Shift+V)")
+        Tooltip(recipes, "Steps saved by name in the data folder, for any line")
         # Not wrapped: one line, short enough for the column.
-        ttk.Label(parent, text="done top to bottom; drag to reorder",
+        ttk.Label(parent, text="drag to move; Ctrl+click picks several",
                   foreground=theme.HINT).pack(anchor=tk.W, pady=(2, 0))
         ttk.Separator(parent).pack(fill=tk.X, pady=(8, 0))
         self.step_title = ttk.Label(parent, foreground=theme.MUTED)  # shown with a step
@@ -896,7 +917,7 @@ class Plotter(tk.Tk):
             cut = splicing.describe(p.cut, p.cuts) if p.cut and p.cuts else "none"
             rows.append(f"Cut spectrum (F)  {plain(cut)}")
         self.step_list.show(rows, l.step, off={i for i, s in enumerate(l.steps) if not s.on},
-                            fixed=len(l.steps))
+                            fixed=len(l.steps), picked=l.picks)
         step = l.chosen if not self._spectrum_row() else None
         for state, widget in ((step is not None, self.remove_step_button),
                               (step is not None, self.step_on_box)):
@@ -998,10 +1019,31 @@ class Plotter(tk.Tk):
     def _set_step(self, l, index, step):
         l.steps = l.steps[:index] + (step,) + l.steps[index + 1:]
 
-    def choose_step(self, index):
-        """Show step `index` of the selected line (past the last: an FFT panel's spectrum cut)."""
+    def choose_step(self, index, how=""):
+        """Show step `index` of the selected line (past the last: an FFT panel's
+        spectrum cut). `how`, as the step list gives it: "" picks just that
+        step, "toggle" picks it too or unpicks it, "range" picks every step
+        from the chosen one to it, "all" every step (`index` None)."""
         self.stop_picking()
-        self.panel.line.step = index
+        l = self.panel.line
+        n = len(l.steps)
+        if how == "all":
+            l.picked = tuple(range(n))
+        elif how == "toggle" and index < n and l.step < n:
+            picks = set(l.picks)
+            if index in picks and len(picks) > 1:
+                picks.discard(index)
+                if index == l.step:
+                    l.step = max(picks)
+            else:
+                picks.add(index)
+                l.step = index
+            l.picked = tuple(sorted(picks))
+        elif how == "range" and index < n and l.step < n:
+            lo, hi = sorted((l.step, index))
+            l.picked, l.step = tuple(range(lo, hi + 1)), index
+        else:
+            l.picked, l.step = (), index
         self._show_steps()
 
     def add_step(self, kind):
@@ -1010,16 +1052,17 @@ class Plotter(tk.Tk):
         before = l.steps
         at = min(l.step + 1, len(l.steps)) if l.steps else 0
         l.steps = l.steps[:at] + (Step(kind),) + l.steps[at:]
-        l.step = at
+        l.step, l.picked = at, ()
         self._steps_changed(before)
 
     def remove_step(self):
+        """Remove the picked steps (the chosen one, and any picked with it)."""
         l = self.panel.line
         if l.chosen is None or self._spectrum_row():
             return
-        before = l.steps
-        l.steps = l.steps[:l.step] + l.steps[l.step + 1:]
-        l.step = max(0, min(l.step, len(l.steps) - 1))
+        before, gone = l.steps, set(l.picks)
+        l.steps = tuple(s for i, s in enumerate(l.steps) if i not in gone)
+        l.step, l.picked = max(0, min(min(gone), len(l.steps) - 1)), ()
         self._steps_changed(before)
 
     def move_step(self, old, new):
@@ -1028,16 +1071,17 @@ class Plotter(tk.Tk):
         before = l.steps
         steps = list(l.steps)
         steps.insert(new, steps.pop(old))
-        l.steps, l.step = tuple(steps), new
+        l.steps, l.step, l.picked = tuple(steps), new, ()
         self._steps_changed(before)
 
     def toggle_step(self):
-        """Turn the chosen step on or off, as its On box says."""
+        """Turn the picked steps on or off, as the On box says."""
         l = self.panel.line
         if l.chosen is None or self._spectrum_row():
             return
-        before = l.steps
-        self._set_step(l, l.step, replace(l.chosen, on=self.step_on.get()))
+        before, on = l.steps, self.step_on.get()
+        for i in l.picks:
+            self._set_step(l, i, replace(l.steps[i], on=on))
         self._steps_changed(before)
 
     def fit_to_line(self):
@@ -1058,9 +1102,147 @@ class Plotter(tk.Tk):
             if old.steps == steps:
                 new.steps, new.step = steps[:k] + (replace(steps[k], only=True),), k
                 old.steps, old.step = steps[:k] + steps[k + 1:], max(0, k - 1)
+                new.picked = old.picked = ()
             lines.insert(at, new)
         self._set_selected_line(self.selected, at)
         self._redraw_selected("x", "x")
+
+    # --- reusing steps -----------------------------------------------------
+
+    def _popup_or(self, button, menu, otherwise=None):
+        """Pop `menu` up under `button`, or, with no menu, do `otherwise`."""
+        if menu is None:
+            if otherwise:
+                otherwise()
+            return
+        menu.tk_popup(button.winfo_rootx(), button.winfo_rooty() + button.winfo_height())
+
+    def copy_steps(self):
+        """Remember the picked steps (Ctrl- or Shift-click for several, Ctrl+A
+        for all), and the line's x, for Paste."""
+        l = self.panel.line
+        if not l.steps or self._spectrum_row():
+            self._say("Choose the steps to copy first.", error=True)
+            return
+        self.copied = (tuple(l.steps[i] for i in l.picks), l.x, l.x_fn)
+        n = len(self.copied[0])
+        self._say(f"Copied {n} step{'' if n == 1 else 's'}; Paste puts them on a line.")
+
+    def _paste_menu(self):
+        """With more than one line in the panel, which lines to paste to; else None."""
+        if len(self.panel.lines) < 2 or not self.copied:
+            return None
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label="To this line", command=self.paste_steps)
+        menu.add_command(label="To every line in the panel",
+                         command=lambda: self.paste_steps(every=True))
+        return menu
+
+    def paste_steps(self, every=False):
+        """Put the copied steps after the chosen step of the selected line (or
+        of every line in the panel)."""
+        if not self.copied:
+            self._say("Copy a line's steps first.", error=True)
+            return
+        self._use_steps(*self.copied, every=every, what="Pasted")
+
+    def _use_steps(self, steps, x, x_fn, every=False, what="Pasted"):
+        """Put `steps`, made on x `x` with function `x_fn`, after the chosen
+        step of the selected line (or of every line in the panel), as Add step
+        puts one, and pick them. Cut ranges and x-unit windows only mean
+        something in that x, so a line with another x gets them cleared, as
+        changing x clears them."""
+        p = self.panel
+        before = p.line.steps
+        cleared = False
+        for l in (p.lines if every else [p.line]):
+            same = (l.x, l.x_fn) == (x, x_fn)
+            new = steps if same else without_x_units(steps)
+            cleared |= not same and new != steps
+            at = min(l.step + 1, len(l.steps)) if l.steps else 0
+            l.steps = l.steps[:at] + new + l.steps[at:]
+            l.step, l.picked = at, tuple(range(at, at + len(new)))
+        n = len(steps)
+        note = ("; cut ranges and x-unit windows were left out, as the x differs"
+                if cleared else "")
+        self._steps_changed(before)
+        self._say(f"{what} {n} step{'' if n == 1 else 's'}{note}.")
+
+    def _recipes_menu(self):
+        """The data folder's recipes to apply, and saving or deleting them."""
+        menu = tk.Menu(self, tearoff=0)
+        names = sorted(self.profile.recipes, key=str.lower)
+        for name in names:
+            menu.add_command(label=name, command=lambda name=name: self.apply_recipe(name))
+        if not names:
+            menu.add_command(label="No recipes yet", state=tk.DISABLED)
+        if names and len(self.panel.lines) > 1:
+            every = tk.Menu(menu, tearoff=0)
+            for name in names:
+                every.add_command(label=name,
+                                  command=lambda name=name: self.apply_recipe(name, every=True))
+            menu.add_cascade(label="Apply to every line", menu=every)
+        menu.add_separator()
+        menu.add_command(label="Save steps as recipe...", command=self.save_recipe)
+        if names:
+            gone = tk.Menu(menu, tearoff=0)
+            for name in names:
+                gone.add_command(label=name, command=lambda name=name: self.delete_recipe(name))
+            menu.add_cascade(label="Delete recipe", menu=gone)
+        return menu
+
+    def _store_recipes(self, recipes):
+        """Write `recipes` into the data folder's profile; whether it worked."""
+        try:
+            save_recipes(self.data_dir, recipes)
+        except (OSError, ValueError) as err:
+            self._say(f"Couldn't save the recipes: {err}", error=True)
+            return False
+        self.profile.recipes = recipes
+        return True
+
+    def save_recipe(self, name=None):
+        """Keep the picked steps under a name, in the data folder's profile, so
+        any line in any session can have them (Recipes)."""
+        l = self.panel.line
+        if not l.steps or self._spectrum_row():
+            self._say("Choose the steps to save first.", error=True)
+            return
+        if not self.data_dir:
+            self._say("Choose a data folder first: recipes are kept in it.", error=True)
+            return
+        if name is None:
+            name = simpledialog.askstring("Save recipe", "Name for these steps:", parent=self)
+        name = (name or "").strip()
+        if not name:
+            return
+        if name in self.profile.recipes and not messagebox.askyesno(
+                "Replace recipe?", f"There's already a recipe called '{name}'. Replace it?",
+                parent=self):
+            return
+        picked = tuple(l.steps[i] for i in l.picks)
+        recipe = {"x": l.x, "x_fn": l.x_fn, "steps": session.dump_steps(picked)}
+        if self._store_recipes({**self.profile.recipes, name: recipe}):
+            self._say(f"Saved recipe '{name}'.")
+
+    def apply_recipe(self, name, every=False):
+        """Put recipe `name`'s steps after the chosen step of the selected line
+        (or of every line in the panel)."""
+        recipe = self.profile.recipes.get(name)
+        steps = session.load_steps(recipe.get("steps")) if recipe else ()
+        if not steps:
+            self._say(f"The recipe '{name}' has no steps that can be used.", error=True)
+            return
+        self._use_steps(steps, recipe.get("x"), recipe.get("x_fn"), every=every,
+                        what=f"Used '{name}':")
+
+    def delete_recipe(self, name):
+        if not messagebox.askyesno("Delete recipe?", f"Delete the recipe '{name}'?",
+                                   parent=self):
+            return
+        recipes = {k: v for k, v in self.profile.recipes.items() if k != name}
+        if self._store_recipes(recipes):
+            self._say(f"Deleted recipe '{name}'.")
 
     def _steps_changed(self, before):
         """After the selected line's steps changed from `before`: pass them on

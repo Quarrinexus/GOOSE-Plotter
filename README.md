@@ -116,7 +116,7 @@ stay until it's done or cancelled.
   bottom on the plotted x and y (after their functions). **Add step** puts a
   step after the chosen one; **drag** a step up or down the list to change
   the order; **Remove** (or Delete, after clicking the list) deletes the
-  chosen one, and unticking **On** leaves
+  chosen one (and any picked with it, see below), and unticking **On** leaves
   it out without losing its settings (it shows greyed, "(off)"). A step of
   any kind can be used any number of times, e.g. subtract a polynomial,
   smooth, then subtract again. The chosen step's settings show under the
@@ -193,6 +193,32 @@ stay until it's done or cancelled.
   toolbar's; Remove ranges hides, e.g., the low-frequency end. It's the FFT
   panel's own, so its data panel and lines aren't cut. Changing x or its
   function clears it, as it does every step's ranges and x-unit windows.
+
+  **Picking several steps**: Ctrl+click adds a step to the one chosen (or
+  takes it out again), Shift+click picks every step from the chosen one to
+  the one clicked, and Ctrl+A, after clicking the list, picks them all. The
+  settings shown are the last clicked one's. **Remove** (or Delete) removes
+  every picked step, **On** turns them all on or off, and Copy and Save
+  steps as recipe take just those.
+
+  **Copy** and **Paste** (under Add step; Ctrl+Shift+C and Ctrl+Shift+V)
+  reuse steps: Copy remembers the picked steps, and Paste puts them after
+  the chosen step of the selected line, as Add step would, on any line,
+  panel or plot tab, and picks them (so Remove takes them back out). To
+  copy a line's whole processing, Ctrl+A the list first. With more than
+  one line in the panel, Paste asks whether it's for this line or every
+  line in the panel. Cut ranges and x-unit smoothing windows are in the
+  plotted x, so pasted onto a line with another x (or x function) they're
+  left out, as they are when x changes; the rest (degree, method, a fit
+  function, ...) comes along. One Ctrl+Z undoes a paste.
+
+  **Recipes** keeps a list of steps by name, in the data folder's
+  `goose-plotter.json`, so any line in any session can have it: **Save steps
+  as recipe...** names the picked steps, choosing a recipe puts its steps
+  after the chosen step, as Paste does (**Apply to every line** on all of
+  the panel's lines),
+  and **Delete recipe** forgets one. A recipe remembers the x it was made on
+  and keeps its cut ranges only on a line with the same x, as Paste does.
 
   Sessions saved before steps open with each line's old settings as steps,
   in the order they were done: cut, despike, background, smoothing (a Show

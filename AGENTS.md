@@ -56,7 +56,7 @@ mirror. If that folder isn't around this repo, use whatever data folder
 | `measure.py` | the Measure tab's reading: extremes in a region, peaks, parabola refining, snapping to a drawn point |
 | `colourmaps.py` | the Colour Maps menu's maps (the nanoanalysis ones copied from igtz-hub/nanoanalysis_cm), spread over a panel's lines or stepped |
 | `axis_functions.py` | the Function boxes (`1/x`, `exp(y)`, ...) |
-| `datasets.py`, `format_dialog.py`, `profile.py`, `columns.py` | reading files and per-folder profiles |
+| `datasets.py`, `format_dialog.py`, `profile.py`, `columns.py` | reading files and per-folder profiles (labels, units, format, step recipes) |
 | `toolbar.py` | the plot's toolbar: matplotlib's, with drawn icons and the theme's look, plus Layout and Delete panel |
 | `widgets.py` | the line and axes editors, colour picker, layout grid, overwrite question, `TabStrip`, `StepList`, `Tooltip`, `key_of` |
 | `session.py` | panels and lines to and from JSON-ready data, for session files and undo |
@@ -139,6 +139,20 @@ Things that depend on it:
   one. On an FFT panel the row after the steps (`_spectrum_row`, `l.step ==
   len(l.steps)`) is the panel's own cut of its spectrum (`Panel.cut` /
   `cuts`), edited with the Cut editor (`_cut_ranges`, `_set_cuts`).
+- **Picking several steps**: `Line.picked` (not saved, like `step`) holds
+  the steps picked with the chosen one; read it through `Line.picks`, which
+  adds `step` and drops indices past the end (a link may have shortened the
+  list). `choose_step(index, how)` sets both, from the `StepList`'s
+  Ctrl/Shift-click or Ctrl+A; anything that moves `step` otherwise clears
+  `picked`. Remove, On, Copy and Save as recipe act on `picks`; the editor
+  shows `chosen` alone.
+- **Reusing steps**: Copy keeps `(steps, x, x_fn)` in `self.copied` (not in
+  `_plot_state`, so it crosses plot tabs); recipes are `Profile.recipes`,
+  `{name: {"x", "x_fn", "steps": session.dump_steps(...)}}`, written with
+  `profile.save_recipes` into the data folder's profile. Both go through
+  `_use_steps`, which inserts them after each line's chosen step (picking
+  them), gives a line with another `(x, x_fn)` the steps `without_x_units`,
+  and ends in `_steps_changed`, so links and undo follow.
 - **Style isn't in `shown`**, on purpose: `Line.style`, `width`, `marker`,
   `marker_size` and `label` go through `Line.plot_style()` and the legend only, so they
   don't touch the `_line_data` cache, the filename or the zoom logic. A

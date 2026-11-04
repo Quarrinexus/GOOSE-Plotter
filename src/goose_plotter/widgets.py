@@ -720,10 +720,13 @@ class AxesPopup(tk.Toplevel):
 
 
 class StepList(ttk.Frame):
-    """A line's steps, a row each: a click chooses one, `on_choose(index)`, and
-    a drag moves it, `on_move(old, new)` when the button is let go. Rows from
-    `fixed` on (an FFT panel's spectrum cut, after the steps) can be chosen
-    but not moved, nor moved past. Width 1: it takes the column's width."""
+    """A line's steps, a row each: a click chooses one, `on_choose(index, how)`
+    with `how` "" (that one), "toggle" (Ctrl-click: pick it too, or unpick
+    it), "range" (Shift-click: every row from the chosen one) or "all"
+    (Ctrl+A, index None); a drag moves one, `on_move(old, new)` when the
+    button is let go. Rows from `fixed` on (an FFT panel's spectrum cut,
+    after the steps) can be chosen but not moved, nor moved past, nor
+    picked with others. Width 1: it takes the column's width."""
 
     def __init__(self, parent, on_choose, on_move, height=4):
         super().__init__(parent)
@@ -740,10 +743,12 @@ class StepList(ttk.Frame):
         self.list.bind("<Button-1>", self._press)
         self.list.bind("<B1-Motion>", self._motion)
         self.list.bind("<ButtonRelease-1>", self._release)
+        for key in ("<Control-a>", "<Control-A>"):
+            self.list.bind(key, lambda _: self.on_choose(None, "all") or "break")
 
-    def show(self, rows, chosen, off=(), fixed=None):
-        """`rows`' texts, `chosen` selected, those in `off` greyed; rows from
-        `fixed` on can't be moved (None: all can)."""
+    def show(self, rows, chosen, off=(), fixed=None, picked=()):
+        """`rows`' texts, `chosen` and those in `picked` selected, those in
+        `off` greyed; rows from `fixed` on can't be moved (None: all can)."""
         self.list.delete(0, tk.END)
         for i, text in enumerate(rows):
             self.list.insert(tk.END, text)
@@ -751,7 +756,8 @@ class StepList(ttk.Frame):
                 self.list.itemconfigure(i, foreground=theme.HINT, selectforeground=theme.HINT)
         self.fixed = len(rows) if fixed is None else fixed
         if rows:
-            self.list.selection_set(chosen)
+            for i in {chosen, *picked}:
+                self.list.selection_set(i)
             self.list.see(chosen)
 
     def _row(self, event):
@@ -765,8 +771,11 @@ class StepList(ttk.Frame):
         i = self._row(event)
         if i is None:
             return "break"  # a click below the rows chooses nothing
-        self.drag = self.target = i if i < self.fixed else None
-        self.on_choose(i)
+        how = ("toggle" if event.state & 0x4 else "range" if event.state & 0x1 else "")
+        if i >= self.fixed:
+            how = ""  # the spectrum cut is chosen on its own
+        self.drag = self.target = i if i < self.fixed and not how else None
+        self.on_choose(i, how)
         return "break"  # on_choose shows the rows again, choice included
 
     def _motion(self, event):
