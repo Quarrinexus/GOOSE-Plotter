@@ -4,8 +4,11 @@ import json
 import os
 from pathlib import Path
 
-SETTINGS_FILE = (Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
-                 / "goose-plotter" / "settings.json")
+SETTINGS_FILE = (
+    Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    / "goose-plotter"
+    / "settings.json"
+)
 
 
 def load_settings():

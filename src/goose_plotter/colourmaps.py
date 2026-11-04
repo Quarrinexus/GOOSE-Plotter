@@ -8,9 +8,30 @@ from matplotlib.colors import LinearSegmentedColormap, to_hex
 # installed: that package registers them with plt.register_cmap, which
 # matplotlib 3.9 removed).
 NANOANALYSIS = {
-    "nanoanalysis_muted": ("#BD2020", "#EDC430", "#2FAC55", "#2F95AC", "#352FAC", "#B63896"),
-    "nanoanalysis_bright": ("#B50E0E", "#FF8E00", "#F6F93A", "#0080FF", "#452ABE", "#DE46AE"),
-    "nanoanalysis_hazy": ("#EA4A4A", "#EFD267", "#5BDD82", "#67D5EE", "#5F66E9", "#E484CC"),
+    "nanoanalysis_muted": (
+        "#BD2020",
+        "#EDC430",
+        "#2FAC55",
+        "#2F95AC",
+        "#352FAC",
+        "#B63896",
+    ),
+    "nanoanalysis_bright": (
+        "#B50E0E",
+        "#FF8E00",
+        "#F6F93A",
+        "#0080FF",
+        "#452ABE",
+        "#DE46AE",
+    ),
+    "nanoanalysis_hazy": (
+        "#EA4A4A",
+        "#EFD267",
+        "#5BDD82",
+        "#67D5EE",
+        "#5F66E9",
+        "#E484CC",
+    ),
 }
 # Each taken from its blue, wrapping round (blue, indigo, pink, red, yellow,
 # green), so the first lines are blue, as in the other maps.
@@ -18,9 +39,16 @@ FROM_BLUE = 3
 
 # Map key -> name shown in the menu. "classic" is no map: the profile's sample
 # colours, else model.PALETTE.
-MAPS = {"nanoanalysis_bright": "nanoanalysis bright", "nanoanalysis_muted": "nanoanalysis muted",
-        "nanoanalysis_hazy": "nanoanalysis hazy", "viridis": "viridis", "plasma": "plasma",
-        "coolwarm": "coolwarm", "tab10": "tab10", "classic": "Classic"}
+MAPS = {
+    "nanoanalysis_bright": "nanoanalysis bright",
+    "nanoanalysis_muted": "nanoanalysis muted",
+    "nanoanalysis_hazy": "nanoanalysis hazy",
+    "viridis": "viridis",
+    "plasma": "plasma",
+    "coolwarm": "coolwarm",
+    "tab10": "tab10",
+    "classic": "Classic",
+}
 DEFAULT = "classic"
 STEPPED = {"tab10"}  # distinct colours, taken in turn rather than spread
 
@@ -29,7 +57,9 @@ def colourmap(name):
     """The matplotlib colormap for a MAPS key other than "classic"."""
     if name in NANOANALYSIS:
         anchors = NANOANALYSIS[name]
-        return LinearSegmentedColormap.from_list(name, anchors[FROM_BLUE:] + anchors[:FROM_BLUE])
+        return LinearSegmentedColormap.from_list(
+            name, anchors[FROM_BLUE:] + anchors[:FROM_BLUE]
+        )
     return matplotlib.colormaps[name]
 
 
@@ -47,4 +77,6 @@ def strip(name, steps=64):
     in the menu."""
     cmap = colourmap(name)
     count = cmap.N if name in STEPPED else steps
-    return [to_hex(cmap(i if name in STEPPED else i / (count - 1))) for i in range(count)]
+    return [
+        to_hex(cmap(i if name in STEPPED else i / (count - 1))) for i in range(count)
+    ]

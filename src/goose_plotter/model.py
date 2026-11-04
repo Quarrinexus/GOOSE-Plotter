@@ -14,9 +14,16 @@ from goose_plotter.datasets import describe
 
 # What a link between two panels can share, line by line: a Link's `sync`
 # names the keys it shares.
-SYNC = {"run": ("run",), "x": ("x",), "x_fn": ("x_fn",), "y": ("y",), "y_fn": ("y_fn",),
-        "colour": ("colour",), "steps": ("steps",),
-        "style": ("style", "width", "marker", "marker_size")}
+SYNC = {
+    "run": ("run",),
+    "x": ("x",),
+    "x_fn": ("x_fn",),
+    "y": ("y",),
+    "y_fn": ("y_fn",),
+    "colour": ("colour",),
+    "steps": ("steps",),
+    "style": ("style", "width", "marker", "marker_size"),
+}
 SYNC_DEFAULT = "run x x_fn y y_fn colour style"
 X_UNITS = ("span", "cuts")  # Step settings in the plotted x
 
@@ -25,13 +32,28 @@ AUTO_MARKER_SIZE = 3.0  # matplotlib's markersize, in points
 NEUTRAL = "#2464d6"  # line colour when no sample column is plotted
 
 # Colours for extra lines once a panel's sample colours are taken.
-PALETTE = ("#2464d6", "#eb6834", "#2e9e5b", "#8e5bd1", "#c23b6e", "#1a9aa0",
-           "#b58900", "#52514e")
+PALETTE = (
+    "#2464d6",
+    "#eb6834",
+    "#2e9e5b",
+    "#8e5bd1",
+    "#c23b6e",
+    "#1a9aa0",
+    "#b58900",
+    "#52514e",
+)
 
 
 # Step kind -> its name in the list and the Add step menu.
-KINDS = {"cut": "Cut", "despike": "Despike", "smooth": "Smooth", "fit": "Fit curve",
-         "subtract": "Subtract", "fft": "FFT", "derivative": "Derivative"}
+KINDS = {
+    "cut": "Cut",
+    "despike": "Despike",
+    "smooth": "Smooth",
+    "fit": "Fit curve",
+    "subtract": "Fit residual",
+    "fft": "FFT",
+    "derivative": "Derivative",
+}
 # Kinds that turn the line into something else: its spectrum, or its slope.
 TRANSFORMS = ("fft", "derivative")
 
@@ -45,6 +67,7 @@ class Step:
     "subtract" takes its fit off the data for the steps after it; "fit" draws
     its fit of the data as it is there, over the line, leaving the data as it
     was, or with `only` puts the fit in the data's place, so the line is its fit."""
+
     kind: str = "smooth"  # a key of KINDS
     on: bool = True
     cut: str = "remove"  # cut: what it does to its range (always "remove")
@@ -71,7 +94,11 @@ class Step:
     @property
     def cutting(self):
         """(mode, ranges), or None while it has no ranges."""
-        return (self.cut, self.cuts) if self.kind == "cut" and self.cut and self.cuts else None
+        return (
+            (self.cut, self.cuts)
+            if self.kind == "cut" and self.cut and self.cuts
+            else None
+        )
 
     @property
     def despiking(self):
@@ -93,7 +120,12 @@ class Step:
         """(method, window or span, order, in_x), as smoothing.smooth takes it."""
         if self.kind != "smooth" or not self.method:
             return None
-        return (self.method, self.span if self.in_x else self.window, self.order, self.in_x)
+        return (
+            self.method,
+            self.span if self.in_x else self.window,
+            self.order,
+            self.in_x,
+        )
 
     @property
     def active(self):
@@ -129,9 +161,12 @@ class Step:
         if self.fitting:
             return background.file_part(*self.fitting)
         if self.kind == "fft":
-            return ("fft" + ("" if self.fft_window == "hann" else "_nowindow")
-                    + (f"_pad{self.pad}" if self.pad > 1 else "")
-                    + (f"_fmax{self.f_max:g}" if self.f_max else ""))
+            return (
+                "fft"
+                + ("" if self.fft_window == "hann" else "_nowindow")
+                + (f"_pad{self.pad}" if self.pad > 1 else "")
+                + (f"_fmax{self.f_max:g}" if self.f_max else "")
+            )
         if self.kind == "derivative":
             return f"{self.d_order}_w{self.d_window}"
         return smoothing.file_part(*self.smoothing) if self.smoothing else ""
@@ -140,6 +175,7 @@ class Step:
 @dataclass
 class Line:
     """One plotted line. x and y are column names."""
+
     run: str = ""
     x: str = ""  # "": the profile's default, see Plotter._load
     x_fn: str = "x"
@@ -157,7 +193,9 @@ class Line:
     width: float | None = None  # None: auto_width
     marker: str = ""  # a key of MARKERS
     marker_size: float | None = None  # None: AUTO_MARKER_SIZE
-    label: str | None = None  # its name in the legend; None: the automatic one, "": none
+    label: str | None = (
+        None  # its name in the legend; None: the automatic one, "": none
+    )
     # (run, x, x_fn, y, y_fn, steps) as last drawn
     shown: tuple | None = None
     error: str = ""  # why the last draw failed, if it did
@@ -169,11 +207,17 @@ class Line:
 
     def plot_style(self):
         """matplotlib keywords for its line and markers (colour aside)."""
-        kwargs = {"ls": "None" if self.style == "none" else self.style,
-                  "lw": self.auto_width if self.width is None else self.width}
+        kwargs = {
+            "ls": "None" if self.style == "none" else self.style,
+            "lw": self.auto_width if self.width is None else self.width,
+        }
         if self.marker:
-            kwargs |= {"marker": self.marker,
-                       "ms": AUTO_MARKER_SIZE if self.marker_size is None else self.marker_size}
+            kwargs |= {
+                "marker": self.marker,
+                "ms": AUTO_MARKER_SIZE
+                if self.marker_size is None
+                else self.marker_size,
+            }
         return kwargs
 
     @property
@@ -188,7 +232,9 @@ class Line:
         if not self.steps:
             return ()
         n = len(self.steps)
-        return tuple(sorted({i for i in self.picked if i < n} | {min(self.step, n - 1)}))
+        return tuple(
+            sorted({i for i in self.picked if i < n} | {min(self.step, n - 1)})
+        )
 
     def clear_x_units(self):
         """Forget the step settings in the plotted x (X_UNITS), when x or its function changes."""
@@ -198,8 +244,12 @@ class Line:
         """(run, y part, x part, the steps that do anything) as they'd appear
         in a filename and the legend."""
         run, x, x_fn, y, y_fn, steps = self.shown
-        return (run, file_part(y_fn, y), file_part(x_fn, x),
-                tuple(s for s in steps if s.active))
+        return (
+            run,
+            file_part(y_fn, y),
+            file_part(x_fn, x),
+            tuple(s for s in steps if s.active),
+        )
 
 
 def split_steps(steps):
@@ -232,8 +282,11 @@ def _shares(values, n):
         shares = tuple(round(float(v), 3) for v in values)
     except (TypeError, ValueError):
         return ()
-    if (len(shares) != n or not all(math.isfinite(v) and v > 0 for v in shares)
-            or len(set(shares)) <= 1):
+    if (
+        len(shares) != n
+        or not all(math.isfinite(v) and v > 0 for v in shares)
+        or len(set(shares)) <= 1
+    ):
         return ()
     return shares
 
@@ -244,16 +297,23 @@ class Layout:
     number of them (`counts`), and how the room is shared: each row's share
     of the height, and per row each panel's share of its width. Shares are
     () for equal. Panels are kept by (row, column), column < counts[row]."""
+
     counts: tuple = (1,)
     heights: tuple = ()
     widths: tuple = ()  # per row: () or that row's shares
 
     def __post_init__(self):
         counts = tuple(self.counts)
-        widths = tuple(self.widths) if len(self.widths) == len(counts) else ((),) * len(counts)
+        widths = (
+            tuple(self.widths)
+            if len(self.widths) == len(counts)
+            else ((),) * len(counts)
+        )
         object.__setattr__(self, "counts", counts)
         object.__setattr__(self, "heights", _shares(self.heights, len(counts)))
-        object.__setattr__(self, "widths", tuple(_shares(w, n) for w, n in zip(widths, counts)))
+        object.__setattr__(
+            self, "widths", tuple(_shares(w, n) for w, n in zip(widths, counts))
+        )
 
     @classmethod
     def grid(cls, rows, cols):
@@ -269,7 +329,7 @@ class Layout:
 
     def number(self, cell):
         """A panel's number as the user sees it: 1, 2, ... across then down."""
-        return sum(self.counts[:cell[0]]) + cell[1] + 1
+        return sum(self.counts[: cell[0]]) + cell[1] + 1
 
     def row_heights(self):
         return self.heights or (1,) * self.rows
@@ -281,9 +341,11 @@ class Layout:
         """These rows and counts, keeping the sizes that still fit: a row's
         height while it's there, its widths while its count is the same."""
         counts = tuple(counts)
-        heights = self.row_heights()[:len(counts)] + (1,) * (len(counts) - self.rows)
-        widths = tuple(self.widths[r] if r < self.rows and self.counts[r] == n else ()
-                       for r, n in enumerate(counts))
+        heights = self.row_heights()[: len(counts)] + (1,) * (len(counts) - self.rows)
+        widths = tuple(
+            self.widths[r] if r < self.rows and self.counts[r] == n else ()
+            for r, n in enumerate(counts)
+        )
         return Layout(counts, heights, widths)
 
     def without(self, cell):
@@ -293,11 +355,14 @@ class Layout:
         if self.counts[r] > 1:
             widths = list(self.widths)
             widths[r] = tuple(w for i, w in enumerate(self.col_widths(r)) if i != c)
-            counts = self.counts[:r] + (self.counts[r] - 1,) + self.counts[r + 1:]
+            counts = self.counts[:r] + (self.counts[r] - 1,) + self.counts[r + 1 :]
             return Layout(counts, self.heights, widths)
         heights = self.row_heights()
-        return Layout(self.counts[:r] + self.counts[r + 1:], heights[:r] + heights[r + 1:],
-                      self.widths[:r] + self.widths[r + 1:])
+        return Layout(
+            self.counts[:r] + self.counts[r + 1 :],
+            heights[:r] + heights[r + 1 :],
+            self.widths[:r] + self.widths[r + 1 :],
+        )
 
     def resized(self, heights=None, row=None, widths=None):
         """With new `heights`, or new `widths` for `row`."""
@@ -308,8 +373,11 @@ class Layout:
         return Layout(self.counts, self.heights, rows)
 
     def plain(self):
-        return {"counts": list(self.counts), "heights": list(self.heights),
-                "widths": [list(w) for w in self.widths]}
+        return {
+            "counts": list(self.counts),
+            "heights": list(self.heights),
+            "widths": [list(w) for w in self.widths],
+        }
 
     @classmethod
     def from_plain(cls, data):
@@ -318,12 +386,18 @@ class Layout:
             counts = tuple(int(n) for n in data["counts"])
         except (KeyError, TypeError, ValueError) as err:
             raise ValueError(f"not a layout ({err})") from None
-        if not (1 <= len(counts) <= MAX_GRID and all(1 <= n <= MAX_GRID for n in counts)):
+        if not (
+            1 <= len(counts) <= MAX_GRID and all(1 <= n <= MAX_GRID for n in counts)
+        ):
             raise ValueError("that layout is bigger than the plotter allows")
         widths = data.get("widths")
-        return cls(counts, data.get("heights") or (),
-                   tuple(w if isinstance(w, list) else () for w in widths)
-                   if isinstance(widths, list) else ())
+        return cls(
+            counts,
+            data.get("heights") or (),
+            tuple(w if isinstance(w, list) else () for w in widths)
+            if isinstance(widths, list)
+            else (),
+        )
 
 
 @dataclass
@@ -331,6 +405,7 @@ class Link:
     """A link between two panels (the Plotter keeps them by the pair of their
     ids): which settings it shares, line by line, both ways, and whether it's
     frozen, kept but sharing nothing for now."""
+
     sync: str = SYNC_DEFAULT  # SYNC keys, space-separated
     frozen: bool = False
 
@@ -348,6 +423,7 @@ class Panel:
     data panel's lines with that step added, linked to it; `source` is that
     data panel's cell while the link lasts, for its title.
     `id` names the panel for its links, as its cell can change."""
+
     lines: list = field(default_factory=lambda: [Line()])
     selected: int = 0
     source: tuple | None = None
@@ -385,19 +461,30 @@ class Panel:
 
 
 # Line style and marker -> the text in their menus.
-STYLES = {"-": "Solid", "--": "Dashed", ":": "Dotted", "-.": "Dash-dot",
-          "none": "None"}
-MARKERS = {"": "None", ".": "Dots", "o": "Circles", "s": "Squares", "^": "Triangles",
-           "x": "Crosses"}
+STYLES = {"-": "Solid", "--": "Dashed", ":": "Dotted", "-.": "Dash-dot", "none": "None"}
+MARKERS = {
+    "": "None",
+    ".": "Dots",
+    "o": "Circles",
+    "s": "Squares",
+    "^": "Triangles",
+    "x": "Crosses",
+}
 
 RANGES = ("x_min", "x_max", "y_min", "y_max")
 
 
 # Legend placement -> the text in its menu. "auto": only with two or more
 # lines, wherever there's room; a placement shows it even for one line.
-LEGENDS = {"auto": "Auto", "off": "Off", "upper right": "Top right",
-           "upper left": "Top left", "lower left": "Bottom left",
-           "lower right": "Bottom right", "outside": "Outside right"}
+LEGENDS = {
+    "auto": "Auto",
+    "off": "Off",
+    "upper right": "Top right",
+    "upper left": "Top left",
+    "lower left": "Bottom left",
+    "lower right": "Bottom right",
+    "outside": "Outside right",
+}
 
 # Grid lines -> the text on their buttons. "minor" draws the major lines too.
 GRIDS = {"off": "Off", "major": "Major", "minor": "Major + minor"}
@@ -427,9 +514,15 @@ def fit_curves(panel):
     """(line index, step index) of each fit curve the panel draws, in order:
     the fit steps that are on and drawn over their line (not `only`), and no
     FFT or Derivative after them (which would leave them in other units)."""
-    return [(i, j) for i, l in enumerate(panel.lines) for j, s in enumerate(l.steps)
-            if s.kind == "fit" and s.on and not s.only
-            and not any(t.active and t.kind in TRANSFORMS for t in l.steps[j + 1:])]
+    return [
+        (i, j)
+        for i, l in enumerate(panel.lines)
+        for j, s in enumerate(l.steps)
+        if s.kind == "fit"
+        and s.on
+        and not s.only
+        and not any(t.active and t.kind in TRANSFORMS for t in l.steps[j + 1 :])
+    ]
 
 
 def overlay(step):
@@ -444,9 +537,15 @@ def curve_colours(panel, samples, colour_map="classic"):
     sample's colour, else an unused PALETTE one, for lines and curves alike."""
     lines = panel.lines
     curves = fit_curves(panel)
-    order = sorted([(i, -1) for i in range(len(lines))] + curves)  # each line, then its fits
-    picked = {key: (lines[key[0]].colour if key[1] < 0 else lines[key[0]].steps[key[1]].colour)
-              for key in order}
+    order = sorted(
+        [(i, -1) for i in range(len(lines))] + curves
+    )  # each line, then its fits
+    picked = {
+        key: (
+            lines[key[0]].colour if key[1] < 0 else lines[key[0]].steps[key[1]].colour
+        )
+        for key in order
+    }
     colours = dict(picked)
     if colour_map == "classic":
         used = [c for c in picked.values() if c]
@@ -458,16 +557,20 @@ def curve_colours(panel, samples, colour_map="classic"):
                 l = lines[key[0]]
                 wanted = samples.get(sample_of(samples, l.y, l.x), NEUTRAL)
             if near(wanted, used):
-                wanted = next((c for c in PALETTE if not near(c, used)),
-                              PALETTE[len(used) % len(PALETTE)])
+                wanted = next(
+                    (c for c in PALETTE if not near(c, used)),
+                    PALETTE[len(used) % len(PALETTE)],
+                )
             colours[key] = wanted
             used.append(wanted)
     else:
         # A picked colour keeps its curve's place, so picking one moves no other.
         for key, colour in zip(order, colourmaps.colours(colour_map, len(order))):
             colours[key] = colours[key] or colour
-    return ([colours[(i, -1)] for i in range(len(lines))],
-            {key: colours[key] for key in curves})
+    return (
+        [colours[(i, -1)] for i in range(len(lines))],
+        {key: colours[key] for key in curves},
+    )
 
 
 def line_colours(panel, samples, colour_map="classic"):
@@ -478,8 +581,10 @@ def line_colours(panel, samples, colour_map="classic"):
 def legend_labels(lines):
     """Legend text naming only what differs between the lines. Fit curves
     drawn over a line don't change its data, so they're left out of what's compared."""
-    parts = [l.parts()[:3] + (tuple(s for s in l.parts()[3] if not overlay(s)),)
-             for l in lines]
+    parts = [
+        l.parts()[:3] + (tuple(s for s in l.parts()[3] if not overlay(s)),)
+        for l in lines
+    ]
     differs = [len({p[i] for p in parts}) > 1 for i in range(4)]
     if not any(differs[:3]):
         differs[1] = True  # identical, or only processed differently: say what's on y

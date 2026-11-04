@@ -30,22 +30,35 @@ FORMAT = 12
 SKIP = {"shown", "error", "found", "step", "picked", "lines", "selected", "source"}
 # Settings that must be one of a menu's keys; anything else gets the default.
 # Per class: a Panel's window is the FFT's.
-CHOICES = {Line: {"style": STYLES, "marker": MARKERS},
-           Step: {"kind": KINDS, "cut": {"remove": splicing.MODES["remove"]},
-                  "fft_window": spectrum.WINDOWS, "pad": spectrum.PADDING,
-                  "d_order": derivative.ORDERS,
-                  "method": {k: v for k, v in smoothing.METHODS.items() if k}},
-           Panel: {"legend": LEGENDS, "grid": GRIDS, "grid_axis": GRID_AXES,
-                   "grid_style": GRID_STYLES},
-           Link: {}}
+CHOICES = {
+    Line: {"style": STYLES, "marker": MARKERS},
+    Step: {
+        "kind": KINDS,
+        "cut": {"remove": splicing.MODES["remove"]},
+        "fft_window": spectrum.WINDOWS,
+        "pad": spectrum.PADDING,
+        "d_order": derivative.ORDERS,
+        "method": {k: v for k, v in smoothing.METHODS.items() if k},
+    },
+    Panel: {
+        "legend": LEGENDS,
+        "grid": GRIDS,
+        "grid_axis": GRID_AXES,
+        "grid_style": GRID_STYLES,
+    },
+    Link: {},
+}
 
 
 def _steps(saved):
     """`Line.steps` from a session: a Step from each object that is one."""
     if not isinstance(saved, list):
         return ()
-    return tuple(_build(Step, data) for data in saved
-                 if isinstance(data, dict) and data.get("kind") in KINDS)
+    return tuple(
+        _build(Step, data)
+        for data in saved
+        if isinstance(data, dict) and data.get("kind") in KINDS
+    )
 
 
 def dump_steps(steps):
@@ -59,17 +72,21 @@ def load_steps(saved):
 
 
 # Fields holding a list, and what makes the saved one fit, per class as for CHOICES.
-TIDY = {Line: {"steps": _steps},
-        Step: {"cuts": splicing.tidy},
-        Panel: {"region": measure.tidy_region,
-                "points": measure.tidy_points},
-        Link: {}}
+TIDY = {
+    Line: {"steps": _steps},
+    Step: {"cuts": splicing.tidy},
+    Panel: {"region": measure.tidy_region, "points": measure.tidy_points},
+    Link: {},
+}
 
 # Numbers that only make sense above 0, per class as for CHOICES; the
 # controls refuse the rest too.
-POSITIVE = {Line: {"width", "marker_size"},
-            Step: {"spike_window", "threshold", "window", "span", "f_max", "d_window"},
-            Panel: {"peak_count"}, Link: set()}
+POSITIVE = {
+    Line: {"width", "marker_size"},
+    Step: {"spike_window", "threshold", "window", "span", "f_max", "d_window"},
+    Panel: {"peak_count"},
+    Link: set(),
+}
 
 
 def cell_key(cell):
@@ -96,10 +113,18 @@ def dump(panels, layout, links):
         if p.source is not None:
             data["source"] = cell_key(p.source)
         out[cell_key(cell)] = data
-    saved_links = [{"a": a, "b": b, "sync": link.sync, "frozen": link.frozen}
-                   for (a, b), link in sorted((tuple(sorted(pair)), link)
-                                              for pair, link in links.items())]
-    return {"format": FORMAT, "layout": layout.plain(), "panels": out, "links": saved_links}
+    saved_links = [
+        {"a": a, "b": b, "sync": link.sync, "frozen": link.frozen}
+        for (a, b), link in sorted(
+            (tuple(sorted(pair)), link) for pair, link in links.items()
+        )
+    ]
+    return {
+        "format": FORMAT,
+        "layout": layout.plain(),
+        "panels": out,
+        "links": saved_links,
+    }
 
 
 def _allowed(f, value):
@@ -159,7 +184,9 @@ def load(state):
         lines = [_build(Line, l) for l in data.get("lines") or []] or [Line()]
         panels[cell] = _build(Panel, data, lines=lines, source=_source(data, grid))
     seen = set()
-    for p in panels.values():  # ids must tell panels apart; a file edited by hand may not
+    for (
+        p
+    ) in panels.values():  # ids must tell panels apart; a file edited by hand may not
         if p.id in seen:
             p.id = Panel().id
         seen.add(p.id)

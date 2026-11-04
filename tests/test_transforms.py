@@ -7,9 +7,16 @@ from goose_plotter.model import Step, split_steps, view
 
 
 def test_split_and_view():
-    steps = (Step("smooth"), Step("fft", on=False), Step("cut"), Step("derivative", d_order="d2"))
+    steps = (
+        Step("smooth"),
+        Step("fft", on=False),
+        Step("cut"),
+        Step("derivative", d_order="d2"),
+    )
     assert split_steps(steps) == (steps[:1], steps[1:])  # at the FFT, on or off
-    assert view(steps) == "d2" and view(steps[:3]) == "" and view((Step("fft"),)) == "fft"
+    assert (
+        view(steps) == "d2" and view(steps[:3]) == "" and view((Step("fft"),)) == "fft"
+    )
 
 
 def fft_of_data(app):

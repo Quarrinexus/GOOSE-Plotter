@@ -118,8 +118,8 @@ stay until it's done or cancelled.
   the order; **Remove** (or Delete, after clicking the list) deletes the
   chosen one (and any picked with it, see below), and unticking **On** leaves
   it out without losing its settings (it shows greyed, "(off)"). A step of
-  any kind can be used any number of times, e.g. subtract a polynomial,
-  smooth, then subtract again. The chosen step's settings show under the
+  any kind can be used any number of times, e.g. a Fit residual, a
+  Smooth, then another Fit residual. The chosen step's settings show under the
   list. The kinds:
   - **Cut**: cuts one x range out of the line (a glitch, a parked
     stretch), leaving a gap: type x ... to ... and press Enter, or **Pick**
@@ -136,14 +136,16 @@ stay until it's done or cancelled.
     times the local spread (the median absolute deviation, as a standard
     deviation) away from the median of the **Window** points around it,
     taken in the order they were recorded (a Hampel filter). The number
-    removed shows under the boxes. Put it before a Subtract so spikes can't
+    removed shows under the boxes. Put it before a Fit residual so spikes can't
     pull the fit. A spike wider than about half the window isn't caught;
     widen the window. A spike on a very steep part of a line can be missed
     too, as the slope counts as spread; lower the Threshold, or cut it out.
-  - **Subtract**: fits a polynomial of the chosen **Polynomial degree** (5
-    to start with) to the line as it is at that step, against the plotted x
-    (so in 1/B with a `1/x` function), and takes it off, leaving the
-    oscillations for the steps after it.
+  - **Fit residual**: fits a polynomial of the chosen **Polynomial
+    degree** (5 to start with) to the line as it is at that step, against
+    the plotted x (so in 1/B with a `1/x` function), and leaves the
+    residual, the data minus the fit: the background taken off, the
+    oscillations left for the steps after it. The legend and y label mark
+    it with "−".
   - **Smooth**: moving average, median or Savitzky–Golay (with its
     polynomial order) over a window of points, taken in the order they were
     recorded; SG needs an odd window. Or set the window in **x units**: the
@@ -156,9 +158,9 @@ stay until it's done or cancelled.
   - **Fit curve**: fits a polynomial, or a function of your own, to the
     line as it is at that step and draws it over the line, dashed, in a
     colour of its own and with its own legend entry ("fit: ..."). It
-    leaves the line as it was, so it usually goes last: e.g. Cut, Subtract,
-    Smooth, then Fit curve `A * sin(B * x + C) + D` to the oscillation left.
-    Fit curves are drawn on data panels only, not on their FFT or derivative.
+    leaves the line as it was, so it usually goes last: e.g. Cut, Fit
+    residual, Smooth, then Fit curve `A * sin(B * x + C) + D` to the oscillation left.
+    A Fit curve before an FFT or Derivative isn't drawn, being in the data's units.
     If its fit fails, the reason shows in red and the line is still drawn.
     Tick **Show only fit** to draw the fit instead of the data: the line
     then *is* its fit, in its FFT and Measure too, and the steps after it
@@ -173,7 +175,7 @@ stay until it's done or cancelled.
   power first), each with its standard error, plus adjusted R squared and
   the residual standard error. **Copy** copies the text; **Export** writes the numbers to a CSV.
 
-  Subtract and Fit curve have **Advanced Fitting**: tick it to fit a
+  Fit residual and Fit curve have **Advanced Fitting**: tick it to fit a
   function of your own instead of the polynomial. Greyed out, the **y =**
   box shows the polynomial that Polynomial degree fits (`A*x**5 + B*x**4 +
   ... + F`), and ticking starts you from it. Type a function of x there,

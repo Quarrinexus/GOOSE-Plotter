@@ -34,9 +34,13 @@ def spikes(y, window, threshold):
         raise ValueError("the threshold must be above 0")
     y = np.asarray(y, dtype=float)
     if len(y) < window:
-        raise ValueError(f"a window of {window} points is longer than the line ({len(y)})")
+        raise ValueError(
+            f"a window of {window} points is longer than the line ({len(y)})"
+        )
     half = window // 2
-    padded = np.concatenate([np.full(half, np.nan), y, np.full(window - 1 - half, np.nan)])
+    padded = np.concatenate(
+        [np.full(half, np.nan), y, np.full(window - 1 - half, np.nan)]
+    )
     rows = np.lib.stride_tricks.sliding_window_view(padded, window)
     with warnings.catch_warnings():  # all-NaN windows (inside a removed range) stay NaN
         warnings.simplefilter("ignore", RuntimeWarning)

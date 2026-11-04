@@ -17,7 +17,10 @@ def test_layout_rows_numbers_and_sizes():
     assert Layout((2,), widths=((1, 1),)) == Layout((2,))  # equal shares are no shares
     sized = Layout((1, 2), heights=(2, 1), widths=((), (1, 3)))
     assert sized.with_counts((1, 2, 2)).heights == (2, 1, 1)
-    assert sized.with_counts((1, 3)).widths == ((), ())  # a row's widths go with its count
+    assert sized.with_counts((1, 3)).widths == (
+        (),
+        (),
+    )  # a row's widths go with its count
     assert sized.without((1, 0)) == Layout((1, 1), heights=(2, 1))
     assert sized.without((0, 0)) == Layout((2,), widths=((1, 3),))
     assert Layout.from_plain(json.loads(json.dumps(sized.plain()))) == sized
@@ -77,9 +80,11 @@ def test_sizes_are_saved_with_the_session(app, tmp_path):
 
 def drag(app, start, end):
     """Press at `start`, move to `end` and let go there, in figure pixels."""
-    for name, (x, y), button in (("button_press_event", start, MouseButton.LEFT),
-                                 ("motion_notify_event", end, None),
-                                 ("button_release_event", end, MouseButton.LEFT)):
+    for name, (x, y), button in (
+        ("button_press_event", start, MouseButton.LEFT),
+        ("motion_notify_event", end, None),
+        ("button_release_event", end, MouseButton.LEFT),
+    ):
         MouseEvent(name, app.canvas, x, y, button=button)._process()
 
 
@@ -89,7 +94,7 @@ def test_dragging_a_gap_resizes_its_two_sides_in_one_undo_step(app):
     app.deiconify()  # hidden, the plot's side is never laid out
     app.update()
     app.canvas.draw()
-    (kind, _, (x0, y0, x1, y1)), = [z for z in app.dividers if z[1] == (0, 0)]
+    ((kind, _, (x0, y0, x1, y1)),) = [z for z in app.dividers if z[1] == (0, 0)]
     assert kind == "col"
     middle = ((x0 + x1) / 2, (y0 + y1) / 2)
     drag(app, middle, (middle[0] + 150, middle[1]))
@@ -99,7 +104,7 @@ def test_dragging_a_gap_resizes_its_two_sides_in_one_undo_step(app):
     assert app.axes[0, 0].get_position().width > app.axes[0, 1].get_position().width
     app.undo()
     assert app.layout == Layout((2, 2))
-    (_, _, (x0, y0, x1, y1)), = [z for z in app.dividers if z[0] == "row"]
+    ((_, _, (x0, y0, x1, y1)),) = [z for z in app.dividers if z[0] == "row"]
     middle = ((x0 + x1) / 2, (y0 + y1) / 2)
     drag(app, middle, (middle[0], middle[1] - 2000))  # far past the end: held at LEAST
     top, bottom = app.layout.row_heights()

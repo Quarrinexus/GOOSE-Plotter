@@ -10,9 +10,6 @@ from numpy.polynomial import Chebyshev, Polynomial
 
 from goose_plotter.axis_functions import FUNCTIONS, slug
 
-# Mode stored on a Line -> name shown in the Fit box. "" is off.
-MODES = {"": "Off", "fit": "Show fit", "subtract": "Subtract"}
-
 
 def describe(mode, degree, function="", start=""):
     """Short text for the legend and toggle: '− deg 5', 'fit deg 5',
@@ -67,16 +64,23 @@ def report(x, y, fitted, degree, values=(), function=""):
         names, found = _names(degree), list(fit_.convert(kind=Polynomial).coef[::-1])
         errors = _polynomial_errors(fit_, xu, residual)
     spread = ((yu - yu.mean()) ** 2).sum() if n else 0.0
-    r2 = float(1 - (residual ** 2).sum() / spread) if spread > 0 else float("nan")
+    r2 = float(1 - (residual**2).sum() / spread) if spread > 0 else float("nan")
     p = len(names)
     free = n - p  # degrees of freedom left after the parameters
-    return {"points": n, "parameters": tuple(zip(names, (float(v) for v in found), errors)),
-            "adjusted r2": float(1 - (1 - r2) * (n - 1) / free) if free > 0 else float("nan"),
-            "sigma": float(np.sqrt((residual ** 2).sum() / free)) if free > 0 else float("nan"),
-            "rms": float(np.sqrt(np.mean(residual ** 2))) if n else float("nan"),
-            "largest": float(np.abs(residual).max()) if n else float("nan"),
-            "r2": r2,
-            "x range": (float(xu.min()), float(xu.max())) if n else None}
+    return {
+        "points": n,
+        "parameters": tuple(zip(names, (float(v) for v in found), errors)),
+        "adjusted r2": float(1 - (1 - r2) * (n - 1) / free)
+        if free > 0
+        else float("nan"),
+        "sigma": float(np.sqrt((residual**2).sum() / free))
+        if free > 0
+        else float("nan"),
+        "rms": float(np.sqrt(np.mean(residual**2))) if n else float("nan"),
+        "largest": float(np.abs(residual).max()) if n else float("nan"),
+        "r2": r2,
+        "x range": (float(xu.min()), float(xu.max())) if n else None,
+    }
 
 
 def _errors(jacobian, residual):
@@ -86,11 +90,15 @@ def _errors(jacobian, residual):
     if n <= p:
         return [None] * p
     try:
-        covariance = (residual ** 2).sum() / (n - p) * np.linalg.inv(jacobian.T @ jacobian)
+        covariance = (
+            (residual**2).sum() / (n - p) * np.linalg.inv(jacobian.T @ jacobian)
+        )
     except np.linalg.LinAlgError:
         return [None] * p
     variance = np.diag(covariance)
-    return [float(math.sqrt(v)) if np.isfinite(v) and v >= 0 else None for v in variance]
+    return [
+        float(math.sqrt(v)) if np.isfinite(v) and v >= 0 else None for v in variance
+    ]
 
 
 def _polynomial_errors(polynomial, x, residual):
@@ -98,21 +106,27 @@ def _polynomial_errors(polynomial, x, residual):
     Chebyshev basis the fit was made in (well conditioned), then carried over
     by the linear map between the two."""
     degree = len(polynomial.coef) - 1
-    u = (x - sum(polynomial.domain) / 2) / ((polynomial.domain[1] - polynomial.domain[0]) / 2)
+    u = (x - sum(polynomial.domain) / 2) / (
+        (polynomial.domain[1] - polynomial.domain[0]) / 2
+    )
     design = np.polynomial.chebyshev.chebvander(u, degree)
     n, p = design.shape
     if n <= p:
         return [None] * p
     try:
-        covariance = (residual ** 2).sum() / (n - p) * np.linalg.inv(design.T @ design)
+        covariance = (residual**2).sum() / (n - p) * np.linalg.inv(design.T @ design)
     except np.linalg.LinAlgError:
         return [None] * p
     to_raw = np.zeros((degree + 1, degree + 1))
     for k in range(degree + 1):  # basis k as a polynomial in x, its length trimmed
-        coef = Chebyshev.basis(k, domain=polynomial.domain).convert(kind=Polynomial).coef
-        to_raw[:len(coef), k] = coef
+        coef = (
+            Chebyshev.basis(k, domain=polynomial.domain).convert(kind=Polynomial).coef
+        )
+        to_raw[: len(coef), k] = coef
     variance = np.diag(to_raw @ covariance @ to_raw.T)[::-1]
-    return [float(math.sqrt(v)) if np.isfinite(v) and v >= 0 else None for v in variance]
+    return [
+        float(math.sqrt(v)) if np.isfinite(v) and v >= 0 else None for v in variance
+    ]
 
 
 def _function_errors(function, values, x, residual):
@@ -124,8 +138,9 @@ def _function_errors(function, values, x, residual):
             step = 1e-6 * max(abs(v), 1e-3)
             up, down = list(values), list(values)
             up[i], down[i] = v + step, v - step
-            jacobian[:, i] = (_evaluate(code, params, up, x)
-                              - _evaluate(code, params, down, x)) / (2 * step)
+            jacobian[:, i] = (
+                _evaluate(code, params, up, x) - _evaluate(code, params, down, x)
+            ) / (2 * step)
         if not np.isfinite(jacobian).all():
             return [None] * len(params)
         return _errors(jacobian, residual)
@@ -143,8 +158,10 @@ def fit(x, y, degree):
         raise ValueError("there are no points to fit")
     distinct = len(np.unique(x[used]))
     if distinct <= degree:
-        raise ValueError(f"a degree-{degree} fit needs more than {degree} different "
-                         f"x values; the line has {distinct}")
+        raise ValueError(
+            f"a degree-{degree} fit needs more than {degree} different "
+            f"x values; the line has {distinct}"
+        )
     if distinct == 1:  # degree 0 on a single x (a parked field): just the mean
         return np.where(inside, y[used].mean(), np.nan)
     # Chebyshev.fit maps x onto [-1, 1] first, so high degrees stay well
@@ -154,24 +171,30 @@ def fit(x, y, degree):
         try:
             polynomial = Chebyshev.fit(x[used], y[used], degree)
         except np.exceptions.RankWarning:
-            raise ValueError(f"degree {degree} is too high for the line's "
-                             f"points; try a lower one") from None
+            raise ValueError(
+                f"degree {degree} is too high for the line's points; try a lower one"
+            ) from None
     return np.where(inside, polynomial(np.where(inside, x, 0.0)), np.nan)
 
 
 # --- a function of the user's own ---------------------------------------------
 
+
 def polynomial_text(degree):
     """What `fit` fits, as a function to type: 'A*x**2 + B*x + C' for degree 2."""
     powers = range(max(degree, 0), -1, -1)
-    return " + ".join(name + ("" if n == 0 else "*x" if n == 1 else f"*x**{n}")
-                      for name, n in zip(_names(degree), powers))
+    return " + ".join(
+        name + ("" if n == 0 else "*x" if n == 1 else f"*x**{n}")
+        for name, n in zip(_names(degree), powers)
+    )
 
 
 def _names(degree):
     """A, B, C ... for a polynomial's coefficients, highest power first."""
-    return [chr(65 + i) if i < 26 else chr(64 + i // 26) + chr(65 + i % 26)
-            for i in range(max(degree, 0) + 1)]
+    return [
+        chr(65 + i) if i < 26 else chr(64 + i // 26) + chr(65 + i % 26)
+        for i in range(max(degree, 0) + 1)
+    ]
 
 
 def parse(expr):
@@ -183,17 +206,23 @@ def parse(expr):
     try:
         code = compile(expr.replace("^", "**"), "<fit function>", "eval")
     except SyntaxError:
-        raise ValueError(f"can't read the function '{expr}'; write * for every product, "
-                         f"e.g. A * sin(B * x)") from None
+        raise ValueError(
+            f"can't read the function '{expr}'; write * for every product, "
+            f"e.g. A * sin(B * x)"
+        ) from None
     names = list(dict.fromkeys(code.co_names))
     params = [n for n in names if n[0].isupper()]
     unknown = [n for n in names if n not in params and n != "x" and n not in FUNCTIONS]
     if unknown:
-        raise ValueError(f"'{', '.join(unknown)}' in the fit function isn't x, a function "
-                         f"or a parameter (parameters start with a capital letter)")
+        raise ValueError(
+            f"'{', '.join(unknown)}' in the fit function isn't x, a function "
+            f"or a parameter (parameters start with a capital letter)"
+        )
     if not params:
-        raise ValueError("the fit function has nothing to fit: give it parameters "
-                         "starting with a capital letter, e.g. A * sin(B * x) + C")
+        raise ValueError(
+            "the fit function has nothing to fit: give it parameters "
+            "starting with a capital letter, e.g. A * sin(B * x) + C"
+        )
     return code, params
 
 
@@ -206,12 +235,16 @@ def starts(text, params):
         name, sep, number = part.partition("=")
         name = name.strip()
         if not sep or name not in values:
-            raise ValueError(f"'{part.strip()}' isn't a start value like "
-                             f"{params[0]}=1 for one of {', '.join(params)}")
+            raise ValueError(
+                f"'{part.strip()}' isn't a start value like "
+                f"{params[0]}=1 for one of {', '.join(params)}"
+            )
         try:
             values[name] = float(number)
         except ValueError:
-            raise ValueError(f"'{number.strip()}' isn't a number, in '{part.strip()}'") from None
+            raise ValueError(
+                f"'{number.strip()}' isn't a number, in '{part.strip()}'"
+            ) from None
         if not math.isfinite(values[name]):
             raise ValueError(f"the start value of {name} isn't finite")
     return values
@@ -219,8 +252,11 @@ def starts(text, params):
 
 def _evaluate(code, params, values, x):
     with np.errstate(all="ignore"):
-        out = eval(code, {"__builtins__": {}, **FUNCTIONS},
-                   {"x": x, **dict(zip(params, values))})
+        out = eval(
+            code,
+            {"__builtins__": {}, **FUNCTIONS},
+            {"x": x, **dict(zip(params, values))},
+        )
     return np.broadcast_to(np.asarray(out, dtype=float), x.shape)
 
 
@@ -234,8 +270,10 @@ def custom_fit(x, y, expr, start_text=""):
     inside = np.isfinite(x)
     used = inside & np.isfinite(y)
     if used.sum() <= len(params):
-        raise ValueError(f"fitting {len(params)} parameters needs more than "
-                         f"{len(params)} points; the line has {used.sum()}")
+        raise ValueError(
+            f"fitting {len(params)} parameters needs more than "
+            f"{len(params)} points; the line has {used.sum()}"
+        )
     xu, yu = x[used], y[used]
     try:
         values = _levenberg_marquardt(lambda q: _evaluate(code, params, q, xu) - yu, p)
@@ -252,8 +290,10 @@ def _levenberg_marquardt(residuals, p, iterations=200):
     """Parameters minimising the sum of squared `residuals(p)`."""
     r = residuals(p)
     if not np.all(np.isfinite(r)):
-        raise ValueError("the fit function isn't finite at the start values; "
-                         "give start values where it is")
+        raise ValueError(
+            "the fit function isn't finite at the start values; "
+            "give start values where it is"
+        )
     cost, damping = r @ r, 1e-3
     for _ in range(iterations):
         jac = np.empty((len(r), len(p)))
@@ -263,8 +303,10 @@ def _levenberg_marquardt(residuals, p, iterations=200):
             moved[i] += step
             jac[:, i] = (residuals(moved) - r) / step
         if not np.all(np.isfinite(jac)):
-            raise ValueError("the fit function stopped being finite while fitting; "
-                             "try other start values")
+            raise ValueError(
+                "the fit function stopped being finite while fitting; "
+                "try other start values"
+            )
         # Columns scaled to norm 1 and solved as least squares, not through
         # JᵀJ, whose squared condition loses a polynomial's high powers.
         norms = np.linalg.norm(jac, axis=0)
@@ -280,16 +322,21 @@ def _levenberg_marquardt(residuals, p, iterations=200):
             if delta is not None:
                 trial = p + delta
                 r_trial = residuals(trial)
-                cost_trial = r_trial @ r_trial if np.all(np.isfinite(r_trial)) else np.inf
+                cost_trial = (
+                    r_trial @ r_trial if np.all(np.isfinite(r_trial)) else np.inf
+                )
                 if cost_trial < cost:
                     break
             damping *= 10
             if damping > 1e16:
                 return p  # nowhere downhill: a minimum, as far as it can tell
         done = abs(cost - cost_trial) <= 1e-12 * cost or np.all(
-            np.abs(delta) <= 1e-10 * (np.abs(p) + 1e-10))
+            np.abs(delta) <= 1e-10 * (np.abs(p) + 1e-10)
+        )
         p, r, cost = trial, r_trial, cost_trial
-        damping = max(damping / 10, 1e-20)  # down to Gauss-Newton, lstsq keeps it stable
+        damping = max(
+            damping / 10, 1e-20
+        )  # down to Gauss-Newton, lstsq keeps it stable
         if done:
             break
     return p

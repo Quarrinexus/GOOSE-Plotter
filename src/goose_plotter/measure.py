@@ -13,8 +13,11 @@ def tidy_region(saved):
     pair of finite numbers or None (no limit), start below end."""
     if not isinstance(saved, (list, tuple)) or len(saved) != 2:
         return ()
-    if not all(e is None or (isinstance(e, (int, float)) and not isinstance(e, bool)
-                             and np.isfinite(e)) for e in saved):
+    if not all(
+        e is None
+        or (isinstance(e, (int, float)) and not isinstance(e, bool) and np.isfinite(e))
+        for e in saved
+    ):
         return ()
     start, end = (None if e is None else float(e) for e in saved)
     if start is None and end is None:
@@ -28,9 +31,16 @@ def tidy_points(saved):
     """`Panel.points` as it's kept: up to two (x, y) pairs of finite numbers."""
     kept = []
     for pair in saved if isinstance(saved, (list, tuple)) else ():
-        if (isinstance(pair, (list, tuple)) and len(pair) == 2
-                and all(isinstance(v, (int, float)) and not isinstance(v, bool)
-                        and np.isfinite(v) for v in pair)):
+        if (
+            isinstance(pair, (list, tuple))
+            and len(pair) == 2
+            and all(
+                isinstance(v, (int, float))
+                and not isinstance(v, bool)
+                and np.isfinite(v)
+                for v in pair
+            )
+        ):
             kept.append((float(pair[0]), float(pair[1])))
     return tuple(kept[-2:])
 
@@ -74,8 +84,13 @@ def extremes(x, y, region=(), even=False):
     top, bottom = rows[np.argmax(y[rows])], rows[np.argmin(y[rows])]
     high = refine(x, y, top) if even else (float(x[top]), float(y[top]))
     low = (float(x[bottom]), float(y[bottom]))
-    return {"max": high, "min": low, "range": float(y[top] - y[bottom]),
-            "mean": float(np.mean(y[rows])), "points": len(rows)}
+    return {
+        "max": high,
+        "min": low,
+        "range": float(y[top] - y[bottom]),
+        "mean": float(np.mean(y[rows])),
+        "points": len(rows),
+    }
 
 
 def peaks(x, y, region=(), count=5, floor=10.0):
@@ -116,6 +131,10 @@ def snap(xy, point, to_pixels):
     """`point` moved onto the nearest drawn point of `xy`, as (x, y) floats;
     itself if it's one already, and None if nothing is drawn."""
     xy = np.asarray(xy, dtype=float)
-    exact = np.flatnonzero((xy[:, 0] == point[0]) & (xy[:, 1] == point[1])) if len(xy) else []
+    exact = (
+        np.flatnonzero((xy[:, 0] == point[0]) & (xy[:, 1] == point[1]))
+        if len(xy)
+        else []
+    )
     row = exact[0] if len(exact) else nearest(xy, point, to_pixels)
     return None if row is None else (float(xy[row, 0]), float(xy[row, 1]))

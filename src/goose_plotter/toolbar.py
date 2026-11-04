@@ -62,8 +62,12 @@ def _forward(image, draw, u, w, c):
 def _pan(image, draw, u, w, c):
     _stroke(draw, _points(u, 12, 2.5, 12, 21.5), w, c)
     _stroke(draw, _points(u, 2.5, 12, 21.5, 12), w, c)
-    for head in ((9, 5.5, 12, 2.5, 15, 5.5), (9, 18.5, 12, 21.5, 15, 18.5),
-                 (5.5, 9, 2.5, 12, 5.5, 15), (18.5, 9, 21.5, 12, 18.5, 15)):
+    for head in (
+        (9, 5.5, 12, 2.5, 15, 5.5),
+        (9, 18.5, 12, 21.5, 15, 18.5),
+        (5.5, 9, 2.5, 12, 5.5, 15),
+        (18.5, 9, 21.5, 12, 18.5, 15),
+    ):
         _stroke(draw, _points(u, *head), w, c)
 
 
@@ -82,13 +86,18 @@ def _sliders(image, draw, u, w, c):
 
 def _layout(image, draw, u, w, c):
     for x0, y0 in ((3, 3), (13, 3), (3, 13), (13, 13)):
-        draw.rounded_rectangle((x0 * u, y0 * u, (x0 + 8) * u, (y0 + 8) * u), radius=1.5 * u,
-                               outline=c, width=round(w))
+        draw.rounded_rectangle(
+            (x0 * u, y0 * u, (x0 + 8) * u, (y0 + 8) * u),
+            radius=1.5 * u,
+            outline=c,
+            width=round(w),
+        )
 
 
 def _delete_panel(image, draw, u, w, c):
-    draw.rounded_rectangle((3 * u, 7 * u, 17 * u, 21 * u), radius=1.5 * u, outline=c,
-                           width=round(w))
+    draw.rounded_rectangle(
+        (3 * u, 7 * u, 17 * u, 21 * u), radius=1.5 * u, outline=c, width=round(w)
+    )
     # The cross, on a cleared disc so it stands apart from the panel's edge.
     x, y, r = 18 * u, 6 * u, 5.5 * u
     clear = Image.new("L", image.size, 0)
@@ -99,9 +108,16 @@ def _delete_panel(image, draw, u, w, c):
 
 
 # By matplotlib's names for its buttons, and the two GOOSE adds.
-ICONS = {"Home": _home, "Back": _back, "Forward": _forward, "Pan": _pan, "Zoom": _zoom,
-         "Subplots": _sliders, "Layout": _layout,
-         "Delete panel": _delete_panel}
+ICONS = {
+    "Home": _home,
+    "Back": _back,
+    "Forward": _forward,
+    "Pan": _pan,
+    "Zoom": _zoom,
+    "Subplots": _sliders,
+    "Layout": _layout,
+    "Delete panel": _delete_panel,
+}
 
 
 def _without_save(items):
@@ -139,28 +155,46 @@ class Toolbar(NavigationToolbar2Tk):
         """Give `button` its icon, at the size matplotlib gives its own."""
         button.name = name
         size, paint = self._size(button), ICONS[name]
-        normal, faint, on = (_icon(paint, size, c) for c in (theme.MUTED, theme.HINT,
-                                                              theme.ACCENT))
+        normal, faint, on = (
+            _icon(paint, size, c) for c in (theme.MUTED, theme.HINT, theme.ACCENT)
+        )
         self.icons[button] = (normal, faint, on)
-        options = {"image": faint if getattr(button, "enabled", True) is False else normal}
+        options = {
+            "image": faint if getattr(button, "enabled", True) is False else normal
+        }
         if isinstance(button, tk.Checkbutton):
             options["selectimage"] = on
         button.configure(**options, width=size, height=size)
 
     def _style(self, button):
-        button.configure(relief=tk.FLAT, overrelief=tk.FLAT, borderwidth=0, padx=3, pady=3,
-                         background=theme.BACKGROUND, activebackground=theme.HOVER,
-                         highlightthickness=1, highlightbackground=theme.BACKGROUND,
-                         highlightcolor=theme.BACKGROUND, cursor="hand2")
+        button.configure(
+            relief=tk.FLAT,
+            overrelief=tk.FLAT,
+            borderwidth=0,
+            padx=3,
+            pady=3,
+            background=theme.BACKGROUND,
+            activebackground=theme.HOVER,
+            highlightthickness=1,
+            highlightbackground=theme.BACKGROUND,
+            highlightcolor=theme.BACKGROUND,
+            cursor="hand2",
+        )
         if isinstance(button, tk.Checkbutton):
             button.configure(offrelief=tk.FLAT, selectcolor=theme.ACCENT_SOFT)
 
     def _hover(self, button):
         """A border on hover, as the window's buttons have."""
-        button.bind("<Enter>", lambda _: button.configure(
-            highlightbackground=theme.BORDER_HOVER), add="+")
-        button.bind("<Leave>", lambda _: button.configure(
-            highlightbackground=theme.BACKGROUND), add="+")
+        button.bind(
+            "<Enter>",
+            lambda _: button.configure(highlightbackground=theme.BORDER_HOVER),
+            add="+",
+        )
+        button.bind(
+            "<Leave>",
+            lambda _: button.configure(highlightbackground=theme.BACKGROUND),
+            add="+",
+        )
 
     def _Button(self, text, image_file, toggle, command):
         button = super()._Button(text, image_file, toggle, command)
@@ -184,7 +218,9 @@ class Toolbar(NavigationToolbar2Tk):
 
     def button(self, name, command, tip):
         """A button of GOOSE's own (Layout, Delete panel), like the others; not packed."""
-        button = tk.Button(self, command=lambda: getattr(button, "enabled", True) and command())
+        button = tk.Button(
+            self, command=lambda: getattr(button, "enabled", True) and command()
+        )
         self._style(button)
         self._draw(button, name)
         self._hover(button)
@@ -193,8 +229,9 @@ class Toolbar(NavigationToolbar2Tk):
 
     def spacer(self):
         """A divider like the ones between matplotlib's groups; not packed."""
-        spacer = tk.Frame(self, width=1, height=self.winfo_pixels("14p"),
-                          background=theme.BORDER)
+        spacer = tk.Frame(
+            self, width=1, height=self.winfo_pixels("14p"), background=theme.BORDER
+        )
         self.spacers.append(spacer)
         return spacer
 
@@ -202,15 +239,17 @@ class Toolbar(NavigationToolbar2Tk):
         """Show `button` as usable or not; it does nothing while it isn't."""
         button.enabled = on
         normal, faint, _ = self.icons[button]
-        button.configure(image=normal if on else faint,
-                         cursor="hand2" if on else "")
+        button.configure(image=normal if on else faint, cursor="hand2" if on else "")
 
     def set_history_buttons(self):
         """Back and Forward faint when there's nowhere to go, rather than stippled."""
         if not getattr(self, "icons", None):
             return  # called while matplotlib is still building the toolbar
         stack = self._nav_stack
-        for text, can in (("Back", stack._pos > 0), ("Forward", stack._pos < len(stack) - 1)):
+        for text, can in (
+            ("Back", stack._pos > 0),
+            ("Forward", stack._pos < len(stack) - 1),
+        ):
             if text in self._buttons:
                 self.enable(self._buttons[text], can)
 

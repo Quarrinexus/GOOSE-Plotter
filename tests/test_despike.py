@@ -17,9 +17,14 @@ def test_spikes_become_gaps_and_nothing_else_changes():
     spiked[[1000, 1001, 3000]] += [0.5, -0.4, 0.3]  # two side by side, one alone
     new_x, new_y, count = despike.despike(x, spiked, 21, 5)
     assert count == 3
-    assert np.isnan(new_x[[1000, 1001, 3000]]).all() and np.isnan(new_y[[1000, 1001, 3000]]).all()
+    assert (
+        np.isnan(new_x[[1000, 1001, 3000]]).all()
+        and np.isnan(new_y[[1000, 1001, 3000]]).all()
+    )
     kept = np.isfinite(new_y)
-    assert np.array_equal(new_y[kept], spiked[kept]) and np.array_equal(new_x[kept], x[kept])
+    assert np.array_equal(new_y[kept], spiked[kept]) and np.array_equal(
+        new_x[kept], x[kept]
+    )
 
 
 def test_clean_data_is_left_alone():

@@ -33,7 +33,9 @@ def test_a_bad_function_is_reported_under_the_axes(app):
 
 def test_fft_panel_finds_the_oscillation(app):
     plot(app, x_fn="1/x")
-    add_step(app, "subtract", degree=10)  # 5, the default, leaves too much of the 1/x background
+    add_step(
+        app, "subtract", degree=10
+    )  # 5, the default, leaves too much of the 1/x background
     app.new_derived_panel("fft")
     frequency, amplitude = drawn(app, (1, 0))
     assert frequency[np.argmax(amplitude)] == pytest.approx(F, rel=0.05)
@@ -90,7 +92,10 @@ def test_cut_steps_after_an_fft_cut_its_spectrum_in_f(app):
     app._load_controls()
     app.x_fn.set("x")  # F in 1/T, not T: the spectrum's cuts go
     app.apply_controls()
-    assert [s.cuts for s in steps_of(fft.line, "cut")] == [] and fft.line.steps[2].cuts == ()
+    assert [s.cuts for s in steps_of(fft.line, "cut")] == [] and fft.line.steps[
+        2
+    ].cuts == ()
+
 
 def test_typing_picking_and_clearing_a_cut(app):
     plot(app)
@@ -199,15 +204,24 @@ def test_an_fft_step_turns_the_line_into_its_spectrum(app):
     panel.x_min, panel.title = 0.05, "My data"
     app._changed()  # as the axes editor's redraw does
     app.add_step("fft")
-    assert len(app.panels) == 1 and [s.kind for s in panel.line.steps] == ["subtract", "fft"]
+    assert len(app.panels) == 1 and [s.kind for s in panel.line.steps] == [
+        "subtract",
+        "fft",
+    ]
     assert panel.x_min is None and panel.title is None  # in 1/T, not frequency
     frequency, amplitude = drawn(app)
     assert frequency[np.argmax(amplitude)] == pytest.approx(F, rel=0.05)
     assert app.axes[(0, 0)].get_title().startswith("FFT · ΔF")
-    assert app.step_list.list.get(1) == "2  FFT  Hann" and app.editors["fft"].winfo_manager()
+    assert (
+        app.step_list.list.get(1) == "2  FFT  Hann"
+        and app.editors["fft"].winfo_manager()
+    )
     app.undo()  # the data, with its range and title (in a panel made afresh)
     panel = app.panel
-    assert len(panel.line.steps) == 1 and (panel.x_min, panel.title) == (0.05, "My data")
+    assert len(panel.line.steps) == 1 and (panel.x_min, panel.title) == (
+        0.05,
+        "My data",
+    )
 
 
 def test_an_fft_or_derivative_goes_on_every_line(app):
@@ -215,6 +229,14 @@ def test_an_fft_or_derivative_goes_on_every_line(app):
     app.add_line()
     app.add_step("derivative")
     assert [[s.kind for s in l.steps] for l in app.panel.lines] == [["derivative"]] * 2
+
+
+def test_a_fit_residual_is_named_in_the_list_and_legend(app):
+    """Its name says it's data minus fit; the legend, without the name, keeps the minus."""
+    plot(app)
+    add_step(app, "subtract", degree=4)
+    assert app.step_list.list.get(0) == "1  Fit residual  deg 4"
+    assert app.panel.line.chosen.describe() == "− deg 4"  # as the legend names it
 
 
 def test_steps_after_a_transform_work_on_what_it_made(app):
@@ -246,16 +268,21 @@ def test_fft_and_derivative_settings_are_the_steps_own(app, tmp_path):
     path = tmp_path / "s.json"
     app.save_session(path)
     app.open_session(path)
-    assert app.panel.line.steps == (Step("fft", pad=4, f_max=150.0),
-                                        Step("derivative", d_order="d2", d_window=101))
+    assert app.panel.line.steps == (
+        Step("fft", pad=4, f_max=150.0),
+        Step("derivative", d_order="d2", d_window=101),
+    )
 
 
 def click(app, x, y, cell=None):
     """A left click on the plot at data point (x, y) of `cell`'s axes."""
     from matplotlib.backend_bases import MouseButton, MouseEvent
+
     ax = app.axes[cell or app.selected]
     px, py = ax.transData.transform((x, y))
-    app._on_click(MouseEvent("button_press_event", app.canvas, px, py, button=MouseButton.LEFT))
+    app._on_click(
+        MouseEvent("button_press_event", app.canvas, px, py, button=MouseButton.LEFT)
+    )
 
 
 def test_measure_reads_a_region_without_touching_the_plot(app):
@@ -318,7 +345,9 @@ def test_measure_lists_an_ffts_peaks(app, tmp_path):
     assert len(app.axes[(0, 0)].lines) == 1
     # Saved figures leave the marks out unless the panel keeps them.
     seen = []
-    app.fig.savefig = lambda *a, **k: seen.append([m.get_visible() for m in app.marks[(0, 0)]])
+    app.fig.savefig = lambda *a, **k: seen.append(
+        [m.get_visible() for m in app.marks[(0, 0)]]
+    )
     app.save()
     app.marks_saved_var.set(True)
     app.apply_measure()
@@ -418,7 +447,10 @@ def test_a_change_goes_down_a_chain_of_links(app):
     app.y.set(next(v for v in app.y.box["values"] if "M011" in v))
     app.apply_controls()
     assert app.panels[(1, 0)].line.y == "M011_AH"
-    assert fft.line.y == "M011_AH" and [s.kind for s in fft.line.steps] == ["subtract", "fft"]
+    assert fft.line.y == "M011_AH" and [s.kind for s in fft.line.steps] == [
+        "subtract",
+        "fft",
+    ]
     assert app.panels[(0, 0)].line.steps == ()  # 2-3 shares them, 1-2 doesn't
 
 
@@ -449,7 +481,10 @@ def test_session_save_and_open(app, tmp_path):
     app.save_session(path)
     saved = json.loads(path.read_text())
     assert saved["format"] == session.FORMAT and saved["layout"]["counts"] == [2]
-    assert [s["kind"] for s in saved["panels"]["0,0"]["lines"][0]["steps"]] == ["cut", "fit"]
+    assert [s["kind"] for s in saved["panels"]["0,0"]["lines"][0]["steps"]] == [
+        "cut",
+        "fit",
+    ]
     app.set_layout(1, 1)
     app.remove_step()
     app.open_session(path)
@@ -469,22 +504,40 @@ def test_clicking_a_tab_shows_it(app):
     plot(app)
     app.update()
     strip = app.tab_strip
-    assert max(right for _, right in strip.spans.values()) <= strip.winfo_width()  # all fit
+    assert (
+        max(right for _, right in strip.spans.values()) <= strip.winfo_width()
+    )  # all fit
     left, right = strip.spans["Linking"]
     strip.event_generate("<Button-1>", x=(left + right) // 2, y=10)
     assert app.tab.get() == "Linking"
-    assert app.tabs["Linking"].winfo_manager() and not app.tabs["Process"].winfo_manager()
+    assert (
+        app.tabs["Linking"].winfo_manager() and not app.tabs["Process"].winfo_manager()
+    )
 
 
 def test_tab_order(app):
     assert [name for name, _ in app.tab_strip.tabs] == ["Process", "Linking", "Measure"]
     assert app.tab.get() == "Process"
     menu = app.add_menu
-    labels = [menu.entrycget(i, "label") if menu.type(i) != "separator" else "-"
-              for i in range(menu.index("end") + 1)]
-    assert labels == ["Cut", "Despike", "Smooth", "Fit curve", "Subtract", "-", "FFT",
-                      "Derivative", "-", "FFT in a new panel", "FFT in another panel...",
-                      "Derivative in a new panel", "Derivative in another panel..."]
+    labels = [
+        menu.entrycget(i, "label") if menu.type(i) != "separator" else "-"
+        for i in range(menu.index("end") + 1)
+    ]
+    assert labels == [
+        "Cut",
+        "Despike",
+        "Smooth",
+        "Fit curve",
+        "Fit residual",
+        "-",
+        "FFT",
+        "Derivative",
+        "-",
+        "FFT in a new panel",
+        "FFT in another panel...",
+        "Derivative in a new panel",
+        "Derivative in another panel...",
+    ]
     assert app.step_list.list["height"] == 4  # rows, growing to 8; more scroll
 
 
@@ -503,7 +556,9 @@ def test_advanced_fitting_fits_the_typed_function(app):
     line = app.panel.line
     assert step().fitting == ("subtract", None, "A + B / x", "")
     assert [name for name, _ in line.found[0]] == ["A", "B"]
-    assert dict(line.found[0])["B"] == pytest.approx(1e-3, rel=0.05)  # conftest's 0.001 B
+    assert dict(line.found[0])["B"] == pytest.approx(
+        1e-3, rel=0.05
+    )  # conftest's 0.001 B
     assert app.error_label["text"] == ""
     assert "_bg_A_+_B_-over-_x" in app.filename.get()
     app.fit_function.set("A * sin(y)")
@@ -514,7 +569,9 @@ def test_advanced_fitting_fits_the_typed_function(app):
     assert step().fitting == ("subtract", step().degree, "", "")
     assert step().function == "A * sin(y)"
     assert entry_states(app) == ["disabled", "disabled"]
-    assert app.fit_function.get() == shown_default  # showing the polynomial, not the kept one
+    assert (
+        app.fit_function.get() == shown_default
+    )  # showing the polynomial, not the kept one
     app.degree.set("3")
     app.apply_controls()
     assert app.fit_function.get() == "A*x**3 + B*x**2 + C*x + D"
@@ -530,11 +587,14 @@ def test_spinbox_arrows_apply_once_they_stop(app, monkeypatch):
     import time
 
     from goose_plotter.plotter import SPIN_PAUSE
+
     plot(app, x_fn="1/x")
     add_step(app, "subtract")
     redraws = []
     real = app._redraw_selected
-    monkeypatch.setattr(app, "_redraw_selected", lambda *a, **k: (redraws.append(1), real(*a, **k)))
+    monkeypatch.setattr(
+        app, "_redraw_selected", lambda *a, **k: (redraws.append(1), real(*a, **k))
+    )
     for _ in range(3):  # three clicks on the up arrow
         app.tk.call("ttk::spinbox::Spin", str(app.degree_box), 1)
     assert app.degree.get() == "8" and app.panel.line.chosen.degree == 5 and not redraws
@@ -584,7 +644,7 @@ def test_steps_are_done_in_their_order_and_can_be_moved(app):
     # Any kind, any number of times.
     add_step(app, "subtract", degree=3)
     assert [s.kind for s in app.panel.line.steps] == ["subtract", "subtract"]
-    assert app.panel.line.step == 1 and app.step_title["text"] == "Step 2: Subtract"
+    assert app.panel.line.step == 1 and app.step_title["text"] == "Step 2: Fit residual"
 
 
 def test_dragging_a_step_moves_it(app):
@@ -600,7 +660,6 @@ def test_dragging_a_step_moves_it(app):
     rows.event_generate("<ButtonRelease-1>", x=5, y=second[1] + 2)
     assert [s.kind for s in app.panel.line.steps] == ["smooth", "cut"]
     assert app.panel.line.step == 1
-
 
 
 def test_delete_removes_the_chosen_step_from_the_step_list(app):
@@ -624,7 +683,9 @@ def test_delete_removes_the_chosen_step_from_the_step_list(app):
 def test_a_fit_curve_is_drawn_over_the_line(app):
     """Subtract the background, then fit the oscillation left as a curve."""
     plot(app, x_fn="1/x")
-    add_step(app, "subtract", advanced=True, function="A + B / x")  # conftest's background
+    add_step(
+        app, "subtract", advanced=True, function="A + B / x"
+    )  # conftest's background
     add_step(app, "fit")
     line = app.panel.line
     assert [s.kind for s in line.steps] == ["subtract", "fit"]
@@ -642,11 +703,16 @@ def test_a_fit_curve_is_drawn_over_the_line(app):
     assert abs(values["A"]) == pytest.approx(1e-4, rel=0.02)
     # The line is the subtracted data, unchanged by the fit; the curve follows it.
     x, y = drawn(app)
-    (curve, key), = app.curves[app.selected].items()
+    ((curve, key),) = app.curves[app.selected].items()
     assert key == (0, 1) and np.allclose(curve.get_xdata(), x)
     assert np.nanmax(abs(curve.get_ydata() - y)) < 1e-5
-    assert curve.get_linestyle() == "--" and curve.get_color() != app.line_list.itemcget(0, "foreground")
-    assert len(app.axes[app.selected].lines) == 2 and len(app.artists[app.selected]) == 1
+    assert (
+        curve.get_linestyle() == "--"
+        and curve.get_color() != app.line_list.itemcget(0, "foreground")
+    )
+    assert (
+        len(app.axes[app.selected].lines) == 2 and len(app.artists[app.selected]) == 1
+    )
     legend = [t.get_text() for t in app.axes[app.selected].get_legend().get_texts()]
     assert legend[1] == "fit: A * sin(B * x + C)"
     # A bad function shows its error, but the data is still drawn.
@@ -664,7 +730,9 @@ def test_a_fit_curve_is_drawn_over_the_line(app):
 def test_show_only_fit_puts_the_fit_in_the_lines_place(app):
     plot(app, x_fn="1/x")
     add_step(app, "subtract", advanced=True, function="A + B / x")
-    add_step(app, "fit", advanced=True, function="A * sin(B * x + C)", start="A=1e-4, B=314")
+    add_step(
+        app, "fit", advanced=True, function="A * sin(B * x + C)", start="A=1e-4, B=314"
+    )
     _, data = drawn(app)
     (curve,) = app.curves[app.selected]
     fitted = curve.get_ydata()
@@ -673,7 +741,9 @@ def test_show_only_fit_puts_the_fit_in_the_lines_place(app):
     app.apply_controls()
     assert app.panel.line.chosen.only
     _, y = drawn(app)
-    assert np.allclose(y, fitted, equal_nan=True) and not np.allclose(y, data, equal_nan=True)
+    assert np.allclose(y, fitted, equal_nan=True) and not np.allclose(
+        y, data, equal_nan=True
+    )
     assert not app.curves[app.selected]  # the line is the fit: no curve over it
     assert "fit A * sin(B * x + C)" in app.line_list.get(0)
     app.new_derived_panel("fft")  # its FFT is the fit's
@@ -689,14 +759,18 @@ def test_make_fit_new_line_moves_the_fit_to_its_own_line(app):
     plot(app, x_fn="1/x")
     add_step(app, "subtract", advanced=True, function="A + B / x")
     add_step(app, "smooth")
-    add_step(app, "fit", advanced=True, function="A * sin(B * x + C)", start="A=1e-4, B=314")
+    add_step(
+        app, "fit", advanced=True, function="A * sin(B * x + C)", start="A=1e-4, B=314"
+    )
     (curve,) = app.curves[app.selected]
     fitted = curve.get_ydata()
     app.fit_to_line()
     data, fit = app.panel.lines
     assert app.panel.selected == 1
     assert [s.kind for s in data.steps] == ["subtract", "smooth"]  # back to its data
-    assert [s.kind for s in fit.steps] == ["subtract", "smooth", "fit"] and fit.steps[2].only
+    assert [s.kind for s in fit.steps] == ["subtract", "smooth", "fit"] and fit.steps[
+        2
+    ].only
     assert fit.style == "--" and fit.step == 2 and app.fit_only.get()
     assert not app.curves[app.selected]  # drawn once, as a line
     _, y = drawn(app, index=1)
@@ -716,15 +790,19 @@ def test_a_session_from_an_older_plotter_is_refused(app, tmp_path):
     app.open_session(path)
     assert "older version" in app.status["text"] and app.layout.counts == (2,)
 
+
 def test_colour_maps_colour_every_panel_and_are_remembered(app, settings_file):
     from goose_plotter import colourmaps
+
     plot(app)
     app.add_line()
     app.set_layout(1, 2)
     app.selected = (0, 1)
     plot(app)
     assert app.colour_map == colourmaps.DEFAULT == "classic"
-    assert app.line_list.itemcget(0, "foreground") == "#2a78d6"  # M006's, from the profile
+    assert (
+        app.line_list.itemcget(0, "foreground") == "#2a78d6"
+    )  # M006's, from the profile
     app.open_style()
     popup = app.style_popup
     assert popup.colour_map.get() == "classic"
@@ -733,9 +811,14 @@ def test_colour_maps_colour_every_panel_and_are_remembered(app, settings_file):
     popup.map_menu.invoke(list(colourmaps.MAPS).index("viridis"))
     assert app.colour_map == "viridis" and popup.colour_map.get() == "viridis"
     assert json.loads(settings_file.read_text())["colour_map"] == "viridis"
-    first = [a.get_color() for a, _ in sorted(app.artists[(0, 0)].items(), key=lambda kv: kv[1])]
+    first = [
+        a.get_color()
+        for a, _ in sorted(app.artists[(0, 0)].items(), key=lambda kv: kv[1])
+    ]
     assert first == ["#440154", "#fde725"]  # both ends of viridis
-    assert app.artists[(0, 1)] and next(iter(app.artists[(0, 1)])).get_color() == "#440154"
+    assert (
+        app.artists[(0, 1)] and next(iter(app.artists[(0, 1)])).get_color() == "#440154"
+    )
     assert app.axes[(0, 0)].get_xlim() == (10, 20)
     popup.destroy()
 
@@ -774,9 +857,12 @@ def spinbox_states(app):
     def walk(widget):
         for child in widget.winfo_children():
             if child.winfo_class() == "TSpinbox" and str(child["textvariable"]) in (
-                    str(app.despike_window), str(app.despike_threshold)):
+                str(app.despike_window),
+                str(app.despike_threshold),
+            ):
                 found.append(str(child["state"]))
             walk(child)
+
     walk(app.tabs["Process"])
     return found
 
@@ -788,9 +874,12 @@ def entry_states(app):
     def walk(widget):
         for child in widget.winfo_children():
             if child.winfo_class() == "TEntry" and str(child["textvariable"]) in (
-                    str(app.fit_function), str(app.fit_start)):
+                str(app.fit_function),
+                str(app.fit_start),
+            ):
                 found.append(str(child["state"]))
             walk(child)
+
     walk(app.tabs["Process"])
     return found
 
@@ -829,7 +918,9 @@ def test_only_a_cut_step_shows_the_cut_boxes(app):
     assert not app.step_title.winfo_manager()  # no empty title line above the note
     add_step(app, "smooth")
     assert app.step_title.winfo_manager() and app.step_title["text"] == "Step 1: Smooth"
-    assert "Pick" not in buttons(app.tabs["Process"]) and not app.no_steps.winfo_manager()
+    assert (
+        "Pick" not in buttons(app.tabs["Process"]) and not app.no_steps.winfo_manager()
+    )
     add_step(app, "cut")
     assert "Pick" in buttons(app.tabs["Process"])
 
@@ -898,7 +989,10 @@ def test_fit_results_report_the_chosen_fit(app, monkeypatch):
     plot(app)
     add_step(app, "fit", degree=2)
     shownt = []
-    monkeypatch.setattr("goose_plotter.plotter.FitResultsPopup", lambda parent, text, report, export: shownt.append(text))
+    monkeypatch.setattr(
+        "goose_plotter.plotter.FitResultsPopup",
+        lambda parent, text, report, export: shownt.append(text),
+    )
     app.show_fit_results()
     text = shownt[0]
     assert "Points fitted:" in text and "R squared:" in text
@@ -915,7 +1009,10 @@ def test_fit_results_export_writes_the_numbers(app, tmp_path):
     out = tmp_path / "fit.csv"
     app._export_fit_results(report, app, path=str(out))
     rows = out.read_text().splitlines()
-    assert rows[0] == f"points,{report['points']}" and "parameter,value,standard error" in rows
+    assert (
+        rows[0] == f"points,{report['points']}"
+        and "parameter,value,standard error" in rows
+    )
     assert rows[-1].startswith("A,") or rows[-1].startswith("B,")
 
 
@@ -955,6 +1052,7 @@ def test_toolbar_is_drawn_in_the_windows_style(app):
     """matplotlib's buttons carry GOOSE's icons; Back is faint, not stippled,
     until there's a view to go back to, and Zoom shows its on look while on."""
     from goose_plotter.toolbar import ICONS
+
     plot(app)
     bar = app.toolbar
     for text, button in bar._buttons.items():
@@ -983,7 +1081,9 @@ def test_making_an_fft_over_a_plotted_panel_asks_nothing(app):
     app._load_controls()
     plot(app, run="Cambridge_Sep_26.003")
     app._put_derived((0, 0), (0, 1), "fft")
-    assert app.panels[0, 1].line.steps == (Step("fft"),) and "Ctrl+Z" in app.status["text"]
+    assert (
+        app.panels[0, 1].line.steps == (Step("fft"),) and "Ctrl+Z" in app.status["text"]
+    )
     app.undo()
     assert app.panels[0, 1].line.steps == ()
     assert app.panels[0, 1].line.run == "Cambridge_Sep_26.003"

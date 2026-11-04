@@ -18,11 +18,13 @@ def sweep(rows=6000, run=5):
     """Columns of a made-up field sweep: B from 28 T down to 4 T, and a
     capacitance with a smooth background and an oscillation of frequency F in 1/B."""
     b = np.linspace(B_HIGH, B_LOW, rows)
-    return {"Timestamp": np.arange(rows) * 0.5,
-            "Norminal_FIeld": b,
-            "M006_AH": 0.8 + 0.001 * b + 1e-4 * np.sin(2 * np.pi * F / b),
-            "M011_AH": 2.4 - 0.002 * b,
-            "Source_Run": np.full(rows, float(run))}
+    return {
+        "Timestamp": np.arange(rows) * 0.5,
+        "Norminal_FIeld": b,
+        "M006_AH": 0.8 + 0.001 * b + 1e-4 * np.sin(2 * np.pi * F / b),
+        "M011_AH": 2.4 - 0.002 * b,
+        "Source_Run": np.full(rows, float(run)),
+    }
 
 
 def write_run(path, run=5, rows=6000):
@@ -30,13 +32,15 @@ def write_run(path, run=5, rows=6000):
     with the run's suffix, then the data."""
     columns = sweep(rows, run)
     suffix = f"_{run:03d}"
-    lines = [f"{path.name} Wed, Sep 23, 2026 2:38:29 PM The Scientist",
-             "Magnet: None",
-             "Trigger spacing of 1.000000 on column #0",
-             "Scale Factors:\t" + "\t".join(["1.000000000E+0"] * len(columns)),
-             "",
-             "This data's for you!",
-             "\t".join(name + suffix for name in columns)]
+    lines = [
+        f"{path.name} Wed, Sep 23, 2026 2:38:29 PM The Scientist",
+        "Magnet: None",
+        "Trigger spacing of 1.000000 on column #0",
+        "Scale Factors:\t" + "\t".join(["1.000000000E+0"] * len(columns)),
+        "",
+        "This data's for you!",
+        "\t".join(name + suffix for name in columns),
+    ]
     lines += ["\t".join(f"{v:.9E}" for v in row) for row in zip(*columns.values())]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
@@ -49,11 +53,19 @@ def data_dir(tmp_path):
     folder.mkdir()
     write_run(folder / "Cambridge_Sep_26.005.text", 5)
     write_run(folder / "Cambridge_Sep_26.003.text", 3, rows=3000)
-    (folder / "goose-plotter.json").write_text(json.dumps({
-        "labels": {"Norminal_FIeld": "$B$  (T)", "AH": "capacitance (bridge units)"},
-        "units": {"Norminal_FIeld": "T", "AH": "bridge units"},
-        "samples": {"M006": "#2a78d6", "M011": "#eb6834"},
-        "defaults": {"x": "Norminal_FIeld", "y": "M006_AH"}}))
+    (folder / "goose-plotter.json").write_text(
+        json.dumps(
+            {
+                "labels": {
+                    "Norminal_FIeld": "$B$  (T)",
+                    "AH": "capacitance (bridge units)",
+                },
+                "units": {"Norminal_FIeld": "T", "AH": "bridge units"},
+                "samples": {"M006": "#2a78d6", "M011": "#eb6834"},
+                "defaults": {"x": "Norminal_FIeld", "y": "M006_AH"},
+            }
+        )
+    )
     return folder
 
 
@@ -71,6 +83,7 @@ def app(data_dir, settings_file, tmp_path, monkeypatch):
     output = tmp_path / "output"
     settings.save_settings({"data_dir": str(data_dir), "output_dir": str(output)})
     from goose_plotter import plotter
+
     try:
         window = plotter.Plotter()
     except tk.TclError as err:
@@ -95,8 +108,10 @@ def drawn(app, cell=None, index=0):
     """(x, y) of line `index` as drawn in `cell` (the selected panel by default)."""
     artists = {i: a for a, i in app.artists[cell or app.selected].items()}
     artist = artists[index]
-    return (np.asarray(artist.get_xdata(), dtype=float),
-            np.asarray(artist.get_ydata(), dtype=float))
+    return (
+        np.asarray(artist.get_xdata(), dtype=float),
+        np.asarray(artist.get_ydata(), dtype=float),
+    )
 
 
 def add_step(app, kind, **settings):

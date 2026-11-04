@@ -30,8 +30,15 @@ def tidy(ranges):
     for pair in ranges if isinstance(ranges, (list, tuple)) else ():
         if not isinstance(pair, (list, tuple)) or len(pair) != 2:
             continue
-        if not all(e is None or (isinstance(e, (int, float)) and not isinstance(e, bool)
-                                 and math.isfinite(e)) for e in pair):
+        if not all(
+            e is None
+            or (
+                isinstance(e, (int, float))
+                and not isinstance(e, bool)
+                and math.isfinite(e)
+            )
+            for e in pair
+        ):
             continue
         start, end = (None if e is None else float(e) for e in pair)
         if start is None and end is None:
@@ -57,7 +64,9 @@ def within(ranges, start, end):
     for a, b in ranges:
         low, high = max(_low(a), _low(start)), min(_high(b), _high(end))
         if low <= high:
-            out.append((None if low == -math.inf else low, None if high == math.inf else high))
+            out.append(
+                (None if low == -math.inf else low, None if high == math.inf else high)
+            )
     return tidy(out)
 
 
@@ -71,8 +80,11 @@ def gaps(ranges, start, end):
         low = max(low, _high(b))
     if low < _high(end):
         out.append((low, _high(end)))
-    return within([(None if a == -math.inf else a, None if b == math.inf else b) for a, b in out],
-                  start, end)
+    return within(
+        [(None if a == -math.inf else a, None if b == math.inf else b) for a, b in out],
+        start,
+        end,
+    )
 
 
 def describe(mode, ranges):
@@ -124,10 +136,15 @@ def cut(x, y, mode, ranges):
         if not hit.any():
             # Most likely ranges typed in other units, e.g. T while x is 1/B.
             finite = x[np.isfinite(x)]
-            extent = (f"; this line's x runs from {finite.min():.4g} to {finite.max():.4g}"
-                      if len(finite) else "")
-            raise ValueError(f"there are no points in x {named}{extent}. "
-                             f"Ranges are in the plotted x, after its function")
+            extent = (
+                f"; this line's x runs from {finite.min():.4g} to {finite.max():.4g}"
+                if len(finite)
+                else ""
+            )
+            raise ValueError(
+                f"there are no points in x {named}{extent}. "
+                f"Ranges are in the plotted x, after its function"
+            )
         return x[hit], y[hit]
     if hit[np.isfinite(x)].all():
         raise ValueError(f"removing x {named} leaves no points")

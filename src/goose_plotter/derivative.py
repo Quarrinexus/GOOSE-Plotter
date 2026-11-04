@@ -26,19 +26,22 @@ def derivative(x, y, order, window):
         raise ValueError(f"the window must be odd, not {window}")
     if window < order + 3:
         raise ValueError(f"the window must be at least {order + 3} points")
-    grid, values, step = even_grid(x, y, window, "a derivative with this window",
-                                   at_mean_x=True)
+    grid, values, step = even_grid(
+        x, y, window, "a derivative with this window", at_mean_x=True
+    )
     degree = order + 1
     half = window // 2
     offsets = np.arange(-half, half + 1)
     # Row k of `fit` turns a window of values into the polynomial's k-th coefficient.
     fit = np.linalg.pinv(np.vander(offsets, degree + 1, increasing=True))
-    scale = factorial(order) / step ** order
+    scale = factorial(order) / step**order
     result = np.empty_like(values)
     result[half:-half] = np.correlate(values, fit[order], mode="valid") * scale
     # The ends: the edge window's polynomial, differentiated `order` times, at each offset.
-    for window_values, ends, at in ((values[:window], offsets[:half], slice(None, half)),
-                                     (values[-window:], offsets[half + 1:], slice(-half, None))):
+    for window_values, ends, at in (
+        (values[:window], offsets[:half], slice(None, half)),
+        (values[-window:], offsets[half + 1 :], slice(-half, None)),
+    ):
         coefficients = np.polynomial.polynomial.polyder(fit @ window_values, order)
-        result[at] = np.polynomial.polynomial.polyval(ends, coefficients) / step ** order
+        result[at] = np.polynomial.polynomial.polyval(ends, coefficients) / step**order
     return grid, result

@@ -6,8 +6,12 @@ import numpy as np
 import pandas as pd
 
 # Method stored on a Line -> name shown in the Smoothing box. "" is no smoothing.
-METHODS = {"": "None", "mean": "Moving average", "median": "Median",
-           "savgol": "Savitzky-Golay"}  # ASCII: Tk's core fonts garble an en dash
+METHODS = {
+    "": "None",
+    "mean": "Moving average",
+    "median": "Median",
+    "savgol": "Savitzky-Golay",
+}  # ASCII: Tk's core fonts garble an en dash
 
 # What the window is counted in: points (rows) or units of the plotted x.
 UNITS = {False: "points", True: "x units"}
@@ -20,15 +24,21 @@ def describe(method, size, order, in_x):
     """Short text for the legend and toggle: 'avg 21', 'SG Δx 0.05, order 2'."""
     if in_x:
         size = f"Δx {size:g}" if size is not None else "Δx"
-    return {"mean": f"avg {size}", "median": f"median {size}",
-            "savgol": f"SG {size}, order {order}"}[method]
+    return {
+        "mean": f"avg {size}",
+        "median": f"median {size}",
+        "savgol": f"SG {size}, order {order}",
+    }[method]
 
 
 def file_part(method, size, order, in_x):
     """Filename piece: 'avg21', 'median-dx0.05', 'sg51-o2'."""
     size = f"-dx{size:g}" if in_x else size
-    return {"mean": f"avg{size}", "median": f"median{size}",
-            "savgol": f"sg{size}-o{order}"}[method]
+    return {
+        "mean": f"avg{size}",
+        "median": f"median{size}",
+        "savgol": f"sg{size}-o{order}",
+    }[method]
 
 
 def nice(value):
@@ -72,21 +82,28 @@ def smooth(x, y, method, size, order, in_x=False):
             raise ValueError("the window in x must be more than 0")
         if order < 0:
             raise ValueError("the order can't be negative")
-        result = smooth_in_x(np.asarray(x, dtype=float), np.where(finite, y, np.nan),
-                             method, size / 2, order)
+        result = smooth_in_x(
+            np.asarray(x, dtype=float),
+            np.where(finite, y, np.nan),
+            method,
+            size / 2,
+            order,
+        )
         return np.where(finite, result, np.nan)
     window = size
     if window < 3:
         raise ValueError("the window must be at least 3 points")
     if window > len(y):
-        raise ValueError(f"the window of {window} points is longer than the "
-                         f"line's {len(y)} points")
+        raise ValueError(
+            f"the window of {window} points is longer than the line's {len(y)} points"
+        )
     if method == "savgol":
         if window % 2 == 0:
             raise ValueError(f"Savitzky–Golay needs an odd window, not {window}")
         if not 0 <= order < window - 1:
-            raise ValueError(f"the order must be from 0 to {window - 2} "
-                             f"for a window of {window}")
+            raise ValueError(
+                f"the order must be from 0 to {window - 2} for a window of {window}"
+            )
         if not finite.any():
             return y
         # The fit needs evenly spaced points, so bridge gaps by interpolation.
@@ -95,7 +112,8 @@ def smooth(x, y, method, size, order, in_x=False):
         result = savgol(filled, window, order)
     else:
         rolling = pd.Series(np.where(finite, y, np.nan)).rolling(
-            window, center=True, min_periods=1)
+            window, center=True, min_periods=1
+        )
         result = getattr(rolling, method)().to_numpy()
     return np.where(finite, result, np.nan)
 
@@ -112,7 +130,7 @@ def savgol(values, window, order):
     result[half:-half] = np.correlate(values, fit[0], mode="valid")
     ends = np.vander(offsets, order + 1, increasing=True)
     result[:half] = ends[:half] @ (fit @ values[:window])
-    result[-half:] = ends[half + 1:] @ (fit @ values[-window:])
+    result[-half:] = ends[half + 1 :] @ (fit @ values[-window:])
     return result
 
 
@@ -123,8 +141,9 @@ def smooth_in_x(x, y, method, half, order):
     first, stop = stretches(x, half)
     # Rows sharing a stretch (a parked field gives thousands) share one
     # calculation: windows[w] is a distinct stretch, rows[w] a row that has it.
-    windows, rows, member = np.unique(np.stack([first, stop], axis=1), axis=0,
-                                      return_index=True, return_inverse=True)
+    windows, rows, member = np.unique(
+        np.stack([first, stop], axis=1), axis=0, return_index=True, return_inverse=True
+    )
     widths = windows[:, 1] - windows[:, 0]
     fits = np.full((len(windows), order + 1 if method == "savgol" else 1), np.nan)
     # Pad each window to the next power of two, in chunks of about CHUNK cells.
@@ -133,7 +152,7 @@ def smooth_in_x(x, y, method, half, order):
         width = 2 ** int(b)
         chosen = np.flatnonzero(buckets == b)
         for c in range(0, len(chosen), max(1, CHUNK // width)):
-            w = chosen[c:c + max(1, CHUNK // width)]
+            w = chosen[c : c + max(1, CHUNK // width)]
             cells = windows[w, :1] + np.arange(width)
             inside = cells < windows[w, 1:]
             cells = np.minimum(cells, len(y) - 1)
@@ -186,13 +205,13 @@ def stretches(x, half):
     low[0] = high[0] = x
     for k in range(1, levels):
         s = 2 ** (k - 1)
-        low[k, :n - s] = np.minimum(low[k - 1, :n - s], low[k - 1, s:])
-        high[k, :n - s] = np.maximum(high[k - 1, :n - s], high[k - 1, s:])
+        low[k, : n - s] = np.minimum(low[k - 1, : n - s], low[k - 1, s:])
+        high[k, : n - s] = np.maximum(high[k - 1, : n - s], high[k - 1, s:])
 
     def fits(a, b, i):
         """Whether x[a..b] (inclusive) all lie within `half` of x[i]."""
         k = np.frexp(b - a + 1)[1] - 1  # floor(log2(length))
-        other = b - 2 ** k + 1
+        other = b - 2**k + 1
         lo = np.minimum(low[k, a], low[k, other])
         hi = np.maximum(high[k, a], high[k, other])
         return (lo >= x[i] - half) & (hi <= x[i] + half)

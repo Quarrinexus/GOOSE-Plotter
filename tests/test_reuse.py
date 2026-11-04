@@ -93,8 +93,11 @@ def test_a_recipe_is_kept_in_the_profile_and_applied_anywhere(app, data_dir):
     app.apply_recipe("standard")
     assert app.panel.line.steps == steps
     menu = app._recipes_menu()
-    labels = [menu.entrycget(i, "label") for i in range(menu.index("end") + 1)
-              if menu.type(i) != "separator"]
+    labels = [
+        menu.entrycget(i, "label")
+        for i in range(menu.index("end") + 1)
+        if menu.type(i) != "separator"
+    ]
     assert "standard" in labels and "Delete recipe" in labels
     app.delete_recipe("standard")
     assert "recipes" not in json.loads((data_dir / profile.PROFILE_NAME).read_text())
@@ -120,8 +123,11 @@ def test_replacing_or_deleting_a_recipe_is_undone_by_ctrl_z(app, data_dir):
 
 
 def test_profile_drops_recipes_it_cant_use(tmp_path):
-    (tmp_path / profile.PROFILE_NAME).write_text(json.dumps(
-        {"recipes": {"good": {"x": "B", "x_fn": "x", "steps": []}, "bad": "no"}}))
+    (tmp_path / profile.PROFILE_NAME).write_text(
+        json.dumps(
+            {"recipes": {"good": {"x": "B", "x_fn": "x", "steps": []}, "bad": "no"}}
+        )
+    )
     loaded, error = profile.load_profile(tmp_path)
     assert list(loaded.recipes) == ["good"] and not error
 
@@ -156,7 +162,13 @@ def test_copy_paste_remove_and_on_act_on_the_picked_steps(app):
     assert [s.kind for s in app.copied[0]] == ["despike", "smooth"]
     app.choose_step(1)  # paste goes in after the chosen step, and is picked
     app.paste_steps()
-    assert [s.kind for s in line.steps] == ["despike", "subtract", "despike", "smooth", "smooth"]
+    assert [s.kind for s in line.steps] == [
+        "despike",
+        "subtract",
+        "despike",
+        "smooth",
+        "smooth",
+    ]
     assert line.picks == (2, 3)
     app.step_on.set(False)
     app.toggle_step()

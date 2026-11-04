@@ -11,6 +11,7 @@ PROFILE_NAME = "goose-plotter.json"
 @dataclass
 class Profile:
     """Everything optional; an empty profile shows raw column names."""
+
     labels: dict = field(default_factory=dict)  # column -> axis label
     units: dict = field(default_factory=dict)  # column -> unit
     samples: dict = field(default_factory=dict)  # sample name -> colour
@@ -36,14 +37,23 @@ def load_profile(data_dir):
         return Profile(), ""
     try:
         data = _read(data_dir)
-        kinds = {"labels": dict, "units": dict, "samples": dict, "defaults": dict,
-                 "format": (dict, type(None)), "recipes": dict}
+        kinds = {
+            "labels": dict,
+            "units": dict,
+            "samples": dict,
+            "defaults": dict,
+            "format": (dict, type(None)),
+            "recipes": dict,
+        }
         for key, kind in kinds.items():
             if not isinstance(data.get(key), kind) and key in data:
                 raise ValueError(f"'{key}' has the wrong type")
         profile = Profile(**{k: data[k] for k in kinds if k in data})
-        profile.recipes = {name: r for name, r in profile.recipes.items()
-                           if isinstance(r, dict) and isinstance(r.get("steps"), list)}
+        profile.recipes = {
+            name: r
+            for name, r in profile.recipes.items()
+            if isinstance(r, dict) and isinstance(r.get("steps"), list)
+        }
     except (OSError, ValueError) as err:  # json errors are ValueErrors
         return Profile(), f"{PROFILE_NAME} ignored: {err}"
     if profile.format is not None and not _valid_format(profile.format):
@@ -55,8 +65,13 @@ def load_profile(data_dir):
 def _valid_format(fmt):
     def whole(value, least):
         return type(value) is int and value >= least
-    return (isinstance(fmt.get("delimiter"), str) and fmt["delimiter"] != ""
-            and whole(fmt.get("header_line"), 0) and whole(fmt.get("data_line"), 1))
+
+    return (
+        isinstance(fmt.get("delimiter"), str)
+        and fmt["delimiter"] != ""
+        and whole(fmt.get("header_line"), 0)
+        and whole(fmt.get("data_line"), 1)
+    )
 
 
 def _save(data_dir, key, value):
@@ -67,7 +82,9 @@ def _save(data_dir, key, value):
         data.pop(key, None)
     else:
         data[key] = value
-    (Path(data_dir) / PROFILE_NAME).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    (Path(data_dir) / PROFILE_NAME).write_text(
+        json.dumps(data, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def save_format(data_dir, fmt):

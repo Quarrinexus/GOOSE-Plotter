@@ -78,7 +78,7 @@ mirror. If that folder isn't around this repo, use whatever data folder
      NaN).
    - despike (`despike.despike`): spikes turn to NaN in x and y, like a
      removed cut
-   - subtract (`background.apply` in "subtract" mode): the polynomial, or with
+   - subtract ("Fit residual" in the window; `background.apply` in "subtract" mode): the polynomial, or with
      `advanced` the typed `function`, over the line as it is there; the y
      label gets " − fit"
    - smooth (`smoothing.smooth`); a missing x-unit `span` is estimated
@@ -136,7 +136,7 @@ Things that depend on it:
   `widgets.StepList` drag) and `toggle_step` end in `_steps_changed`, which
   syncs links and redraws, keeping the zoom as `_zoom_kept` says (only fit
   curves changed: both axes; a cut changed: neither; else x). The editors
-  are frames per kind, one packed at a time; Subtract and Fit curve share
+  are frames per kind, one packed at a time; Fit residual and Fit curve share
   one. Adding an FFT or Derivative puts one on every line in the panel.
 - **Picking several steps**: `Line.picked` (not saved, like `step`) holds
   the steps picked with the chosen one; read it through `Line.picks`, which
@@ -410,10 +410,13 @@ Build the window, drive the controls, then read the state:
 
 ```python
 from goose_plotter import plotter as P, smoothing
-app = P.Plotter()                      # uses ~/.config/goose-plotter/settings.json
-app.run.set(next(n for n in app.datasets if "005" in n)); app.apply_controls()
-app.add_step("smooth")                 # a step, chosen, its editor shown
-app.smooth.set(smoothing.METHODS["median"]); app.apply_controls()
+
+app = P.Plotter()  # uses ~/.config/goose-plotter/settings.json
+app.run.set(next(n for n in app.datasets if "005" in n))
+app.apply_controls()
+app.add_step("smooth")  # a step, chosen, its editor shown
+app.smooth.set(smoothing.METHODS["median"])
+app.apply_controls()
 print(app.panel.line.shown, app.error_label["text"])
 app.fig.savefig("/some/scratch/dir/check.png")
 app.destroy()

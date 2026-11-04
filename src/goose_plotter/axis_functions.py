@@ -5,18 +5,38 @@ import re
 import numpy as np
 
 # Names an axis function can call; any other name stands for the quantity.
-FUNCTIONS = {name: getattr(np, name) for name in (
-    "exp", "log", "log10", "log2", "sqrt", "abs", "sin", "cos", "tan",
-    "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "radians", "degrees",
-)} | {"pi": np.pi, "e": np.e}
+FUNCTIONS = {
+    name: getattr(np, name)
+    for name in (
+        "exp",
+        "log",
+        "log10",
+        "log2",
+        "sqrt",
+        "abs",
+        "sin",
+        "cos",
+        "tan",
+        "arcsin",
+        "arccos",
+        "arctan",
+        "sinh",
+        "cosh",
+        "tanh",
+        "radians",
+        "degrees",
+    )
+} | {"pi": np.pi, "e": np.e}
 
 
 def quantity_name(expr):
     """The one name in `expr` that isn't a function: '1/x' -> 'x'."""
     free = set(compile(expr, "<axis function>", "eval").co_names) - FUNCTIONS.keys()
     if len(free) != 1:
-        raise ValueError(f"'{expr}' should use exactly one name for the quantity, "
-                         f"found {', '.join(sorted(free)) or 'none'}")
+        raise ValueError(
+            f"'{expr}' should use exactly one name for the quantity, "
+            f"found {', '.join(sorted(free)) or 'none'}"
+        )
     return free.pop()
 
 

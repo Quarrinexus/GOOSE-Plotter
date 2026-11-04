@@ -90,8 +90,9 @@ PARTNER = "#f0c987"  # frame around the panel locked to the selected one
 
 # Tk's X core fonts show these as '®' or the wrong symbol, though matplotlib
 # draws them fine; plain() swaps them for ASCII in text Tk shows.
-PLAIN = str.maketrans({"\u2212": "-", "\u2013": "-", "\u0394": "d", "\u2192": "->",
-                       "\u03c3": " sigma"})
+PLAIN = str.maketrans(
+    {"\u2212": "-", "\u2013": "-", "\u0394": "d", "\u2192": "->", "\u03c3": " sigma"}
+)
 
 
 def plain(text):
@@ -128,7 +129,9 @@ def text_problem(text):
     try:
         fig.canvas.draw()
     except Exception as err:  # noqa: BLE001 - ValueError from the mathtext parser, mostly
-        return str(err).strip().splitlines()[0] if str(err).strip() else "can't be drawn"
+        return (
+            str(err).strip().splitlines()[0] if str(err).strip() else "can't be drawn"
+        )
     return ""
 
 
@@ -150,7 +153,10 @@ def axes_icon(colour=theme.MUTED):
     image = Image.new("RGBA", (18 * k, 22 * k))
     draw = ImageDraw.Draw(image)
     draw.line((2 * k, 3 * k, 2 * k, 19 * k, 17 * k, 19 * k), fill=colour, width=2 * k)
-    curve = [(x * k, (16 - 11 * (x - 4) / 12 + 2.5 * np.sin(x / 1.6)) * k) for x in range(4, 17)]
+    curve = [
+        (x * k, (16 - 11 * (x - 4) / 12 + 2.5 * np.sin(x / 1.6)) * k)
+        for x in range(4, 17)
+    ]
     draw.line(curve, fill=colour, width=int(1.6 * k), joint="curve")
     return ImageTk.PhotoImage(image.resize((18, 22), Image.Resampling.LANCZOS))
 
@@ -188,11 +194,15 @@ class Plotter(tk.Tk):
         self.axes_popup = None
         self.save_popup = None
         self.picker = None  # the SpanSelector while a fit or cut range is being dragged
-        self.point_pick = False  # while clicks on the selected panel read points (Measure)
+        self.point_pick = (
+            False  # while clicks on the selected panel read points (Measure)
+        )
         self.marks = {}  # cell -> Measure's artists on it: region, markers, their labels
         self.measured = {}  # cell -> what Measure read off its selected line, as last drawn
         self.pick_target = "cut"  # which range it sets: "cut" or "measure"
-        self.derive_pick = None  # (source cell, operation) while the user clicks where it goes
+        self.derive_pick = (
+            None  # (source cell, operation) while the user clicks where it goes
+        )
         self.link_pick = None  # cell while the user clicks a panel to link it to
         self.links = {}  # frozenset of two panel ids -> Link; see _link_partners
         # The plots, one per tab above the plot: {"n": its number, "state": what
@@ -223,16 +233,25 @@ class Plotter(tk.Tk):
         side.pack(side=tk.LEFT, fill=tk.Y)
         save = ttk.Frame(side, padding=(10, 0, 10, 10))
         save.pack(side=tk.BOTTOM, anchor=tk.W, fill=tk.X)
-        self.side = tk.Canvas(side, highlightthickness=0, borderwidth=0, yscrollincrement=20,
-                              background=ttk.Style().lookup("TFrame", "background"))
+        self.side = tk.Canvas(
+            side,
+            highlightthickness=0,
+            borderwidth=0,
+            yscrollincrement=20,
+            background=ttk.Style().lookup("TFrame", "background"),
+        )
         self.side.pack(side=tk.LEFT, fill=tk.Y)
         ttk.Style().configure("Side.Vertical.TScrollbar", arrowsize=10)
         # The scrollbar's slot keeps its width whether it's showing or not, so
         # the plot doesn't shift when the column starts or stops scrolling.
         slot = ttk.Frame(side)
         slot.pack(side=tk.LEFT, fill=tk.Y)
-        self.side_scroll = ttk.Scrollbar(slot, orient=tk.VERTICAL, command=self.side.yview,
-                                         style="Side.Vertical.TScrollbar")
+        self.side_scroll = ttk.Scrollbar(
+            slot,
+            orient=tk.VERTICAL,
+            command=self.side.yview,
+            style="Side.Vertical.TScrollbar",
+        )
         slot.configure(width=self.side_scroll.winfo_reqwidth())
         slot.pack_propagate(False)
         self.side.configure(yscrollcommand=self.side_scroll.set)
@@ -246,19 +265,27 @@ class Plotter(tk.Tk):
         # Files: folders, format and sessions, set now and then, so a toggle at
         # the top; open at start only if a folder still needs choosing.
         files = self._collapsible(
-            controls, (0, 0), lambda _: "Files",
-            start_open=not (self.settings.get("data_dir") and self.settings.get("output_dir")))
+            controls,
+            (0, 0),
+            lambda _: "Files",
+            start_open=not (
+                self.settings.get("data_dir") and self.settings.get("output_dir")
+            ),
+        )
         self.data_label = self._folder_row(files, "Data folder", "data_dir")
         self.output_label = self._folder_row(files, "Output folder", "output_dir")
         ttk.Button(files, text="Data format...", command=self.edit_format).pack(
-            anchor=tk.W, pady=(0, 2))
+            anchor=tk.W, pady=(0, 2)
+        )
         ttk.Label(files, text="Session").pack(anchor=tk.W, pady=(10, 2))
         buttons = ttk.Frame(files)
         buttons.pack(anchor=tk.W, pady=(0, 2))
         ttk.Button(buttons, text="Open session...", command=self.open_session).pack(
-            side=tk.LEFT)
+            side=tk.LEFT
+        )
         ttk.Button(buttons, text="Save session...", command=self.save_session).pack(
-            side=tk.LEFT, padx=(6, 0))
+            side=tk.LEFT, padx=(6, 0)
+        )
         ttk.Separator(controls).pack(fill=tk.X, pady=(10, 8))
         # Labels beside their boxes, not above, to keep the column short.
         row = ttk.Frame(controls)
@@ -268,10 +295,13 @@ class Plotter(tk.Tk):
         ttk.Label(controls, text="Lines").pack(anchor=tk.W, pady=(8, 2))
         lines = ttk.Frame(controls)
         lines.pack(anchor=tk.W, fill=tk.X)
-        self.line_list = tk.Listbox(lines, height=4, width=24, exportselection=False,
-                                    activestyle="none")
+        self.line_list = tk.Listbox(
+            lines, height=4, width=24, exportselection=False, activestyle="none"
+        )
         self.line_list.pack(side=tk.LEFT)
-        line_scroll = ttk.Scrollbar(lines, orient=tk.VERTICAL, command=self.line_list.yview)
+        line_scroll = ttk.Scrollbar(
+            lines, orient=tk.VERTICAL, command=self.line_list.yview
+        )
         line_scroll.pack(side=tk.LEFT, fill=tk.Y)
         self.line_list["yscrollcommand"] = line_scroll.set
         self.line_list.bind("<<ListboxSelect>>", self._on_line_select)
@@ -282,11 +312,15 @@ class Plotter(tk.Tk):
         line_buttons.pack(side=tk.LEFT, padx=(6, 0), fill=tk.Y)
         line_buttons.grid_propagate(False)
         line_buttons.columnconfigure(0, weight=1)
-        add = ttk.Button(line_buttons, text="+", style="Box.TButton", command=self.add_line)
-        self.remove_button = ttk.Button(line_buttons, text="-", style="Box.TButton",
-                                        command=self.remove_line)
-        self.style_button = ttk.Button(line_buttons, style="Box.TButton",
-                                       command=self.open_style)
+        add = ttk.Button(
+            line_buttons, text="+", style="Box.TButton", command=self.add_line
+        )
+        self.remove_button = ttk.Button(
+            line_buttons, text="-", style="Box.TButton", command=self.remove_line
+        )
+        self.style_button = ttk.Button(
+            line_buttons, style="Box.TButton", command=self.open_style
+        )
         for i, box in enumerate((add, self.remove_button, self.style_button)):
             box.grid(row=2 * i, column=0, sticky="nsew")
             line_buttons.rowconfigure(2 * i, weight=1, uniform="box")
@@ -300,7 +334,9 @@ class Plotter(tk.Tk):
         # Narrower than Dataset, to leave room for the two buttons beside them.
         self.x = self._combo(axis_boxes, "X axis", [], width=21)
         self.x_fn = self._function_box(axis_boxes, "x")
-        y_label = len(axis_boxes.pack_slaves())  # the Y axis label's place in the column
+        y_label = len(
+            axis_boxes.pack_slaves()
+        )  # the Y axis label's place in the column
         self.y = self._combo(axis_boxes, "Y axis", [], width=21)
         self.y_fn = self._function_box(axis_boxes, "y")
         # Beside the axis boxes: swap x and y, then the axes editor.
@@ -308,20 +344,24 @@ class Plotter(tk.Tk):
         axis_buttons.pack(side=tk.LEFT, padx=(6, 0))
         self.swap_icon, self.axes_icon = swap_icon(), axes_icon()
         ttk.Button(axis_buttons, image=self.swap_icon, command=self.swap).pack(
-            side=tk.LEFT)
+            side=tk.LEFT
+        )
         ttk.Button(axis_buttons, image=self.axes_icon, command=self.open_axes).pack(
-            side=tk.LEFT, padx=(4, 0))
+            side=tk.LEFT, padx=(4, 0)
+        )
         # Where they sit centred beside the boxes with both Function toggles
         # closed, kept at that height above the Y axis label: opening X's
         # Function moves them down with it, opening Y's doesn't.
         self.update_idletasks()
         y_label = axis_boxes.pack_slaves()[y_label]
         above_y = y_label.winfo_y() - max(
-            0, (axis_boxes.winfo_reqheight() - axis_buttons.winfo_reqheight()) // 2)
+            0, (axis_boxes.winfo_reqheight() - axis_buttons.winfo_reqheight()) // 2
+        )
         axis_buttons.pack_configure(anchor=tk.N)
 
         def place_buttons(_=None):
             axis_buttons.pack_configure(pady=(max(0, y_label.winfo_y() - above_y), 0))
+
         place_buttons()
         axis_boxes.bind("<Configure>", place_buttons, add="+")
         # Why the selected line isn't drawn; shown only when it isn't.
@@ -332,8 +372,9 @@ class Plotter(tk.Tk):
         # Not a ttk.Notebook: that is as tall as its tallest tab.
         ttk.Separator(controls).pack(fill=tk.X, pady=(10, 8))
         self.tab = tk.StringVar()
-        self.tabs = {name: ttk.Frame(controls)
-                     for name in ("Process", "Linking", "Measure")}
+        self.tabs = {
+            name: ttk.Frame(controls) for name in ("Process", "Linking", "Measure")
+        }
         self._tab_strip(controls)
         self._steps_box(self.tabs["Process"])
         # FFT's toggle adds the 10 px above it.
@@ -364,9 +405,11 @@ class Plotter(tk.Tk):
         buttons.pack(fill=tk.X, pady=(8, 0))
         buttons.columnconfigure((0, 1), weight=1, uniform="button")
         ttk.Button(buttons, text="Saving Options", command=self.open_save_options).grid(
-            row=0, column=0, sticky="ew", padx=(0, 3))
+            row=0, column=0, sticky="ew", padx=(0, 3)
+        )
         ttk.Button(buttons, text="Save figure", command=self.save).grid(
-            row=0, column=1, sticky="ew", padx=(3, 0))
+            row=0, column=1, sticky="ew", padx=(3, 0)
+        )
 
         self.fig = Figure(figsize=(8, 5), constrained_layout=True)
         plot = ttk.Frame(self)
@@ -381,11 +424,19 @@ class Plotter(tk.Tk):
         base = tkfont.nametofont("TkDefaultFont").actual()
         size = base["size"] + 1 if base["size"] > 0 else base["size"] - 1
         font = tkfont.Font(self, family=base["family"], size=size)
-        self.plot_strip = TabStrip(self.toolbar, font, self.switch_plot,
-                                   open_colour=to_hex(self.fig.get_facecolor()),
-                                   on_close=self.close_plot, on_add=self.new_plot,
-                                   pad=10, above=14)
-        self.plot_strip.pack(side=tk.LEFT, anchor=tk.S, fill=tk.X, expand=True, padx=(6, 12))
+        self.plot_strip = TabStrip(
+            self.toolbar,
+            font,
+            self.switch_plot,
+            open_colour=to_hex(self.fig.get_facecolor()),
+            on_close=self.close_plot,
+            on_add=self.new_plot,
+            pad=10,
+            above=14,
+        )
+        self.plot_strip.pack(
+            side=tk.LEFT, anchor=tk.S, fill=tk.X, expand=True, padx=(6, 12)
+        )
         self._show_plots()
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.canvas.mpl_connect("button_press_event", self._on_click)
@@ -406,11 +457,15 @@ class Plotter(tk.Tk):
         """Layout and Delete panel, between the cursor's coordinates and
         matplotlib's buttons: they act on the panels, so they sit by the plot.
         Fixed there, as the coordinates grow to the left."""
-        first_text = next(w for w in self.toolbar.pack_slaves() if isinstance(w, tk.Label))
-        layout = self.toolbar.button("Layout", self.choose_layout,
-                                     "Layout: rows of panels, and their sizes")
-        self.delete_button = self.toolbar.button("Delete panel", self.delete_panel,
-                                                 "Delete the selected panel")
+        first_text = next(
+            w for w in self.toolbar.pack_slaves() if isinstance(w, tk.Label)
+        )
+        layout = self.toolbar.button(
+            "Layout", self.choose_layout, "Layout: rows of panels, and their sizes"
+        )
+        self.delete_button = self.toolbar.button(
+            "Delete panel", self.delete_panel, "Delete the selected panel"
+        )
         self.toolbar.spacer().pack(side=tk.RIGHT, before=first_text, padx="3p")
         for w in (self.delete_button, layout):  # packed from the right
             w.pack(side=tk.RIGHT, before=first_text)
@@ -420,9 +475,13 @@ class Plotter(tk.Tk):
         usual order, and the cursor's coordinates just before them, growing to
         the left, so the buttons don't move as the text changes."""
         parts = self.toolbar.pack_slaves()
-        texts = [w for w in parts if isinstance(w, tk.Label)]  # the coordinates, and a filler
+        texts = [
+            w for w in parts if isinstance(w, tk.Label)
+        ]  # the coordinates, and a filler
         tools = [w for w in parts if w not in texts]
-        options = {w: {k: v for k, v in w.pack_info().items() if k != "in"} for w in parts}
+        options = {
+            w: {k: v for k, v in w.pack_info().items() if k != "in"} for w in parts
+        }
         for w in parts:
             w.pack_forget()
         for w in reversed(tools):  # packed from the right, so the last first
@@ -451,13 +510,23 @@ class Plotter(tk.Tk):
         # Up/Down step through lines; the Lines list and the boxes (a combobox
         # opens on Down) do their own thing with them.
         for key, step in (("<Up>", -1), ("<Down>", 1)):
-            self.bind(key, lambda e, step=step: (
-                isinstance(e.widget, (tk.Listbox, tk.Entry, ttk.Entry))
-                or self._step_line(step)))
-        for key, move in (("Left", (0, -1)), ("Right", (0, 1)), ("Up", (-1, 0)),
-                          ("Down", (1, 0))):
-            self.bind(f"<Control-{key}>", lambda e, move=move: (
-                self._typing(e) or self._step_panel(*move)))
+            self.bind(
+                key,
+                lambda e, step=step: (
+                    isinstance(e.widget, (tk.Listbox, tk.Entry, ttk.Entry))
+                    or self._step_line(step)
+                ),
+            )
+        for key, move in (
+            ("Left", (0, -1)),
+            ("Right", (0, 1)),
+            ("Up", (-1, 0)),
+            ("Down", (1, 0)),
+        ):
+            self.bind(
+                f"<Control-{key}>",
+                lambda e, move=move: self._typing(e) or self._step_panel(*move),
+            )
 
     def _delete_key(self, event):
         """Delete: the chosen step when the step list has the focus (a click
@@ -473,7 +542,9 @@ class Plotter(tk.Tk):
     def _typing(event):
         """Whether the key went to a box that can be typed in."""
         w = event.widget
-        return isinstance(w, (tk.Entry, ttk.Entry)) and "readonly" not in str(w.cget("state"))
+        return isinstance(w, (tk.Entry, ttk.Entry)) and "readonly" not in str(
+            w.cget("state")
+        )
 
     def _step_line(self, step):
         at = self.panel.selected + step
@@ -503,7 +574,10 @@ class Plotter(tk.Tk):
 
     def _fit_side(self, _=None):
         """Size the controls column to its contents; scrollbar only if it doesn't fit."""
-        width, height = self.side_inner.winfo_reqwidth(), self.side_inner.winfo_reqheight()
+        width, height = (
+            self.side_inner.winfo_reqwidth(),
+            self.side_inner.winfo_reqheight(),
+        )
         self.side.configure(width=width, scrollregion=(0, 0, width, height))
         if height > self.side.winfo_height():
             if not self.side_scroll.winfo_manager():
@@ -547,20 +621,32 @@ class Plotter(tk.Tk):
         if not error:
             self.error_label.pack_forget()
         elif not self.error_label.winfo_manager():
-            self.error_label.pack(anchor=tk.W, fill=tk.X, pady=(8, 0), after=self.axes_block)
+            self.error_label.pack(
+                anchor=tk.W, fill=tk.X, pady=(8, 0), after=self.axes_block
+            )
 
     def _scroll_side(self, event):
         """Mouse wheel over the controls scrolls them, when they're scrollable."""
-        if not self.side_scroll.winfo_manager() or not str(event.widget).startswith(str(self.side)):
+        if not self.side_scroll.winfo_manager() or not str(event.widget).startswith(
+            str(self.side)
+        ):
             return
         up = event.num == 4 or getattr(event, "delta", 0) > 0
         self.side.yview_scroll(-1 if up else 1, "units")
 
-    def _combo(self, parent, label, values, default="", width=24, pady=(8, 2), **kwargs):
+    def _combo(
+        self, parent, label, values, default="", width=24, pady=(8, 2), **kwargs
+    ):
         ttk.Label(parent, text=label).pack(anchor=tk.W, pady=pady)
         var = tk.StringVar(value=default)
-        box = ttk.Combobox(parent, textvariable=var, values=values,
-                           state="readonly", width=width, **kwargs)
+        box = ttk.Combobox(
+            parent,
+            textvariable=var,
+            values=values,
+            state="readonly",
+            width=width,
+            **kwargs,
+        )
         box.pack(anchor=tk.W)
         box.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
         var.box = box
@@ -573,8 +659,13 @@ class Plotter(tk.Tk):
         # The triangle is drawn, not typed: Tk's X core fonts can show ▸ as '®'.
         toggle = ttk.Frame(parent, cursor="hand2")
         toggle.pack(anchor=tk.W, pady=pady)
-        arrow = tk.Canvas(toggle, width=10, height=10, highlightthickness=0,
-                          background=ttk.Style().lookup("TFrame", "background"))
+        arrow = tk.Canvas(
+            toggle,
+            width=10,
+            height=10,
+            highlightthickness=0,
+            background=ttk.Style().lookup("TFrame", "background"),
+        )
         arrow.pack(side=tk.LEFT, padx=(0, 4))
         label = ttk.Label(toggle, foreground=theme.MUTED)
         label.pack(side=tk.LEFT)
@@ -608,10 +699,13 @@ class Plotter(tk.Tk):
         """'label [box]' on grid row `row` of `parent` (the box in column 1).
 
         Width 1: the box takes the room the column leaves it, never widening it."""
-        ttk.Label(parent, text=label, width=7).grid(row=row, column=0, sticky=tk.W,
-                                                   pady=(0, 3))
+        ttk.Label(parent, text=label, width=7).grid(
+            row=row, column=0, sticky=tk.W, pady=(0, 3)
+        )
         var = tk.StringVar()
-        box = ttk.Combobox(parent, textvariable=var, state="readonly", width=1, **kwargs)
+        box = ttk.Combobox(
+            parent, textvariable=var, state="readonly", width=1, **kwargs
+        )
         box.grid(row=row, column=1, sticky="ew", pady=(0, 3))
         box.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
         var.box = box
@@ -627,11 +721,14 @@ class Plotter(tk.Tk):
             used = f": {expr}" if not is_identity(expr) and not is_open else ""
             return "Function" + used
 
-        body = self._collapsible(parent, (4, 0), text, on_open=lambda: entry.focus_set())
+        body = self._collapsible(
+            parent, (4, 0), text, on_open=lambda: entry.focus_set()
+        )
         entry = ttk.Entry(body, textvariable=var, width=16)
         entry.pack(anchor=tk.W)
-        ttk.Label(body, text=f"e.g. 1/{name}; Enter applies",
-                  foreground=theme.HINT).pack(anchor=tk.W)
+        ttk.Label(
+            body, text=f"e.g. 1/{name}; Enter applies", foreground=theme.HINT
+        ).pack(anchor=tk.W)
         for key in ("<Return>", "<KP_Enter>"):
             entry.bind(key, lambda _: (self.apply_controls(), body.refresh()))
         var.show_label = body.refresh
@@ -654,23 +751,34 @@ class Plotter(tk.Tk):
         for kind, name in KINDS.items():
             if kind == TRANSFORMS[0]:
                 self.add_menu.add_separator()
-            self.add_menu.add_command(label=name, command=lambda kind=kind: self.add_step(kind))
+            self.add_menu.add_command(
+                label=name, command=lambda kind=kind: self.add_step(kind)
+            )
         self.add_menu.add_separator()
         for kind in TRANSFORMS:
-            self.add_menu.add_command(label=f"{KINDS[kind]} in a new panel",
-                                      command=lambda kind=kind: self.new_derived_panel(kind))
-            self.add_menu.add_command(label=f"{KINDS[kind]} in another panel...",
-                                      command=lambda kind=kind: self.existing_derived_panel(kind))
+            self.add_menu.add_command(
+                label=f"{KINDS[kind]} in a new panel",
+                command=lambda kind=kind: self.new_derived_panel(kind),
+            )
+            self.add_menu.add_command(
+                label=f"{KINDS[kind]} in another panel...",
+                command=lambda kind=kind: self.existing_derived_panel(kind),
+            )
         add = ttk.Button(row, text="Add step", width=1)
-        add.configure(command=lambda: self.add_menu.tk_popup(
-            add.winfo_rootx(), add.winfo_rooty() + add.winfo_height()))
+        add.configure(
+            command=lambda: self.add_menu.tk_popup(
+                add.winfo_rootx(), add.winfo_rooty() + add.winfo_height()
+            )
+        )
         add.grid(row=0, column=0, sticky="ew")
-        self.remove_step_button = ttk.Button(row, text="Remove", width=1,
-                                             command=self.remove_step)
+        self.remove_step_button = ttk.Button(
+            row, text="Remove", width=1, command=self.remove_step
+        )
         self.remove_step_button.grid(row=0, column=1, sticky="ew", padx=6)
         self.step_on = tk.BooleanVar(value=True)
-        self.step_on_box = ttk.Checkbutton(row, text="On", variable=self.step_on,
-                                           command=self.toggle_step)
+        self.step_on_box = ttk.Checkbutton(
+            row, text="On", variable=self.step_on, command=self.toggle_step
+        )
         self.step_on_box.grid(row=0, column=2, sticky=tk.W)
         # Reusing steps: on another line, panel or plot (Copy, Paste), or by
         # name from the data folder's profile (Recipes).
@@ -680,8 +788,11 @@ class Plotter(tk.Tk):
         copy = ttk.Button(row, text="Copy", width=1, command=self.copy_steps)
         copy.grid(row=0, column=0, sticky="ew")
         self.paste_button = ttk.Button(row, text="Paste", width=1)
-        self.paste_button.configure(command=lambda: self._popup_or(
-            self.paste_button, self._paste_menu(), self.paste_steps))
+        self.paste_button.configure(
+            command=lambda: self._popup_or(
+                self.paste_button, self._paste_menu(), self.paste_steps
+            )
+        )
         self.paste_button.grid(row=0, column=1, sticky="ew", padx=6)
         recipes = ttk.Button(row, text="Recipes", width=1)
         recipes.configure(command=lambda: self._popup_or(recipes, self._recipes_menu()))
@@ -690,23 +801,35 @@ class Plotter(tk.Tk):
         Tooltip(self.paste_button, "Put the copied steps on this line (Ctrl+Shift+V)")
         Tooltip(recipes, "Steps saved by name in the data folder, for any line")
         # Not wrapped: one line, short enough for the column.
-        ttk.Label(parent, text="drag to move; Ctrl+click picks several",
-                  foreground=theme.HINT).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(
+            parent, text="drag to move; Ctrl+click picks several", foreground=theme.HINT
+        ).pack(anchor=tk.W, pady=(2, 0))
         ttk.Separator(parent).pack(fill=tk.X, pady=(8, 0))
         self.step_title = ttk.Label(parent, foreground=theme.MUTED)  # shown with a step
         holder = self.step_holder = ttk.Frame(parent)
         holder.pack(anchor=tk.W, fill=tk.X)
         self.editors = {}
-        for kind, build in (("cut", self._cut_editor), ("despike", self._despike_editor),
-                            ("smooth", self._smoothing_editor), ("fit", self._fit_editor),
-                            ("fft", self._fft_editor), ("derivative", self._derivative_editor)):
+        for kind, build in (
+            ("cut", self._cut_editor),
+            ("despike", self._despike_editor),
+            ("smooth", self._smoothing_editor),
+            ("fit", self._fit_editor),
+            ("fft", self._fft_editor),
+            ("derivative", self._derivative_editor),
+        ):
             self.editors[kind] = ttk.Frame(holder)
             build(self.editors[kind])
         self.editors["subtract"] = self.editors["fit"]  # the same boxes; see _show_step
-        self.no_steps = ttk.Label(holder, foreground=theme.HINT, wraplength=WRAP,
-                                  text=("No steps: Add step cuts, despikes, subtracts, "
-                                          "smooths, fits a curve to, or takes the FFT or "
-                                          "derivative of the line."))
+        self.no_steps = ttk.Label(
+            holder,
+            foreground=theme.HINT,
+            wraplength=WRAP,
+            text=(
+                "No steps: Add step cuts, despikes, smooths, fits "
+                "a curve to, or takes the fit residual, FFT or "
+                "derivative of the line."
+            ),
+        )
 
     def _despike_editor(self, body):
         """A Despike step: turn points far off the median around them into gaps."""
@@ -715,16 +838,29 @@ class Plotter(tk.Tk):
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text="Window").pack(side=tk.LEFT)
-        window = ttk.Spinbox(row, textvariable=self.despike_window, from_=3, to=100001,
-                             increment=2, width=6, command=lambda: self._soon(self.apply_controls))
+        window = ttk.Spinbox(
+            row,
+            textvariable=self.despike_window,
+            from_=3,
+            to=100001,
+            increment=2,
+            width=6,
+            command=lambda: self._soon(self.apply_controls),
+        )
         window.pack(side=tk.LEFT, padx=(4, 4))
         ttk.Label(row, text="points").pack(side=tk.LEFT)
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text="Threshold").pack(side=tk.LEFT)
-        threshold = ttk.Spinbox(row, textvariable=self.despike_threshold, from_=1, to=50,
-                                increment=0.5, width=4,
-                                command=lambda: self._soon(self.apply_controls))
+        threshold = ttk.Spinbox(
+            row,
+            textvariable=self.despike_threshold,
+            from_=1,
+            to=50,
+            increment=0.5,
+            width=4,
+            command=lambda: self._soon(self.apply_controls),
+        )
         threshold.pack(side=tk.LEFT, padx=(4, 4))
         ttk.Label(row, text="× the local spread").pack(side=tk.LEFT)
         for box in (window, threshold):
@@ -742,24 +878,47 @@ class Plotter(tk.Tk):
         # it's counted in (the menu says).
         top = ttk.Frame(body)
         top.pack(anchor=tk.W, pady=(4, 0))
-        method = ttk.Combobox(top, textvariable=self.smooth, state="readonly", width=15,
-                              values=[v for k, v in smoothing.METHODS.items() if k])
+        method = ttk.Combobox(
+            top,
+            textvariable=self.smooth,
+            state="readonly",
+            width=15,
+            values=[v for k, v in smoothing.METHODS.items() if k],
+        )
         method.pack(side=tk.LEFT)
         method.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
         sizes = ttk.Frame(body)
         sizes.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(sizes, text="Window").pack(side=tk.LEFT)
-        window = ttk.Spinbox(sizes, textvariable=self.window, from_=3, to=100001,
-                             increment=2, width=6, command=lambda: self._soon(self.apply_controls))
+        window = ttk.Spinbox(
+            sizes,
+            textvariable=self.window,
+            from_=3,
+            to=100001,
+            increment=2,
+            width=6,
+            command=lambda: self._soon(self.apply_controls),
+        )
         window.pack(side=tk.LEFT, padx=(4, 4))
-        unit = ttk.Combobox(sizes, textvariable=self.window_unit, state="readonly", width=7,
-                            values=list(smoothing.UNITS.values()))
+        unit = ttk.Combobox(
+            sizes,
+            textvariable=self.window_unit,
+            state="readonly",
+            width=7,
+            values=list(smoothing.UNITS.values()),
+        )
         unit.pack(side=tk.LEFT)
         unit.bind("<<ComboboxSelected>>", lambda _: self.apply_controls())
         self.orders = ttk.Frame(top)
         ttk.Label(self.orders, text="Order").pack(side=tk.LEFT)
-        order = ttk.Spinbox(self.orders, textvariable=self.order, from_=0, to=10, width=2,
-                            command=lambda: self._soon(self.apply_controls))
+        order = ttk.Spinbox(
+            self.orders,
+            textvariable=self.order,
+            from_=0,
+            to=10,
+            width=2,
+            command=lambda: self._soon(self.apply_controls),
+        )
         order.pack(side=tk.LEFT, padx=(4, 0))
         for box in (window, order):
             for key in ("<Return>", "<KP_Enter>"):
@@ -789,11 +948,12 @@ class Plotter(tk.Tk):
             self.window.set(max(n, 3, order + 2 if order % 2 else order + 3))
             self._soon(self.apply_controls)
             return "break"
+
         window.bind("<<Increment>>", lambda _: step(1))
         window.bind("<<Decrement>>", lambda _: step(-1))
 
     def _fit_editor(self, body):
-        """A Subtract or Fit curve step: a polynomial of a degree, or with
+        """A Fit residual or Fit curve step: a polynomial of a degree, or with
         Advanced Fitting a function of x and its start values."""
         self.degree = tk.StringVar(value="5")
         self.advanced = tk.BooleanVar(value=False)
@@ -801,24 +961,39 @@ class Plotter(tk.Tk):
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text="Polynomial degree").pack(side=tk.LEFT)
-        self.degree_box = ttk.Spinbox(row, textvariable=self.degree, from_=0, to=30, width=3,
-                                      command=lambda: self._soon(self.apply_controls))
+        self.degree_box = ttk.Spinbox(
+            row,
+            textvariable=self.degree,
+            from_=0,
+            to=30,
+            width=3,
+            command=lambda: self._soon(self.apply_controls),
+        )
         self.degree_box.pack(side=tk.LEFT, padx=(4, 0))
         top = ttk.Frame(body)
         top.pack(anchor=tk.W, pady=(4, 0))
-        ttk.Checkbutton(top, text="Advanced Fitting", variable=self.advanced,
-                        command=self.apply_controls).pack(side=tk.LEFT)
+        ttk.Checkbutton(
+            top,
+            text="Advanced Fitting",
+            variable=self.advanced,
+            command=self.apply_controls,
+        ).pack(side=tk.LEFT)
         # A Fit curve's only: drawn instead of the data.
         self.fit_only = tk.BooleanVar(value=False)
-        self.fit_only_box = ttk.Checkbutton(top, text="Show only fit",
-                                            variable=self.fit_only, command=self.apply_controls)
+        self.fit_only_box = ttk.Checkbutton(
+            top,
+            text="Show only fit",
+            variable=self.fit_only,
+            command=self.apply_controls,
+        )
         # Width 1 and filling the row, so a long function never widens the column.
         boxes = ttk.Frame(body)
         boxes.pack(anchor=tk.W, fill=tk.X, pady=(2, 0))
         boxes.columnconfigure(1, weight=1)
         self.fit_entries = []
-        for i, (text, var) in enumerate((("y =", self.fit_function),
-                                          ("Start", self.fit_start))):
+        for i, (text, var) in enumerate(
+            (("y =", self.fit_function), ("Start", self.fit_start))
+        ):
             ttk.Label(boxes, text=text).grid(row=i, column=0, sticky=tk.W, pady=(0, 2))
             entry = ttk.Entry(boxes, textvariable=var, width=1)
             entry.grid(row=i, column=1, sticky=tk.EW, padx=(4, 0), pady=(0, 2))
@@ -827,11 +1002,13 @@ class Plotter(tk.Tk):
             for key in ("<Return>", "<KP_Enter>"):
                 box.bind(key, lambda _: self.apply_controls())
         self.fit_options = ttk.Frame(body)
-        ttk.Button(self.fit_options, text="Fit Results",
-                   command=self.show_fit_results).pack(side=tk.LEFT)
+        ttk.Button(
+            self.fit_options, text="Fit Results", command=self.show_fit_results
+        ).pack(side=tk.LEFT)
         # A Fit curve's only: the fit moved to a line of its own.
-        self.fit_new_line = ttk.Button(self.fit_options, text="Make fit new line",
-                                       command=self.fit_to_line)
+        self.fit_new_line = ttk.Button(
+            self.fit_options, text="Make fit new line", command=self.fit_to_line
+        )
 
     def show_fit_results(self):
         """A popup with what the chosen fit step found (see background.report)."""
@@ -841,34 +1018,48 @@ class Plotter(tk.Tk):
         if step is not None and step.kind in ("fit", "subtract") and l.shown:
             report = self.fit_reports.get((self._data_key(l), l.step))
         if report is None:
-            self._say("There is no fit to report: the step is off, or its fit failed.",
-                      error=True)
+            self._say(
+                "There is no fit to report: the step is off, or its fit failed.",
+                error=True,
+            )
             return
         lo, hi = report["x range"]
-        lines = [f"Step {l.step + 1}: {KINDS[step.kind]}",
-                 f"Fit: {background.describe(*step.fitting)}", "",
-                 f'Points fitted: {report["points"]}',
-                 f"x range: {lo:g} to {hi:g}",
-                 f'R squared: {report["r2"]:.6g}',
-                 f'R squared (adjusted): {report["adjusted r2"]:.6g}',
-                 f'Residual standard error: {report["sigma"]:.6g}',
-                 f'RMS residual: {report["rms"]:.6g}',
-                 f'Largest residual: {report["largest"]:.6g}', "",
-                 "Parameters:"]
-        lines += [f"  {name} = {value:.8g} +/- " + (f"{error:.3g}" if error is not None else "?")
-                  for name, value, error in report["parameters"]]
+        lines = [
+            f"Step {l.step + 1}: {KINDS[step.kind]}",
+            f"Fit: {background.describe(*step.fitting)}",
+            "",
+            f"Points fitted: {report['points']}",
+            f"x range: {lo:g} to {hi:g}",
+            f"R squared: {report['r2']:.6g}",
+            f"R squared (adjusted): {report['adjusted r2']:.6g}",
+            f"Residual standard error: {report['sigma']:.6g}",
+            f"RMS residual: {report['rms']:.6g}",
+            f"Largest residual: {report['largest']:.6g}",
+            "",
+            "Parameters:",
+        ]
+        lines += [
+            f"  {name} = {value:.8g} +/- "
+            + (f"{error:.3g}" if error is not None else "?")
+            for name, value, error in report["parameters"]
+        ]
         FitResultsPopup(self, plain("\n".join(lines)), report, self._export_fit_results)
 
     def _export_fit_results(self, report, parent, path=None):
         """Write a fit's numbers to a CSV the user picks: its statistics, then
         its parameters with their errors."""
         if path is None:
-            stem = Path(self.filename.get().strip() or self._default_name() or "plot").stem
+            stem = Path(
+                self.filename.get().strip() or self._default_name() or "plot"
+            ).stem
             path = filedialog.asksaveasfilename(
-                parent=parent, title="Save fit results", defaultextension=".csv",
+                parent=parent,
+                title="Save fit results",
+                defaultextension=".csv",
                 initialdir=self.settings.get("output_dir") or Path.home(),
                 initialfile=f"{stem}-fit.csv",
-                filetypes=[("CSV", "*.csv"), ("All files", "*")])
+                filetypes=[("CSV", "*.csv"), ("All files", "*")],
+            )
         if not path:
             return
         with open(path, "w", newline="") as f:
@@ -877,7 +1068,9 @@ class Plotter(tk.Tk):
                 out.writerow([key, report[key]])
             out.writerow([])
             out.writerow(["parameter", "value", "standard error"])
-            out.writerows((n, v, "" if e is None else e) for n, v, e in report["parameters"])
+            out.writerows(
+                (n, v, "" if e is None else e) for n, v, e in report["parameters"]
+            )
 
     def _cut_editor(self, body):
         """A Cut step: the one x range it removes, typed or picked."""
@@ -894,21 +1087,36 @@ class Plotter(tk.Tk):
             for key in ("<Return>", "<KP_Enter>"):
                 box.bind(key, lambda _: self.add_cut())
         ttk.Button(body, text="Pick", command=lambda: self.pick_range("cut")).pack(
-            anchor=tk.W, pady=(6, 0))
+            anchor=tk.W, pady=(6, 0)
+        )
 
     def _fft_editor(self, body):
         """An FFT step: the line becomes its spectrum against its x, so with
         1/x on the field, in F; the steps after it work on that."""
-        self.fft_window, self.fft_pad, self.f_max = tk.StringVar(), tk.StringVar(), tk.StringVar()
+        self.fft_window, self.fft_pad, self.f_max = (
+            tk.StringVar(),
+            tk.StringVar(),
+            tk.StringVar(),
+        )
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text="Window").pack(side=tk.LEFT)
-        window = ttk.Combobox(row, textvariable=self.fft_window, state="readonly", width=5,
-                              values=list(spectrum.WINDOWS.values()))
+        window = ttk.Combobox(
+            row,
+            textvariable=self.fft_window,
+            state="readonly",
+            width=5,
+            values=list(spectrum.WINDOWS.values()),
+        )
         window.pack(side=tk.LEFT, padx=(4, 10))
         ttk.Label(row, text="Padding").pack(side=tk.LEFT)
-        pad = ttk.Combobox(row, textvariable=self.fft_pad, state="readonly", width=2,
-                           values=[str(n) for n in spectrum.PADDING])
+        pad = ttk.Combobox(
+            row,
+            textvariable=self.fft_pad,
+            state="readonly",
+            width=2,
+            values=[str(n) for n in spectrum.PADDING],
+        )
         pad.pack(side=tk.LEFT, padx=(4, 0))
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
@@ -925,37 +1133,63 @@ class Plotter(tk.Tk):
 
     def _derivative_editor(self, body):
         """A Derivative step: the line becomes dy/dx or d2y/dx2 against its x."""
-        self.derivative_order, self.derivative_window = tk.StringVar(value="d1"), tk.StringVar()
+        self.derivative_order, self.derivative_window = (
+            tk.StringVar(value="d1"),
+            tk.StringVar(),
+        )
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text="Order").pack(side=tk.LEFT, padx=(0, 6))
         for key, name in derivative.ORDERS.items():
-            ttk.Radiobutton(row, text=name, variable=self.derivative_order, value=key,
-                            style="Toolbutton", command=self.apply_controls).pack(
-                side=tk.LEFT, padx=(0, 4))
+            ttk.Radiobutton(
+                row,
+                text=name,
+                variable=self.derivative_order,
+                value=key,
+                style="Toolbutton",
+                command=self.apply_controls,
+            ).pack(side=tk.LEFT, padx=(0, 4))
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(row, text="Window").pack(side=tk.LEFT)
-        window = ttk.Spinbox(row, textvariable=self.derivative_window, from_=5, to=100001,
-                             increment=2, width=6, command=lambda: self._soon(self.apply_controls))
+        window = ttk.Spinbox(
+            row,
+            textvariable=self.derivative_window,
+            from_=5,
+            to=100001,
+            increment=2,
+            width=6,
+            command=lambda: self._soon(self.apply_controls),
+        )
         window.pack(side=tk.LEFT, padx=(4, 6))
         ttk.Label(row, text="points, odd", foreground=theme.HINT).pack(side=tk.LEFT)
         for key in ("<Return>", "<KP_Enter>"):
             window.bind(key, lambda _: self.apply_controls())
-        ttk.Label(body, text="wider for less noise; 2nd needs more",
-                  foreground=theme.HINT).pack(anchor=tk.W)
+        ttk.Label(
+            body, text="wider for less noise; 2nd needs more", foreground=theme.HINT
+        ).pack(anchor=tk.W)
 
     def _show_steps(self):
         """The selected line's steps in the list, and the chosen one's settings."""
         l = self.panel.line
         l.step = max(0, min(l.step, len(l.steps) - 1))
-        rows = [f"{i + 1}  {KINDS[s.kind]}  {plain(s.describe())}"
-                + ("" if s.on else "  " + "(off)") for i, s in enumerate(l.steps)]
-        self.step_list.show(rows, l.step, off={i for i, s in enumerate(l.steps) if not s.on},
-                            picked=l.picks)
+        # A Fit residual's "−" (data minus fit) is in its name here, though not in the legend.
+        rows = [
+            f"{i + 1}  {KINDS[s.kind]}  {plain(s.describe().removeprefix('− '))}"
+            + ("" if s.on else "  " + "(off)")
+            for i, s in enumerate(l.steps)
+        ]
+        self.step_list.show(
+            rows,
+            l.step,
+            off={i for i, s in enumerate(l.steps) if not s.on},
+            picked=l.picks,
+        )
         step = l.chosen
-        for state, widget in ((step is not None, self.remove_step_button),
-                              (step is not None, self.step_on_box)):
+        for state, widget in (
+            (step is not None, self.remove_step_button),
+            (step is not None, self.step_on_box),
+        ):
             widget.state(["!disabled" if state else "disabled"])
         self.step_on.set(step.on if step else True)
         kind = step.kind if step else None
@@ -985,21 +1219,28 @@ class Plotter(tk.Tk):
             self.fft_window.set(spectrum.WINDOWS[step.fft_window])
             self.fft_pad.set(str(step.pad))
             self.f_max.set("" if step.f_max is None else f"{step.f_max:g}")
-            self.fft_found["text"] = ("" if found is None or not l.shown
-                                      else f"resolution: {found:.3g} (1 / x range)")
+            self.fft_found["text"] = (
+                ""
+                if found is None or not l.shown
+                else f"resolution: {found:.3g} (1 / x range)"
+            )
         elif step.kind == "derivative":
             self.derivative_order.set(step.d_order)
             self.derivative_window.set(step.d_window)
         elif step.kind == "despike":
             self.despike_window.set(step.spike_window)
             self.despike_threshold.set(f"{step.threshold:g}")
-            self.despike_found["text"] = ("" if found is None or not l.shown
-                                          else f"{found} points removed")
+            self.despike_found["text"] = (
+                "" if found is None or not l.shown else f"{found} points removed"
+            )
         elif step.kind == "smooth":
             self.smooth.set(smoothing.METHODS[step.method])
             self.window_unit.set(smoothing.UNITS[step.in_x])
-            self.window.set((f"{step.span:g}" if step.span is not None else "") if step.in_x
-                            else step.window)
+            self.window.set(
+                (f"{step.span:g}" if step.span is not None else "")
+                if step.in_x
+                else step.window
+            )
             self.order.set(step.order)
             # Order only means something for Savitzky–Golay.
             if step.method == "savgol":
@@ -1010,8 +1251,11 @@ class Plotter(tk.Tk):
             self.degree.set(step.degree)
             self.advanced.set(step.advanced)
             # Greyed out, the box shows the polynomial Degree fits, not the kept function.
-            self.fit_function.set(step.function if step.advanced
-                                  else background.polynomial_text(step.degree))
+            self.fit_function.set(
+                step.function
+                if step.advanced
+                else background.polynomial_text(step.degree)
+            )
             self.fit_start.set(step.start if step.advanced else "")
             for entry in self.fit_entries:
                 entry["state"] = "normal" if step.advanced else "disabled"
@@ -1027,12 +1271,14 @@ class Plotter(tk.Tk):
 
     def _read_step(self, step):
         """`step` with its editor's settings; boxes that don't hold a number keep the old one."""
+
         def number(var, kind, old, ok=lambda v: True):
             try:
                 value = kind(var.get())
             except ValueError:
                 return old
             return value if ok(value) else old
+
         if step.kind == "cut":
             return step  # its range is set by add_cut
         if step.kind == "fft":
@@ -1040,40 +1286,74 @@ class Plotter(tk.Tk):
             if not self.f_max.get().strip():
                 f_max = None
             else:
-                f_max = number(self.f_max, float, f_max, lambda v: v > 0 and math.isfinite(v))
-            return replace(step, fft_window=key_of(spectrum.WINDOWS, self.fft_window.get()),
-                           pad=number(self.fft_pad, int, step.pad), f_max=f_max)
+                f_max = number(
+                    self.f_max, float, f_max, lambda v: v > 0 and math.isfinite(v)
+                )
+            return replace(
+                step,
+                fft_window=key_of(spectrum.WINDOWS, self.fft_window.get()),
+                pad=number(self.fft_pad, int, step.pad),
+                f_max=f_max,
+            )
         if step.kind == "derivative":
-            return replace(step, d_order=self.derivative_order.get(),
-                           d_window=number(self.derivative_window, int, step.d_window,
-                                           lambda v: v > 0))
+            return replace(
+                step,
+                d_order=self.derivative_order.get(),
+                d_window=number(
+                    self.derivative_window, int, step.d_window, lambda v: v > 0
+                ),
+            )
         if step.kind == "despike":
-            return replace(step, spike_window=max(3, number(self.despike_window, int,
-                                                            step.spike_window)),
-                           threshold=number(self.despike_threshold, float, step.threshold,
-                                            lambda v: v > 0 and math.isfinite(v)))
+            return replace(
+                step,
+                spike_window=max(
+                    3, number(self.despike_window, int, step.spike_window)
+                ),
+                threshold=number(
+                    self.despike_threshold,
+                    float,
+                    step.threshold,
+                    lambda v: v > 0 and math.isfinite(v),
+                ),
+            )
         if step.kind == "smooth":
             in_x = self.window_unit.get() == smoothing.UNITS[True]
             # The box holds the window in the units it was showing; the other is kept.
             window, span = step.window, step.span
             if step.in_x:
-                span = number(self.window, float, span, lambda v: v > 0 and math.isfinite(v))
+                span = number(
+                    self.window, float, span, lambda v: v > 0 and math.isfinite(v)
+                )
             else:
                 window = number(self.window, int, window)
-            return replace(step, method=key_of(smoothing.METHODS, self.smooth.get()) or step.method,
-                           in_x=in_x, window=window, span=span,
-                           order=number(self.order, int, step.order))
+            return replace(
+                step,
+                method=key_of(smoothing.METHODS, self.smooth.get()) or step.method,
+                in_x=in_x,
+                window=window,
+                span=span,
+                order=number(self.order, int, step.order),
+            )
         degree = number(self.degree, int, step.degree)
         advanced, function, start = self.advanced.get(), step.function, step.start
         if step.advanced:  # the boxes were the step's to edit
-            function, start = self.fit_function.get().strip(), self.fit_start.get().strip()
+            function, start = (
+                self.fit_function.get().strip(),
+                self.fit_start.get().strip(),
+            )
         elif advanced and not function:  # just ticked: from the polynomial shown
             function = background.polynomial_text(degree)
-        return replace(step, degree=degree, advanced=advanced, function=function, start=start,
-                       only=self.fit_only.get() if step.kind == "fit" else step.only)
+        return replace(
+            step,
+            degree=degree,
+            advanced=advanced,
+            function=function,
+            start=start,
+            only=self.fit_only.get() if step.kind == "fit" else step.only,
+        )
 
     def _set_step(self, l, index, step):
-        l.steps = l.steps[:index] + (step,) + l.steps[index + 1:]
+        l.steps = l.steps[:index] + (step,) + l.steps[index + 1 :]
 
     def choose_step(self, index, how=""):
         """Show step `index` of the selected line (past the last: an FFT panel's
@@ -1163,7 +1443,7 @@ class Plotter(tk.Tk):
             new.colour, new.label, new.style = None, None, "--"
             if old.steps == steps:
                 new.steps, new.step = steps[:k] + (replace(steps[k], only=True),), k
-                old.steps, old.step = steps[:k] + steps[k + 1:], max(0, k - 1)
+                old.steps, old.step = steps[:k] + steps[k + 1 :], max(0, k - 1)
                 new.picked = old.picked = ()
             lines.insert(at, new)
         self._set_selected_line(self.selected, at)
@@ -1177,7 +1457,9 @@ class Plotter(tk.Tk):
             if otherwise:
                 otherwise()
             return
-        menu.tk_popup(button.winfo_rootx(), button.winfo_rooty() + button.winfo_height())
+        menu.tk_popup(
+            button.winfo_rootx(), button.winfo_rooty() + button.winfo_height()
+        )
 
     def copy_steps(self):
         """Remember the picked steps (Ctrl- or Shift-click for several, Ctrl+A
@@ -1196,8 +1478,10 @@ class Plotter(tk.Tk):
             return None
         menu = tk.Menu(self, tearoff=0)
         menu.add_command(label="To this line", command=self.paste_steps)
-        menu.add_command(label="To every line in the panel",
-                         command=lambda: self.paste_steps(every=True))
+        menu.add_command(
+            label="To every line in the panel",
+            command=lambda: self.paste_steps(every=True),
+        )
         return menu
 
     def paste_steps(self, every=False):
@@ -1217,7 +1501,7 @@ class Plotter(tk.Tk):
         p = self.panel
         before = p.line.steps
         cleared = False
-        for l in (p.lines if every else [p.line]):
+        for l in p.lines if every else [p.line]:
             same = (l.x, l.x_fn) == (x, x_fn)
             new = steps if same else without_x_units(steps)
             cleared |= not same and new != steps
@@ -1225,8 +1509,11 @@ class Plotter(tk.Tk):
             l.steps = l.steps[:at] + new + l.steps[at:]
             l.step, l.picked = at, tuple(range(at, at + len(new)))
         n = len(steps)
-        note = ("; cut ranges and x-unit windows were left out, as the x differs"
-                if cleared else "")
+        note = (
+            "; cut ranges and x-unit windows were left out, as the x differs"
+            if cleared
+            else ""
+        )
         self._steps_changed(before)
         self._say(f"{what} {n} step{'' if n == 1 else 's'}{note}.")
 
@@ -1235,21 +1522,27 @@ class Plotter(tk.Tk):
         menu = tk.Menu(self, tearoff=0)
         names = sorted(self.profile.recipes, key=str.lower)
         for name in names:
-            menu.add_command(label=name, command=lambda name=name: self.apply_recipe(name))
+            menu.add_command(
+                label=name, command=lambda name=name: self.apply_recipe(name)
+            )
         if not names:
             menu.add_command(label="No recipes yet", state=tk.DISABLED)
         if names and len(self.panel.lines) > 1:
             every = tk.Menu(menu, tearoff=0)
             for name in names:
-                every.add_command(label=name,
-                                  command=lambda name=name: self.apply_recipe(name, every=True))
+                every.add_command(
+                    label=name,
+                    command=lambda name=name: self.apply_recipe(name, every=True),
+                )
             menu.add_cascade(label="Apply to every line", menu=every)
         menu.add_separator()
         menu.add_command(label="Save steps as recipe...", command=self.save_recipe)
         if names:
             gone = tk.Menu(menu, tearoff=0)
             for name in names:
-                gone.add_command(label=name, command=lambda name=name: self.delete_recipe(name))
+                gone.add_command(
+                    label=name, command=lambda name=name: self.delete_recipe(name)
+                )
             menu.add_cascade(label="Delete recipe", menu=gone)
         return menu
 
@@ -1264,8 +1557,10 @@ class Plotter(tk.Tk):
             return False
         self.profile.recipes = recipes
         if what:
-            self.side_undo = (what, lambda: self.data_dir == folder
-                              and self._store_recipes(before))
+            self.side_undo = (
+                what,
+                lambda: self.data_dir == folder and self._store_recipes(before),
+            )
         return True
 
     def save_recipe(self, name=None):
@@ -1279,16 +1574,22 @@ class Plotter(tk.Tk):
             self._say("Choose a data folder first: recipes are kept in it.", error=True)
             return
         if name is None:
-            name = simpledialog.askstring("Save recipe", "Name for these steps:", parent=self)
+            name = simpledialog.askstring(
+                "Save recipe", "Name for these steps:", parent=self
+            )
         name = (name or "").strip()
         if not name:
             return
         picked = tuple(l.steps[i] for i in l.picks)
         recipe = {"x": l.x, "x_fn": l.x_fn, "steps": session.dump_steps(picked)}
         replacing = name in self.profile.recipes
-        if self._store_recipes({**self.profile.recipes, name: recipe}, f"saving '{name}'"):
-            self._say(f"{'Replaced' if replacing else 'Saved'} recipe '{name}'"
-                      + ("; Ctrl+Z puts the old one back." if replacing else "."))
+        if self._store_recipes(
+            {**self.profile.recipes, name: recipe}, f"saving '{name}'"
+        ):
+            self._say(
+                f"{'Replaced' if replacing else 'Saved'} recipe '{name}'"
+                + ("; Ctrl+Z puts the old one back." if replacing else ".")
+            )
 
     def apply_recipe(self, name, every=False):
         """Put recipe `name`'s steps after the chosen step of the selected line
@@ -1298,8 +1599,13 @@ class Plotter(tk.Tk):
         if not steps:
             self._say(f"The recipe '{name}' has no steps that can be used.", error=True)
             return
-        self._use_steps(steps, recipe.get("x"), recipe.get("x_fn"), every=every,
-                        what=f"Used '{name}':")
+        self._use_steps(
+            steps,
+            recipe.get("x"),
+            recipe.get("x_fn"),
+            every=every,
+            what=f"Used '{name}':",
+        )
 
     def delete_recipe(self, name):
         recipes = {k: v for k, v in self.profile.recipes.items() if k != name}
@@ -1319,8 +1625,10 @@ class Plotter(tk.Tk):
         to `after`, and typed y ranges cleared if what's subtracted changed:
         only fit curves changed, both axes stay; a cut changed, neither (a
         kept zoom could hide it, or show nothing); else x only."""
+
         def active(steps, kinds):
             return [s for s in steps if s.active and s.kind in kinds]
+
         if view(before) != view(after):  # a spectrum, a slope or the data: new axes
             p = self.panel
             clear_ranges(p)
@@ -1362,7 +1670,9 @@ class Plotter(tk.Tk):
     def add_cut(self, pair=None):
         """Set the chosen Cut step's range to `pair`, else the typed one (both
         ends blank: none)."""
-        if pair is None and not (self.cut_from.get().strip() or self.cut_to.get().strip()):
+        if pair is None and not (
+            self.cut_from.get().strip() or self.cut_to.get().strip()
+        ):
             self._set_cuts(())
         else:
             pair = pair or self._typed_cut()
@@ -1382,13 +1692,23 @@ class Plotter(tk.Tk):
         # A tab per link, in a strip that scrolls sideways if they don't fit.
         details = ttk.Frame(body)
         background = ttk.Style().lookup("TFrame", "background")
-        strip = tk.Canvas(details, height=1, width=1, highlightthickness=0, borderwidth=0,
-                          background=background)
+        strip = tk.Canvas(
+            details,
+            height=1,
+            width=1,
+            highlightthickness=0,
+            borderwidth=0,
+            background=background,
+        )
         strip.pack(fill=tk.X, pady=(8, 0))
         tabs = ttk.Frame(strip)
         strip.create_window(0, 0, window=tabs, anchor=tk.NW)
-        strip_scroll = ttk.Scrollbar(details, orient=tk.HORIZONTAL, command=strip.xview,
-                                     style="Side.Horizontal.TScrollbar")
+        strip_scroll = ttk.Scrollbar(
+            details,
+            orient=tk.HORIZONTAL,
+            command=strip.xview,
+            style="Side.Horizontal.TScrollbar",
+        )
         ttk.Style().configure("Side.Horizontal.TScrollbar", arrowsize=10)
         strip.configure(xscrollcommand=strip_scroll.set)
 
@@ -1401,6 +1721,7 @@ class Plotter(tk.Tk):
             elif strip_scroll.winfo_manager():
                 strip_scroll.pack_forget()
                 strip.xview_moveto(0)
+
         tabs.bind("<Configure>", fit_strip)
         strip.bind("<Configure>", fit_strip)
         self.link_var = tk.StringVar()
@@ -1411,7 +1732,8 @@ class Plotter(tk.Tk):
         buttons.pack(fill=tk.X, pady=(6, 0))
         buttons.columnconfigure((0, 1, 2), weight=1, uniform="link")
         ttk.Button(buttons, text="Link...", width=1, command=self.link_panels).grid(
-            row=0, column=0, sticky="ew")
+            row=0, column=0, sticky="ew"
+        )
         unlink = ttk.Button(buttons, text="Unlink", width=1, command=self.unlink_panel)
         unlink.grid(row=0, column=1, sticky="ew", padx=6)
         freeze = ttk.Button(buttons, text="Freeze", width=1, command=self.freeze)
@@ -1422,24 +1744,46 @@ class Plotter(tk.Tk):
         boxes = ttk.Frame(settings)
         boxes.pack(anchor=tk.W, fill=tk.X)
         self.sync_vars = {}
-        names = {"run": "Dataset", "x": "X axis", "x_fn": "X function", "y": "Y axis",
-                 "y_fn": "Y function", "colour": "Colour", "steps": "Steps",
-                 "style": "Line style"}
-        places = {"run": (0, 0), "colour": (0, 1), "x": (1, 0), "y": (1, 1), "x_fn": (2, 0),
-                  "y_fn": (2, 1), "steps": (3, 0), "style": (3, 1)}
+        names = {
+            "run": "Dataset",
+            "x": "X axis",
+            "x_fn": "X function",
+            "y": "Y axis",
+            "y_fn": "Y function",
+            "colour": "Colour",
+            "steps": "Steps",
+            "style": "Line style",
+        }
+        places = {
+            "run": (0, 0),
+            "colour": (0, 1),
+            "x": (1, 0),
+            "y": (1, 1),
+            "x_fn": (2, 0),
+            "y_fn": (2, 1),
+            "steps": (3, 0),
+            "style": (3, 1),
+        }
         for key in SYNC:
             var = self.sync_vars[key] = tk.BooleanVar()
             row, col = places[key]
-            ttk.Checkbutton(boxes, text=names[key], variable=var,
-                            command=lambda key=key: self.set_sync(key)).grid(
-                row=row, column=col, sticky=tk.W, padx=(0, 16), pady=1)
+            ttk.Checkbutton(
+                boxes,
+                text=names[key],
+                variable=var,
+                command=lambda key=key: self.set_sync(key),
+            ).grid(row=row, column=col, sticky=tk.W, padx=(0, 16), pady=1)
         hint = ttk.Label(settings, foreground=theme.HINT)
         hint.pack(anchor=tk.W, pady=(2, 0))
 
         def refresh():
             partners = self._link_partners(self.selected)
-            status["text"] = (f"Linked to panel{'s' if len(partners) > 1 else ''} "
-                              f"{self._numbers(partners)}" if partners else "Not linked")
+            status["text"] = (
+                f"Linked to panel{'s' if len(partners) > 1 else ''} "
+                f"{self._numbers(partners)}"
+                if partners
+                else "Not linked"
+            )
             chosen, link = self._chosen_link()
             for button in (unlink, freeze):
                 button.state(["!disabled" if link else "disabled"])
@@ -1454,16 +1798,22 @@ class Plotter(tk.Tk):
                 button.destroy()
             for c in partners:
                 frozen = self.links[self._pair(self.selected, c)].frozen
-                ttk.Radiobutton(tabs, text=f"Panel {self._number(c)}" + (" (frozen)" if frozen else ""),
-                                value=self.panels[c].id, variable=self.link_var,
-                                style="Tab.Toolbutton",
-                                command=lambda: self.choose_link(self.link_var.get())).pack(
-                    side=tk.LEFT, padx=(0, 2))
+                ttk.Radiobutton(
+                    tabs,
+                    text=f"Panel {self._number(c)}" + (" (frozen)" if frozen else ""),
+                    value=self.panels[c].id,
+                    variable=self.link_var,
+                    style="Tab.Toolbutton",
+                    command=lambda: self.choose_link(self.link_var.get()),
+                ).pack(side=tk.LEFT, padx=(0, 2))
             self.link_var.set(self.link_partner)
             freeze["text"] = "Unfreeze" if link.frozen else "Freeze"
             for key, var in self.sync_vars.items():
                 var.set(key in link.synced)
-            hint["text"] = f"the link between panels {self._number(self.selected)} and {self._number(chosen)}"
+            hint["text"] = (
+                f"the link between panels {self._number(self.selected)} and {self._number(chosen)}"
+            )
+
         self.link_status = refresh
 
     def _folder_row(self, parent, label, key):
@@ -1471,8 +1821,9 @@ class Plotter(tk.Tk):
         ttk.Label(parent, text=label).pack(anchor=tk.W, pady=(0, 2))
         row = ttk.Frame(parent)
         row.pack(anchor=tk.W, fill=tk.X, pady=(0, 6))
-        ttk.Button(row, text="Browse...",
-                   command=lambda: self.choose_folder(key, label)).pack(side=tk.RIGHT)
+        ttk.Button(
+            row, text="Browse...", command=lambda: self.choose_folder(key, label)
+        ).pack(side=tk.RIGHT)
         # Width 1: the name takes whatever the rest of the column leaves, so the
         # row never widens the column (a long name is cut off).
         path = ttk.Label(row, width=1, anchor=tk.W)
@@ -1487,9 +1838,12 @@ class Plotter(tk.Tk):
         widget["foreground"] = theme.MUTED if folder else theme.ERROR
 
     def choose_folder(self, key, title):
-        folder = filedialog.askdirectory(parent=self, title=f"Choose {title.lower()}",
-                                         initialdir=self.settings.get(key) or Path.home(),
-                                         mustexist=True)
+        folder = filedialog.askdirectory(
+            parent=self,
+            title=f"Choose {title.lower()}",
+            initialdir=self.settings.get(key) or Path.home(),
+            mustexist=True,
+        )
         if not folder:  # cancelled
             return False
         self.settings[key] = folder
@@ -1525,8 +1879,14 @@ class Plotter(tk.Tk):
         self._refresh_runs()
         name = name or self.panel.line.run or next(iter(self.datasets), None)
         if name not in self.datasets:
-            self._say(("No data files in the data folder." if self.data_dir
-                         else "Choose a data folder first."), error=True)
+            self._say(
+                (
+                    "No data files in the data folder."
+                    if self.data_dir
+                    else "Choose a data folder first."
+                ),
+                error=True,
+            )
             return
         lines = read_lines(self.datasets[name])
         fmt = self.profile.format
@@ -1567,7 +1927,9 @@ class Plotter(tk.Tk):
         l = self.panel.line
         self.run.set(l.run)
         columns = list(self.frames[l.run].columns) if l.run in self.frames else []
-        self.x.box["values"] = self.y.box["values"] = [with_unit(c, self.profile.units) for c in columns]
+        self.x.box["values"] = self.y.box["values"] = [
+            with_unit(c, self.profile.units) for c in columns
+        ]
         self.x.set(with_unit(l.x, self.profile.units) if l.run else "")
         self.y.set(with_unit(l.y, self.profile.units) if l.run else "")
         self.x_fn.set(l.x_fn)
@@ -1592,10 +1954,13 @@ class Plotter(tk.Tk):
                 name = f"{plain(l.label)} · {name}"
             for step in l.steps:
                 if step.active:
-                    name += (" · fit " if step.kind == "fit" else " · ") + plain(step.describe())
+                    name += (" · fit " if step.kind == "fit" else " · ") + plain(
+                        step.describe()
+                    )
             self.line_list.insert(tk.END, name)
-            self.line_list.itemconfigure(tk.END, foreground=colour,
-                                         selectforeground=colour)
+            self.line_list.itemconfigure(
+                tk.END, foreground=colour, selectforeground=colour
+            )
         self.line_list.selection_set(p.selected)
         self.line_list.see(p.selected)
         self.remove_button.state(["!disabled" if len(p.lines) > 1 else "disabled"])
@@ -1610,6 +1975,7 @@ class Plotter(tk.Tk):
         def run():
             self.spin_pending = None
             apply()
+
         self.spin_pending = self.after(SPIN_PAUSE, run)
 
     def apply_controls(self):
@@ -1658,11 +2024,17 @@ class Plotter(tk.Tk):
             wanted = keep if cell == self.selected else others
             # Only limits the user set (zooming turns autoscaling off); a view
             # that was just fitted to the old data should refit to the new.
-            wanted = "".join(a for a in wanted if not getattr(ax, f"get_autoscale{a}_on")())
+            wanted = "".join(
+                a for a in wanted if not getattr(ax, f"get_autoscale{a}_on")()
+            )
             views[cell] = wanted, ax.get_xlim(), ax.get_ylim()
         for cell in views:  # data panels first: the derived panels use what they draw
             self._draw_panel(cell)
-        kept = {cell: view for cell, view in views.items() if view[0] and self.axes[cell].lines}
+        kept = {
+            cell: view
+            for cell, view in views.items()
+            if view[0] and self.axes[cell].lines
+        }
         if kept:
             self.toolbar.push_current()  # the full view, for the toolbar's Home
             for cell, (wanted, xlim, ylim) in kept.items():
@@ -1726,7 +2098,9 @@ class Plotter(tk.Tk):
         if line.run not in self.frames:
             if line.run not in self.datasets:
                 raise FileNotFoundError(f"'{line.run}' is not in the data folder")
-            self.frames[line.run] = load_dataset(self.datasets[line.run], self.profile.format)
+            self.frames[line.run] = load_dataset(
+                self.datasets[line.run], self.profile.format
+            )
         df = self.frames[line.run]
         # Keep the line's axes if this dataset has them, else fall back to the
         # profile's default, else the first column for x and the second for y.
@@ -1734,13 +2108,20 @@ class Plotter(tk.Tk):
         for attr, i in (("x", 0), ("y", 1)):
             default = self.profile.defaults.get(attr)
             if getattr(line, attr) not in df:
-                setattr(line, attr, default if default in df else columns[min(i, len(columns) - 1)])
+                setattr(
+                    line,
+                    attr,
+                    default if default in df else columns[min(i, len(columns) - 1)],
+                )
         return df
 
     def _axis(self, df, column, expr):
         """Values and (label, label without sample) for one axis."""
         labels = self.profile.labels
-        values, texts = df[column].to_numpy(), (label(column, labels), label(column, labels, False))
+        values, texts = (
+            df[column].to_numpy(),
+            (label(column, labels), label(column, labels, False)),
+        )
         if is_identity(expr):
             return values, texts
         values, name = apply_function(expr, values)
@@ -1753,11 +2134,17 @@ class Plotter(tk.Tk):
         # A row each, then its panels, so rows can hold different numbers of
         # panels; the gridspecs are kept so a divider drag can resize them.
         layout = self.layout
-        self.row_grid = self.fig.add_gridspec(layout.rows, 1, height_ratios=layout.row_heights())
-        self.col_grids = [self.row_grid[r].subgridspec(1, n, width_ratios=layout.col_widths(r))
-                          for r, n in enumerate(layout.counts)]
-        self.axes = {(r, c): self.fig.add_subplot(self.col_grids[r][0, c])
-                     for r, c in layout.cells()}
+        self.row_grid = self.fig.add_gridspec(
+            layout.rows, 1, height_ratios=layout.row_heights()
+        )
+        self.col_grids = [
+            self.row_grid[r].subgridspec(1, n, width_ratios=layout.col_widths(r))
+            for r, n in enumerate(layout.counts)
+        ]
+        self.axes = {
+            (r, c): self.fig.add_subplot(self.col_grids[r][0, c])
+            for r, c in layout.cells()
+        }
         self._tidy_links()
         for cell in self.axes:
             self._draw_panel(cell)
@@ -1766,9 +2153,15 @@ class Plotter(tk.Tk):
         self._changed(merge=merge)
 
     # The stage named in a step's errors, by kind.
-    STAGES: ClassVar = {"cut": "Splicing", "despike": "Despike", "subtract": "Fit",
-                        "smooth": "Smoothing", "fit": "Fit", "fft": "FFT",
-                        "derivative": "Derivative"}
+    STAGES: ClassVar = {
+        "cut": "Splicing",
+        "despike": "Despike",
+        "subtract": "Fit",
+        "smooth": "Smoothing",
+        "fit": "Fit",
+        "fft": "FFT",
+        "derivative": "Derivative",
+    }
 
     def _line_data(self, l):
         """(x, y, x labels, y labels, curves, fit error) for a line: its columns
@@ -1804,12 +2197,18 @@ class Plotter(tk.Tk):
                     before = y
                     y, found[j] = background.apply(x, y, *step.fitting)
                     self.fit_reports[key, j] = background.report(
-                        x, before, before - y, step.fitting[1], found[j], step.fitting[2])
+                        x,
+                        before,
+                        before - y,
+                        step.fitting[1],
+                        found[j],
+                        step.fitting[2],
+                    )
                     y_label = tuple(f"{t} − fit" for t in y_label)
                 elif step.kind == "smooth":
                     if step.in_x and step.span is None:
                         step = replace(step, span=smoothing.span_for(x, step.window))
-                        l.steps = l.steps[:j] + (step,) + l.steps[j + 1:]
+                        l.steps = l.steps[:j] + (step,) + l.steps[j + 1 :]
                     y = smoothing.smooth(x, y, *step.smoothing)
                 elif step.kind == "fft":  # x becomes frequency, y amplitude
                     found[j] = spectrum.resolution(x[np.isfinite(y)])
@@ -1822,14 +2221,17 @@ class Plotter(tk.Tk):
                     y_label = ("FFT amplitude  (units of y)",) * 2
                     curves = {}  # fits so far are of the data, not its spectrum
                 elif step.kind == "derivative":
-                    x, y = derivative.derivative(x, y, int(step.d_order[1]), step.d_window)
+                    x, y = derivative.derivative(
+                        x, y, int(step.d_order[1]), step.d_window
+                    )
                     y_label = (derivative.LABELS[step.d_order],) * 2
                     curves = {}
                 elif step.only:  # the line becomes the fit
                     before = y
                     y, found[j] = background.apply(x, y, *step.fitting)
                     self.fit_reports[key, j] = background.report(
-                        x, before, y, step.fitting[1], found[j], step.fitting[2])
+                        x, before, y, step.fitting[1], found[j], step.fitting[2]
+                    )
                 elif not fit_error:  # a fit curve; after one fails, the rest wait
                     try:
                         fitted, found[j] = background.apply(x, y, *step.fitting)
@@ -1838,9 +2240,12 @@ class Plotter(tk.Tk):
                     else:
                         curves[j] = (x, fitted)
                         self.fit_reports[key, j] = background.report(
-                            x, y, fitted, step.fitting[1], found[j], step.fitting[2])
+                            x, y, fitted, step.fitting[1], found[j], step.fitting[2]
+                        )
         except Exception as err:  # noqa: BLE001 - bad file or function shouldn't kill the window
-            raise LineError(f"{stage} error: {err}" if l.run in self.frames else str(err))
+            raise LineError(
+                f"{stage} error: {err}" if l.run in self.frames else str(err)
+            )
         l.found = tuple(found)
         result = x, y, x_label, y_label, curves, fit_error
         final = self._data_key(l)
@@ -1907,8 +2312,11 @@ class Plotter(tk.Tk):
             resolution = self._resolution(drawn[0]) if kind == "fft" else np.nan
             if np.isfinite(resolution):  # the frequency resolution
                 heading += f" · ΔF {resolution:.3g}"
-            auto = self.auto_text[cell] = {"title": heading, "x_label": shared(x_labels),
-                                           "y_label": shared(y_labels)}
+            auto = self.auto_text[cell] = {
+                "title": heading,
+                "x_label": shared(x_labels),
+                "y_label": shared(y_labels),
+            }
             self.auto_names[cell] = dict(zip(indices, legend_labels(drawn)))
             # After every line, so ax.lines starts with the lines, one each.
             for i, j, x, y in curves:
@@ -1920,30 +2328,58 @@ class Plotter(tk.Tk):
             if p.grid != "off":
                 if p.grid == "minor":  # fainter, between the major lines
                     for axis in ("x", "y") if p.grid_axis == "both" else (p.grid_axis,):
-                        getattr(ax, f"{axis}axis").minorticks_on()  # only where there's grid
-                    ax.grid(True, which="minor", axis=p.grid_axis, ls=p.grid_style,
-                            lw=0.3, alpha=0.4)
-                ax.grid(True, which="major", axis=p.grid_axis, ls=p.grid_style,
-                        lw=0.4, alpha=0.8)
+                        getattr(
+                            ax, f"{axis}axis"
+                        ).minorticks_on()  # only where there's grid
+                    ax.grid(
+                        True,
+                        which="minor",
+                        axis=p.grid_axis,
+                        ls=p.grid_style,
+                        lw=0.3,
+                        alpha=0.4,
+                    )
+                ax.grid(
+                    True,
+                    which="major",
+                    axis=p.grid_axis,
+                    ls=p.grid_style,
+                    lw=0.4,
+                    alpha=0.8,
+                )
             if self.settings.get("ticks_in") is True:  # a preference for every panel
                 ax.tick_params(which="both", direction="in")
-            if p.legend != "off" and (p.legend != "auto" or len(drawn) + len(curves) > 1):
+            if p.legend != "off" and (
+                p.legend != "auto" or len(drawn) + len(curves) > 1
+            ):
                 for artist, l, i in zip(ax.lines, drawn, indices):  # "": left out
-                    artist.set_label(self.auto_names[cell][i] if l.label is None else l.label)
+                    artist.set_label(
+                        self.auto_names[cell][i] if l.label is None else l.label
+                    )
                 for artist, (i, j) in self.curves[cell].items():
                     artist.set_label(f"fit: {p.lines[i].steps[j].describe()}")
                 if p.legend == "outside":  # constrained layout makes room for it
                     ax.legend(fontsize=8, loc="center left", bbox_to_anchor=(1.02, 0.5))
                 else:
-                    ax.legend(fontsize=8, loc="best" if p.legend == "auto" else p.legend)
+                    ax.legend(
+                        fontsize=8, loc="best" if p.legend == "auto" else p.legend
+                    )
             # Typed ranges; an end left blank stays where autoscaling put it.
             if p.x_min is not None or p.x_max is not None:
                 ax.set_xlim(p.x_min, p.x_max)
             if p.y_min is not None or p.y_max is not None:
                 ax.set_ylim(p.y_min, p.y_max)
             if kind and errors:  # some lines drawn, others not: say why
-                ax.text(0.01, 0.99, errors[0], ha="left", va="top", transform=ax.transAxes,
-                        color=theme.ERROR, fontsize=8)
+                ax.text(
+                    0.01,
+                    0.99,
+                    errors[0],
+                    ha="left",
+                    va="top",
+                    transform=ax.transAxes,
+                    color=theme.ERROR,
+                    fontsize=8,
+                )
         elif errors:
             self._hint(ax, errors[0], colour=theme.ERROR, size=9)
         else:
@@ -1955,16 +2391,31 @@ class Plotter(tk.Tk):
     @staticmethod
     def _resolution(l):
         """The frequency resolution its last FFT step found, or NaN."""
-        last = next((j for j in reversed(range(len(l.steps)))
-                     if l.steps[j].active and l.steps[j].kind == "fft"), None)
+        last = next(
+            (
+                j
+                for j in reversed(range(len(l.steps)))
+                if l.steps[j].active and l.steps[j].kind == "fft"
+            ),
+            None,
+        )
         found = l.found[last] if last is not None and last < len(l.found) else None
         return found if found is not None else np.nan
 
     @staticmethod
     def _hint(ax, text, colour=theme.HINT, size=14):
         """Empty axes with a message in the middle, e.g. 'Pick a dataset'."""
-        ax.text(0.5, 0.5, text, ha="center", va="center", wrap=True,
-                transform=ax.transAxes, color=colour, fontsize=size)
+        ax.text(
+            0.5,
+            0.5,
+            text,
+            ha="center",
+            va="center",
+            wrap=True,
+            transform=ax.transAxes,
+            color=colour,
+            fontsize=size,
+        )
         # No ticks rather than hidden ones: clearing the axes brings ticks back,
         # but tick_params settings survive it and would hide them for good.
         ax.set_xticks([])
@@ -1980,8 +2431,11 @@ class Plotter(tk.Tk):
         else:
             colour, width = "black", 0.8
         # Dashed: linked to the selected panel.
-        dashed = (colour == "black" and self.selected in self.panels
-                  and cell in self._link_partners(self.selected))
+        dashed = (
+            colour == "black"
+            and self.selected in self.panels
+            and cell in self._link_partners(self.selected)
+        )
         if dashed:
             chosen = self.panels[cell].id == self.link_partner
             colour, width = PARTNER, 3.0 if chosen else 1.6
@@ -2004,7 +2458,9 @@ class Plotter(tk.Tk):
         if cell is None:
             return
         if self.point_pick:  # reading points off the selected panel's line
-            if self.toolbar.mode or event.button != 1:  # zooming or panning to pick closer
+            if (
+                self.toolbar.mode or event.button != 1
+            ):  # zooming or panning to pick closer
                 return
             if cell == self.selected:
                 self._read_point(event)
@@ -2017,8 +2473,14 @@ class Plotter(tk.Tk):
         if self.link_pick is not None:  # the click chooses whose data to link to
             self._link(self.link_pick, cell)
             return
-        hit = next((i for artist, i in self.artists[cell].items()
-                    if artist.contains(event)[0]), None)
+        hit = next(
+            (
+                i
+                for artist, i in self.artists[cell].items()
+                if artist.contains(event)[0]
+            ),
+            None,
+        )
         if hit is not None:
             self._set_selected_line(cell, hit)
         elif cell == self.selected:
@@ -2036,7 +2498,10 @@ class Plotter(tk.Tk):
         if event.canvas is not self.canvas:  # a figure being saved, at its own size
             return
         renderer, layout = event.renderer, self.layout
-        boxes = {cell: ax.get_tightbbox(renderer) or ax.bbox for cell, ax in self.axes.items()}
+        boxes = {
+            cell: ax.get_tightbbox(renderer) or ax.bbox
+            for cell, ax in self.axes.items()
+        }
         rows = []  # each row's (bottom, top) in pixels, y up
         for r, n in enumerate(layout.counts):
             row = [boxes[r, c] for c in range(n)]
@@ -2066,8 +2531,14 @@ class Plotter(tk.Tk):
     def _divider_at(self, event):
         if self.toolbar.mode or event.inaxes is not None or event.x is None:
             return None
-        return next((z for z in self.dividers if z[2][0] <= event.x <= z[2][2]
-                     and z[2][1] <= event.y <= z[2][3]), None)
+        return next(
+            (
+                z
+                for z in self.dividers
+                if z[2][0] <= event.x <= z[2][2] and z[2][1] <= event.y <= z[2][3]
+            ),
+            None,
+        )
 
     def _divider_press(self, event):
         """Start dragging the gap under a left press, if there is one: from
@@ -2114,15 +2585,23 @@ class Plotter(tk.Tk):
                 return
             kind, where, i, shares, total, start, end = self.divider_drag
             # Rows run down from the top, while pixels count up from the bottom.
-            at = (start - event.y) / (start - end) if kind == "row" else (
-                (event.x - start) / (end - start))
+            at = (
+                (start - event.y) / (start - end)
+                if kind == "row"
+                else ((event.x - start) / (end - start))
+            )
             at = min(max(at, self.LEAST), 1 - self.LEAST)
             self._set_shares(kind, where, i, shares, total * at, total * (1 - at))
             self.canvas.draw_idle()
             return
         zone = self._divider_at(event)
-        cursor = ("" if zone is None else
-                  "sb_v_double_arrow" if zone[0] == "row" else "sb_h_double_arrow")
+        cursor = (
+            ""
+            if zone is None
+            else "sb_v_double_arrow"
+            if zone[0] == "row"
+            else "sb_h_double_arrow"
+        )
         if cursor != self.divider_cursor:
             self.divider_cursor = cursor
             self.canvas.get_tk_widget().configure(cursor=cursor)
@@ -2139,8 +2618,11 @@ class Plotter(tk.Tk):
             return
         self.merging = False  # a new go in the picker is a step of its own
         self.layout_popup = LayoutPicker(
-            self, self.layout, lambda counts: self.set_counts(counts, merge="layout"),
-            self.even_sizes)
+            self,
+            self.layout,
+            lambda counts: self.set_counts(counts, merge="layout"),
+            self.even_sizes,
+        )
         self._undo_keys(self.layout_popup)
 
     def set_layout(self, rows, cols):
@@ -2155,7 +2637,9 @@ class Plotter(tk.Tk):
             return
         template = self.panel
         layout = self.layout.with_counts(counts)
-        self.panels = {cell: self.panels.get(cell) or template.copy() for cell in layout.cells()}
+        self.panels = {
+            cell: self.panels.get(cell) or template.copy() for cell in layout.cells()
+        }
         # A derived panel whose data panel is gone keeps its lines and what it
         # shows; _build_axes forgets that source.
         if self.selected not in self.panels:
@@ -2183,7 +2667,9 @@ class Plotter(tk.Tk):
         kept = [c for c in order if c != gone]
         moved = dict(zip(kept, layout.cells()))  # old cell -> new cell
         panels = {moved[c]: self.panels[c] for c in kept}
-        for p in panels.values():  # a panel derived from the deleted one keeps its lines
+        for (
+            p
+        ) in panels.values():  # a panel derived from the deleted one keeps its lines
             if p.source is not None:
                 p.source = moved.get(p.source)
         self.panels, self.layout = panels, layout
@@ -2197,7 +2683,9 @@ class Plotter(tk.Tk):
     def swap(self):
         """Swap X and Y, with their functions (x <-> y), for every line in the panel."""
         p = self.panel
-        if any(view(l.steps) for l in p.lines):  # of the other axis: nothing like the old one
+        if any(
+            view(l.steps) for l in p.lines
+        ):  # of the other axis: nothing like the old one
             clear_ranges(p)
         else:  # its ranges swap with its axes; linked panels' clear as their x and y change
             p.x_min, p.x_max, p.y_min, p.y_max = p.y_min, p.y_max, p.x_min, p.x_max
@@ -2205,7 +2693,10 @@ class Plotter(tk.Tk):
             p.region, p.points = (), ()  # Measure's are in the old x
         for l in p.lines:
             l.x, l.y = l.y, l.x
-            l.x_fn, l.y_fn = rename(l.y_fn.strip(), "y", "x"), rename(l.x_fn.strip(), "x", "y")
+            l.x_fn, l.y_fn = (
+                rename(l.y_fn.strip(), "y", "x"),
+                rename(l.x_fn.strip(), "x", "y"),
+            )
             l.clear_x_units()  # in the old x; meaningless now
         self._sync_inputs(self.selected)
         self._redraw_selected(others="")
@@ -2263,14 +2754,22 @@ class Plotter(tk.Tk):
         self.stop_picking()
         old = self.panels[target]
         if target == source:
-            self._say(f"Click a different panel for the {self.NAMES[kind]}.", error=True)
+            self._say(
+                f"Click a different panel for the {self.NAMES[kind]}.", error=True
+            )
             return
         dependents = [c for c, p in self.panels.items() if p.source == target]
         replaced = ""
         if any(l.shown for l in old.lines) or dependents:
-            replaced = (f"Panel {self._number(target)}'s lines were replaced"
-                        + (", and the panels made from it no longer follow it"
-                           if dependents else "") + "; Ctrl+Z puts them back.")
+            replaced = (
+                f"Panel {self._number(target)}'s lines were replaced"
+                + (
+                    ", and the panels made from it no longer follow it"
+                    if dependents
+                    else ""
+                )
+                + "; Ctrl+Z puts them back."
+            )
         for c in dependents:  # made from what's replaced: they keep their lines
             self.panels[c].source = None
         self.panels[target] = self._derived(source, kind)
@@ -2284,7 +2783,9 @@ class Plotter(tk.Tk):
 
     def _show_axes(self):
         if self.axes_popup and self.axes_popup.winfo_exists():
-            auto = {k: plain(v) for k, v in self.auto_text.get(self.selected, {}).items()}
+            auto = {
+                k: plain(v) for k, v in self.auto_text.get(self.selected, {}).items()
+            }
             self.axes_popup.show(self.panel, self._number(self.selected), auto)
 
     def open_axes(self):
@@ -2292,9 +2793,14 @@ class Plotter(tk.Tk):
         if self.axes_popup and self.axes_popup.winfo_exists():
             self.axes_popup.lift()
         else:
-            self.axes_popup = AxesPopup(self, self.apply_axes, self.use_view,
-                                        self.settings.get("ticks_in") is True, self.set_ticks_in,
-                                        self.auto_axis_text)
+            self.axes_popup = AxesPopup(
+                self,
+                self.apply_axes,
+                self.use_view,
+                self.settings.get("ticks_in") is True,
+                self.set_ticks_in,
+                self.auto_axis_text,
+            )
             self._undo_keys(self.axes_popup)
         self._show_axes()
 
@@ -2323,8 +2829,12 @@ class Plotter(tk.Tk):
                 problem = f"Can't draw that {name.replace('_', ' ')}: {plain(why)}"
             else:
                 setattr(p, name, text)
-        for name, keys in (("legend", LEGENDS), ("grid", GRIDS), ("grid_axis", GRID_AXES),
-                           ("grid_style", GRID_STYLES)):
+        for name, keys in (
+            ("legend", LEGENDS),
+            ("grid", GRIDS),
+            ("grid_axis", GRID_AXES),
+            ("grid_style", GRID_STYLES),
+        ):
             if chosen[name] in keys:
                 setattr(p, name, chosen[name])
         for axis in "xy":
@@ -2369,7 +2879,11 @@ class Plotter(tk.Tk):
         """The cells of the panels linked directly to `cell`'s, in grid order."""
         if cell not in self.panels:
             return []
-        return [c for c in sorted(self.panels) if c != cell and self._pair(cell, c) in self.links]
+        return [
+            c
+            for c in sorted(self.panels)
+            if c != cell and self._pair(cell, c) in self.links
+        ]
 
     def _tied(self, cell):
         """`cell` and every panel joined to it through links, one link after
@@ -2412,14 +2926,18 @@ class Plotter(tk.Tk):
         """Copy `cell`'s lines' settings that `link` shares to `other`'s, line by line."""
         lines = self.panels[other].lines
         keys = [k for k in SYNC if k in link.synced]
+
         def subtracted(l):
             return [s for s in l.steps if s.active and s.kind == "subtract"]
+
         for mine, theirs in zip(lines, self.panels[cell].lines):
             old_x, old_y = (mine.x, mine.x_fn), (mine.y, mine.y_fn, subtracted(mine))
             for key in keys:
                 for attr in SYNC[key]:
                     value = getattr(theirs, attr)
-                    if attr == "steps":  # those before an FFT or Derivative; the rest are its own
+                    if (
+                        attr == "steps"
+                    ):  # those before an FFT or Derivative; the rest are its own
                         value = split_steps(value)[0]
                         # A value in the plotted x only means the same with the same x.
                         if (mine.x, mine.x_fn) != (theirs.x, theirs.x_fn):
@@ -2439,8 +2957,9 @@ class Plotter(tk.Tk):
         partners = self._link_partners(self.selected)
         if not partners:
             return None, None
-        chosen = next((c for c in partners if self.panels[c].id == self.link_partner),
-                      partners[0])
+        chosen = next(
+            (c for c in partners if self.panels[c].id == self.link_partner), partners[0]
+        )
         self.link_partner = self.panels[chosen].id
         return chosen, self.links[self._pair(self.selected, chosen)]
 
@@ -2470,7 +2989,9 @@ class Plotter(tk.Tk):
         partner, link = self._chosen_link()
         if link is None:
             return
-        synced = link.synced | {key} if self.sync_vars[key].get() else link.synced - {key}
+        synced = (
+            link.synced | {key} if self.sync_vars[key].get() else link.synced - {key}
+        )
         link.sync = " ".join(k for k in SYNC if k in synced)
         if not link.frozen:
             self._sync_across(self.selected, partner, link)
@@ -2483,20 +3004,28 @@ class Plotter(tk.Tk):
         for pair in [pair for pair in self.links if not pair <= ids]:
             del self.links[pair]
         for cell, p in self.panels.items():
-            if p.source is not None and (p.source not in self.panels
-                                         or self._pair(cell, p.source) not in self.links):
+            if p.source is not None and (
+                p.source not in self.panels
+                or self._pair(cell, p.source) not in self.links
+            ):
                 p.source = None
 
     def _numbers(self, cells):
         """'2, 3 and 5' for those panels."""
         numbers = [str(self._number(c)) for c in cells]
-        return numbers[0] if len(numbers) == 1 else f"{', '.join(numbers[:-1])} and {numbers[-1]}"
+        return (
+            numbers[0]
+            if len(numbers) == 1
+            else f"{', '.join(numbers[:-1])} and {numbers[-1]}"
+        )
 
     def link_panels(self):
         """Wait for a click on the panel to link the selected one to."""
         self.stop_picking()
         if len(self.panels) == 1:
-            self._say("There's only one panel; choose a bigger Layout first.", error=True)
+            self._say(
+                "There's only one panel; choose a bigger Layout first.", error=True
+            )
             return
         self.link_pick = self.selected
         self._say("Click the panel to link to; Esc cancels.")
@@ -2518,7 +3047,7 @@ class Plotter(tk.Tk):
         followers = [] if target in self._tied(cell) else self._group_lists(cell)
         extra = sum(max(0, len(lines) - len(source)) for lines in followers)
         for lines in followers:  # same number of lines as the target's
-            del lines[len(source):]
+            del lines[len(source) :]
             while len(lines) < len(source):
                 new = source[len(lines)].copy()
                 new.colour = None
@@ -2531,9 +3060,11 @@ class Plotter(tk.Tk):
         self._build_axes()
         self._load_controls()
         if extra:
-            self._say(f"Linked to panel {self._number(target)}, which has {len(source)} "
-                      f"line{'s' if len(source) > 1 else ''}: {extra} of panel "
-                      f"{self._number(cell)}'s were removed to match. Ctrl+Z brings them back.")
+            self._say(
+                f"Linked to panel {self._number(target)}, which has {len(source)} "
+                f"line{'s' if len(source) > 1 else ''}: {extra} of panel "
+                f"{self._number(cell)}'s were removed to match. Ctrl+Z brings them back."
+            )
 
     def unlink_panel(self):
         """Remove the chosen link; both panels keep their lines, and any other links."""
@@ -2553,10 +3084,14 @@ class Plotter(tk.Tk):
         ax = self.axes[self.selected]
         what = {"cut": "cut", "measure": "measuring"}[target]
         l = self.panel.line
-        if target == "cut" and any(s.active and s.kind == "fft" for s in l.steps[l.step + 1:]):
-            self._say("This cut comes before the FFT, so it's in the data's x, not the "
-                      "spectrum's: type its range, or pick it where the data is drawn.",
-                      error=True)
+        if target == "cut" and any(
+            s.active and s.kind == "fft" for s in l.steps[l.step + 1 :]
+        ):
+            self._say(
+                "This cut comes before the FFT, so it's in the data's x, not the "
+                "spectrum's: type its range, or pick it where the data is drawn.",
+                error=True,
+            )
             return
         if not self.panel.line.shown:
             self._say(f"Plot the line first, then pick its {what} range.", error=True)
@@ -2565,8 +3100,13 @@ class Plotter(tk.Tk):
             self._say("Turn off the toolbar's zoom or pan first.", error=True)
             return
         self.pick_target = target
-        self.picker = SpanSelector(ax, self._picked, "horizontal", useblit=True,
-                                   props={"facecolor": SELECTED, "alpha": 0.3})
+        self.picker = SpanSelector(
+            ax,
+            self._picked,
+            "horizontal",
+            useblit=True,
+            props={"facecolor": SELECTED, "alpha": 0.3},
+        )
         self._say(f"Drag across the plot to set the {what} range; Esc cancels.")
 
     def _picked(self, start, end):
@@ -2582,11 +3122,17 @@ class Plotter(tk.Tk):
         if self.pick_target == "measure":
             self.set_region((float(f"{start:.5g}"), float(f"{end:.5g}")))
             return
-        self.add_cut((float(f"{start:.5g}"), float(f"{end:.5g}")))  # beside any there are
+        self.add_cut(
+            (float(f"{start:.5g}"), float(f"{end:.5g}"))
+        )  # beside any there are
 
     def stop_picking(self):
         """End a range drag or a pick of where a derived panel or link goes, if one is under way."""
-        if self.derive_pick is not None or self.link_pick is not None or self.point_pick:
+        if (
+            self.derive_pick is not None
+            or self.link_pick is not None
+            or self.point_pick
+        ):
             self.derive_pick = self.link_pick = None
             self.point_pick = False
             self._say("")
@@ -2610,8 +3156,9 @@ class Plotter(tk.Tk):
         body.pack(anchor=tk.W, fill=tk.X, pady=(8, 0))
 
         def heading(parent, text, pady=(8, 0)):
-            ttk.Label(parent, text=text, foreground=theme.MUTED).pack(anchor=tk.W,
-                                                                          pady=pady)
+            ttk.Label(parent, text=text, foreground=theme.MUTED).pack(
+                anchor=tk.W, pady=pady
+            )
 
         def button_row(parent, buttons, pady=(4, 0)):
             """Buttons in equal shares of the column (width 1, so they can't widen it)."""
@@ -2620,13 +3167,15 @@ class Plotter(tk.Tk):
             row.columnconfigure(tuple(range(len(buttons))), weight=1, uniform="measure")
             for i, (text, command) in enumerate(buttons):
                 ttk.Button(row, text=text, width=1, command=command).grid(
-                    row=0, column=i, sticky="ew", padx=(0 if i == 0 else 6, 0))
+                    row=0, column=i, sticky="ew", padx=(0 if i == 0 else 6, 0)
+                )
 
         # The region: blank ends are the whole line.
         row = ttk.Frame(body)
         row.pack(anchor=tk.W, pady=(2, 0))
-        ttk.Label(row, text="Region", foreground=theme.MUTED).pack(side=tk.LEFT,
-                                                                       padx=(0, 8))
+        ttk.Label(row, text="Region", foreground=theme.MUTED).pack(
+            side=tk.LEFT, padx=(0, 8)
+        )
         ttk.Label(row, text="x").pack(side=tk.LEFT)
         start = ttk.Entry(row, textvariable=self.region_from, width=8)
         start.pack(side=tk.LEFT, padx=(4, 4))
@@ -2636,8 +3185,14 @@ class Plotter(tk.Tk):
         for box in (start, end):
             for key in ("<Return>", "<KP_Enter>"):
                 box.bind(key, lambda _: self.set_region())
-        button_row(body, (("Set", self.set_region), ("Pick", lambda: self.pick_range("measure")),
-                          ("Clear", lambda: self.set_region(()))))
+        button_row(
+            body,
+            (
+                ("Set", self.set_region),
+                ("Pick", lambda: self.pick_range("measure")),
+                ("Clear", lambda: self.set_region(())),
+            ),
+        )
 
         # The readout: which line, then its numbers in the region, once it's drawn.
         self.readout_line = ttk.Label(body, foreground=theme.MUTED, wraplength=WRAP)
@@ -2646,21 +3201,28 @@ class Plotter(tk.Tk):
         self.readout_table.columnconfigure((1, 2), weight=1, uniform="readout")
         self.readout = {}
         for r, name in enumerate(("Max", "Min", "Peak to peak", "Mean", "Points")):
-            ttk.Label(self.readout_table, text=name).grid(row=r, column=0, sticky="w",
-                                                          padx=(0, 8))
-            self.readout[name] = [ttk.Label(self.readout_table, width=1),
-                                  ttk.Label(self.readout_table, width=1)]
+            ttk.Label(self.readout_table, text=name).grid(
+                row=r, column=0, sticky="w", padx=(0, 8)
+            )
+            self.readout[name] = [
+                ttk.Label(self.readout_table, width=1),
+                ttk.Label(self.readout_table, width=1),
+            ]
             for c, cell in enumerate(self.readout[name]):
                 cell.grid(row=r, column=c + 1, sticky="ew")
-        self.mark_button = ttk.Checkbutton(body, variable=self.mark_var,
-                                           command=self.apply_measure)
+        self.mark_button = ttk.Checkbutton(
+            body, variable=self.mark_var, command=self.apply_measure
+        )
         self.readout_parts = (self.readout_table, self.mark_button)
 
         # Points read off the line: a row each, and what's between two.
         points = ttk.Frame(body)
         points.pack(fill=tk.X, pady=(8, 0))
-        button_row(points, (("Read points", self.read_points), ("Clear points", self.clear_points)),
-                   pady=0)
+        button_row(
+            points,
+            (("Read points", self.read_points), ("Clear points", self.clear_points)),
+            pady=0,
+        )
         self.point_labels = [ttk.Label(points, wraplength=WRAP) for _ in range(3)]
 
         # An FFT's peaks, only on an FFT panel.
@@ -2669,8 +3231,14 @@ class Plotter(tk.Tk):
         row = ttk.Frame(self.peak_section)
         row.pack(anchor=tk.W, pady=(2, 0))
         ttk.Label(row, text="Up to").pack(side=tk.LEFT)
-        count = ttk.Spinbox(row, textvariable=self.peak_count, from_=1, to=50, width=3,
-                            command=lambda: self._soon(self.apply_measure))
+        count = ttk.Spinbox(
+            row,
+            textvariable=self.peak_count,
+            from_=1,
+            to=50,
+            width=3,
+            command=lambda: self._soon(self.apply_measure),
+        )
         count.pack(side=tk.LEFT, padx=(4, 6))
         ttk.Label(row, text="over").pack(side=tk.LEFT)
         floor = ttk.Entry(row, textvariable=self.peak_floor, width=4)
@@ -2679,25 +3247,41 @@ class Plotter(tk.Tk):
         for box in (count, floor):
             for key in ("<Return>", "<KP_Enter>"):
                 box.bind(key, lambda _: self.apply_measure())
-        self.peak_list = tk.Listbox(self.peak_section, height=5, width=1,
-                                    exportselection=False, activestyle="none",
-                                    foreground=theme.TEXT, selectbackground=theme.ACCENT_SOFT,
-                                    selectforeground=theme.TEXT)
+        self.peak_list = tk.Listbox(
+            self.peak_section,
+            height=5,
+            width=1,
+            exportselection=False,
+            activestyle="none",
+            foreground=theme.TEXT,
+            selectbackground=theme.ACCENT_SOFT,
+            selectforeground=theme.TEXT,
+        )
         self.peak_list.pack(fill=tk.X, pady=(4, 0))
 
         # Taking the numbers away.
         self.keep_section = ttk.Frame(body)
         self.keep_section.pack(fill=tk.X, pady=(8, 0))
-        ttk.Checkbutton(self.keep_section, text="Marks in saved figures",
-                        variable=self.marks_saved_var,
-                        command=self.apply_measure).pack(anchor=tk.W)
-        button_row(self.keep_section, (("Copy", self.copy_measurements),
-                                       ("Export CSV", self.export_measurements)))
+        ttk.Checkbutton(
+            self.keep_section,
+            text="Marks in saved figures",
+            variable=self.marks_saved_var,
+            command=self.apply_measure,
+        ).pack(anchor=tk.W)
+        button_row(
+            self.keep_section,
+            (
+                ("Copy", self.copy_measurements),
+                ("Export CSV", self.export_measurements),
+            ),
+        )
 
     def _drawn(self, cell):
         """(xy as drawn, line index) for a panel's selected line, or None if it isn't drawn."""
         p = self.panels[cell]
-        artist = next((a for a, i in self.artists.get(cell, {}).items() if i == p.selected), None)
+        artist = next(
+            (a for a, i in self.artists.get(cell, {}).items() if i == p.selected), None
+        )
         return None if artist is None else (artist.get_xydata(), p.selected)
 
     def _read(self, cell):
@@ -2708,14 +3292,21 @@ class Plotter(tk.Tk):
             return None
         xy, _ = drawn
         p, ax = self.panels[cell], self.axes[cell]
-        ax.get_xlim(), ax.get_ylim()  # brings the view up to date, for snapping in pixels
+        (
+            ax.get_xlim(),
+            ax.get_ylim(),
+        )  # brings the view up to date, for snapping in pixels
         fft = view(p.line.steps) == "fft"
         x, y = xy[:, 0], xy[:, 1]
         points = [measure.snap(xy, point, ax.transData.transform) for point in p.points]
-        return {"extremes": measure.extremes(x, y, p.region, even=fft),
-                "peaks": measure.peaks(x, y, p.region, p.peak_count, max(p.peak_floor, 0))
-                if fft else [],
-                "points": [point for point in points if point is not None], "fft": fft}
+        return {
+            "extremes": measure.extremes(x, y, p.region, even=fft),
+            "peaks": measure.peaks(x, y, p.region, p.peak_count, max(p.peak_floor, 0))
+            if fft
+            else [],
+            "points": [point for point in points if point is not None],
+            "fft": fft,
+        }
 
     def _draw_marks(self, cell):
         """Draw Measure's region, marks and points on a panel, replacing any drawn.
@@ -2733,33 +3324,77 @@ class Plotter(tk.Tk):
         ax, p = self.axes[cell], self.panels[cell]
         xy, _ = self._drawn(cell)
         finite = xy[np.isfinite(xy).all(axis=1), 0]
-        if p.region and len(finite):  # shaded, but only over the data, so it can't widen x
+        if p.region and len(
+            finite
+        ):  # shaded, but only over the data, so it can't widen x
             start, end = p.region
             low = finite.min() if start is None else max(start, finite.min())
             high = finite.max() if end is None else min(end, finite.max())
             if low < high:
-                marks.append(ax.axvspan(low, high, color=theme.ACCENT, alpha=0.08, lw=0,
-                                        zorder=0))
-        style = {"color": theme.TEXT, "fontsize": 7, "textcoords": "offset points",
-                 "ha": "center", "zorder": 5}
+                marks.append(
+                    ax.axvspan(
+                        low, high, color=theme.ACCENT, alpha=0.08, lw=0, zorder=0
+                    )
+                )
+        style = {
+            "color": theme.TEXT,
+            "fontsize": 7,
+            "textcoords": "offset points",
+            "ha": "center",
+            "zorder": 5,
+        }
         if p.marks:
             if read["fft"]:
                 for x, y in read["peaks"]:
-                    marks.append(ax.scatter([x], [y], marker="v", s=16, color=theme.TEXT,
-                                            zorder=5))
-                    marks.append(ax.annotate(f"{x:.4g}", (x, y), xytext=(0, 5), **style))
+                    marks.append(
+                        ax.scatter(
+                            [x], [y], marker="v", s=16, color=theme.TEXT, zorder=5
+                        )
+                    )
+                    marks.append(
+                        ax.annotate(f"{x:.4g}", (x, y), xytext=(0, 5), **style)
+                    )
             elif read["extremes"]:
                 for key, below in (("max", False), ("min", True)):
                     x, y = read["extremes"][key]
-                    marks.append(ax.scatter([x], [y], marker="v" if below else "^", s=16,
-                                            color=theme.TEXT, zorder=5))
-                    marks.append(ax.annotate(f"{key} {y:.4g}", (x, y),
-                                             xytext=(0, -9 if below else 5), **style))
+                    marks.append(
+                        ax.scatter(
+                            [x],
+                            [y],
+                            marker="v" if below else "^",
+                            s=16,
+                            color=theme.TEXT,
+                            zorder=5,
+                        )
+                    )
+                    marks.append(
+                        ax.annotate(
+                            f"{key} {y:.4g}",
+                            (x, y),
+                            xytext=(0, -9 if below else 5),
+                            **style,
+                        )
+                    )
         for n, (x, y) in enumerate(read["points"], 1):
-            marks.append(ax.scatter([x], [y], s=30, facecolors="none", edgecolors=theme.ERROR,
-                                    linewidths=1.2, zorder=6))
-            marks.append(ax.annotate(str(n), (x, y), xytext=(6, 4), **(style | {
-                "color": theme.ERROR, "ha": "left"})))
+            marks.append(
+                ax.scatter(
+                    [x],
+                    [y],
+                    s=30,
+                    facecolors="none",
+                    edgecolors=theme.ERROR,
+                    linewidths=1.2,
+                    zorder=6,
+                )
+            )
+            marks.append(
+                ax.annotate(
+                    str(n),
+                    (x, y),
+                    xytext=(6, 4),
+                    **(style | {"color": theme.ERROR, "ha": "left"}),
+                )
+            )
 
     def _show_measure(self):
         """Fill the Measure tab from the selected panel, and redraw every panel's
@@ -2777,23 +3412,34 @@ class Plotter(tk.Tk):
         self.peak_floor.set(f"{p.peak_floor:g}")
         read = self.measured.get(self.selected)
         fft = view(p.line.steps) == "fft"
-        self.mark_button["text"] = ("Mark the peaks on the plot" if fft else
-                                      "Mark the max and min on the plot")
+        self.mark_button["text"] = (
+            "Mark the peaks on the plot" if fft else "Mark the max and min on the plot"
+        )
         name = self.auto_names.get(self.selected, {}).get(p.selected, "")
         name = name if p.line.label is None else p.line.label
-        self.readout_line["text"] = (plain(f"Line {p.selected + 1}"
-                                           + (f": {name}" if name else ""))
-                                     if read else "Plot the selected line to measure it.")
+        self.readout_line["text"] = (
+            plain(f"Line {p.selected + 1}" + (f": {name}" if name else ""))
+            if read
+            else "Plot the selected line to measure it."
+        )
         found = read and read["extremes"]
-        rows = {"Max": found and found["max"], "Min": found and found["min"],
-                "Peak to peak": found and (None, found["range"]),
-                "Mean": found and (None, found["mean"]),
-                "Points": found and (None, found["points"])}
+        rows = {
+            "Max": found and found["max"],
+            "Min": found and found["min"],
+            "Peak to peak": found and (None, found["range"]),
+            "Mean": found and (None, found["mean"]),
+            "Points": found and (None, found["points"]),
+        }
         for name, value in rows.items():
             x_label, y_label = self.readout[name]
-            x_label["text"] = f"x {value[0]:.6g}" if value and value[0] is not None else ""
-            y_label["text"] = ((f"{value[1]}" if name == "Points" else f"y {value[1]:.6g}")
-                               if value else "")
+            x_label["text"] = (
+                f"x {value[0]:.6g}" if value and value[0] is not None else ""
+            )
+            y_label["text"] = (
+                (f"{value[1]}" if name == "Points" else f"y {value[1]:.6g}")
+                if value
+                else ""
+            )
         if read and not found:
             self.readout_line["text"] += " (no points in the region)"
         for part in self.readout_parts:  # only once there's something to read
@@ -2801,13 +3447,18 @@ class Plotter(tk.Tk):
         if read:
             if found:
                 self.readout_table.pack(fill=tk.X, pady=(2, 0), after=self.readout_line)
-            self.mark_button.pack(anchor=tk.W, pady=(4, 0),
-                                  after=self.readout_table if found else self.readout_line)
+            self.mark_button.pack(
+                anchor=tk.W,
+                pady=(4, 0),
+                after=self.readout_table if found else self.readout_line,
+            )
         points = read["points"] if read else []
         texts = [f"{n}   x {x:.6g}   y {y:.6g}" for n, (x, y) in enumerate(points, 1)]
         if len(points) == 2:
             dx, dy = points[1][0] - points[0][0], points[1][1] - points[0][1]
-            texts.append(f"dx {dx:.6g}   dy {dy:.6g}" + (f"   1/dx {1 / dx:.6g}" if dx else ""))
+            texts.append(
+                f"dx {dx:.6g}   dy {dy:.6g}" + (f"   1/dx {1 / dx:.6g}" if dx else "")
+            )
         for row in self.point_labels:  # a row per point, none when there aren't any
             row.pack_forget()
             row["text"] = ""
@@ -2867,7 +3518,9 @@ class Plotter(tk.Tk):
         """Clicks on the selected panel read points off its selected line, until Esc."""
         self.stop_picking()
         if self._drawn(self.selected) is None:
-            self._say("Plot the selected line first, then read points off it.", error=True)
+            self._say(
+                "Plot the selected line first, then read points off it.", error=True
+            )
             return
         if self.toolbar.mode:
             self._say("Turn off the toolbar's zoom or pan first.", error=True)
@@ -2879,8 +3532,11 @@ class Plotter(tk.Tk):
         drawn = self._drawn(self.selected)
         if drawn is None or event.xdata is None:
             return
-        point = measure.snap(drawn[0], (event.xdata, event.ydata),
-                             self.axes[self.selected].transData.transform)
+        point = measure.snap(
+            drawn[0],
+            (event.xdata, event.ydata),
+            self.axes[self.selected].transData.transform,
+        )
         if point is None:
             return
         self.panel.points = (self.panel.points + (point,))[-2:]
@@ -2900,15 +3556,27 @@ class Plotter(tk.Tk):
         p = self.panel  # in English, like the figure: the file may go anywhere
         name = self.auto_names.get(self.selected, {}).get(p.selected, "")
         name = name if p.line.label is None else p.line.label
-        rows = [("line", plain(f"Line {p.selected + 1}" + (f": {name}" if name else "")), "")]
+        rows = [
+            (
+                "line",
+                plain(f"Line {p.selected + 1}" + (f": {name}" if name else "")),
+                "",
+            )
+        ]
         if self.panel.region:
             start, end = self.panel.region
-            rows.append(("region", "" if start is None else start, "" if end is None else end))
+            rows.append(
+                ("region", "" if start is None else start, "" if end is None else end)
+            )
         found = read["extremes"]
         if found:
-            rows += [("max", *found["max"]), ("min", *found["min"]),
-                     ("peak to peak", "", found["range"]), ("mean", "", found["mean"]),
-                     ("points", "", found["points"])]
+            rows += [
+                ("max", *found["max"]),
+                ("min", *found["min"]),
+                ("peak to peak", "", found["range"]),
+                ("mean", "", found["mean"]),
+                ("points", "", found["points"]),
+            ]
         for n, point in enumerate(read["points"], 1):
             rows.append((f"point {n}", *point))
         if len(read["points"]) == 2:
@@ -2927,8 +3595,12 @@ class Plotter(tk.Tk):
             self._say("Nothing measured to copy.", error=True)
             return
         self.clipboard_clear()
-        self.clipboard_append("\n".join("\t".join(f"{v:.12g}" if isinstance(v, float) else str(v)
-                                                  for v in row) for row in rows))
+        self.clipboard_append(
+            "\n".join(
+                "\t".join(f"{v:.12g}" if isinstance(v, float) else str(v) for v in row)
+                for row in rows
+            )
+        )
         self._say("Copied the measurements.")
 
     def export_measurements(self, path=None):
@@ -2938,19 +3610,25 @@ class Plotter(tk.Tk):
             self._say("Nothing measured to export.", error=True)
             return
         if path is None:
-            stem = Path(self.filename.get().strip() or self._default_name() or "plot").stem
+            stem = Path(
+                self.filename.get().strip() or self._default_name() or "plot"
+            ).stem
             path = filedialog.asksaveasfilename(
-                parent=self, title="Export measurements", defaultextension=".csv",
+                parent=self,
+                title="Export measurements",
+                defaultextension=".csv",
                 initialdir=self.settings.get("output_dir") or Path.home(),
                 initialfile=f"{stem}-measure.csv",
-                filetypes=[("CSV", "*.csv"), ("All files", "*")])
+                filetypes=[("CSV", "*.csv"), ("All files", "*")],
+            )
             if not path:
                 return
         out = io.StringIO()
         writer = csv.writer(out, lineterminator="\n")
         writer.writerow(("what", "x", "y"))
-        writer.writerows([f"{v:.12g}" if isinstance(v, float) else v for v in row]
-                         for row in rows)
+        writer.writerows(
+            [f"{v:.12g}" if isinstance(v, float) else v for v in row] for row in rows
+        )
         try:
             Path(path).write_text(out.getvalue(), encoding="utf-8")
         except OSError as err:
@@ -3090,15 +3768,21 @@ class Plotter(tk.Tk):
         if path is None:
             stem = Path(self.filename.get().strip() or "plot").stem
             path = filedialog.asksaveasfilename(
-                parent=self, title="Save session", defaultextension=".json",
+                parent=self,
+                title="Save session",
+                defaultextension=".json",
                 initialdir=self.settings.get("output_dir") or Path.home(),
                 initialfile=f"{stem}-session.json",
-                filetypes=[("GOOSE Plotter session", "*.json"), ("All files", "*")])
+                filetypes=[("GOOSE Plotter session", "*.json"), ("All files", "*")],
+            )
             if not path:  # cancelled; the file dialog asked about replacing already
                 return
-        data = {session.KEY: session.VERSION, "data_dir": self.data_dir,
-                "selected": session.cell_key(self.selected),
-                **session.dump(self.panels, self.layout, self.links)}
+        data = {
+            session.KEY: session.VERSION,
+            "data_dir": self.data_dir,
+            "selected": session.cell_key(self.selected),
+            **session.dump(self.panels, self.layout, self.links),
+        }
         if self.filename.get().strip() != self.auto_name:  # a name the user typed
             data["save_as"] = self.filename.get().strip()
         try:
@@ -3113,9 +3797,11 @@ class Plotter(tk.Tk):
         self.stop_picking()
         if path is None:
             path = filedialog.askopenfilename(
-                parent=self, title="Open session",
+                parent=self,
+                title="Open session",
                 initialdir=self.settings.get("output_dir") or Path.home(),
-                filetypes=[("GOOSE Plotter session", "*.json"), ("All files", "*")])
+                filetypes=[("GOOSE Plotter session", "*.json"), ("All files", "*")],
+            )
             if not path:
                 return
         try:
@@ -3124,13 +3810,14 @@ class Plotter(tk.Tk):
                 raise ValueError("it isn't a GOOSE Plotter session")
             version = data[session.KEY]
             if not isinstance(version, int) or version != session.VERSION:
-                raise ValueError("it's from an older version of the plotter"
-                                 if isinstance(version, int) and version < session.VERSION
-                                 else "it's from a newer version of the plotter")
+                raise ValueError(
+                    "it's from an older version of the plotter"
+                    if isinstance(version, int) and version < session.VERSION
+                    else "it's from a newer version of the plotter"
+                )
             session.load(data)  # check it all before changing anything
         except (OSError, ValueError) as err:
-            self._say(f"Couldn't open {Path(path).name}: {err}",
-                      error=True)
+            self._say(f"Couldn't open {Path(path).name}: {err}", error=True)
             return
         note, folder = "", data.get("data_dir")
         if isinstance(folder, str) and folder != self.data_dir:
@@ -3162,16 +3849,25 @@ class Plotter(tk.Tk):
         session holds them), which panel and lines are selected, the link the
         Linking tab shows, the name typed to save under and its undo step."""
         typed = self.filename.get().strip()
-        return {"session": session.dump(self.panels, self.layout, self.links),
-                "selected": self.selected,
-                "lines": {cell: p.selected for cell, p in self.panels.items()},
-                "link_partner": self.link_partner, "undo": self.undo_state,
-                "save_as": typed if typed != self.auto_name else None}
+        return {
+            "session": session.dump(self.panels, self.layout, self.links),
+            "selected": self.selected,
+            "lines": {cell: p.selected for cell, p in self.panels.items()},
+            "link_partner": self.link_partner,
+            "undo": self.undo_state,
+            "save_as": typed if typed != self.auto_name else None,
+        }
 
     @staticmethod
     def _blank_plot():
-        return {"session": session.dump({(0, 0): Panel()}, Layout(), {}), "selected": (0, 0),
-                "lines": {}, "link_partner": None, "undo": None, "save_as": None}
+        return {
+            "session": session.dump({(0, 0): Panel()}, Layout(), {}),
+            "selected": (0, 0),
+            "lines": {},
+            "link_partner": None,
+            "undo": None,
+            "save_as": None,
+        }
 
     def _load_plot(self, state):
         """Show the plot `_plot_state` kept, making no undo step of it."""
@@ -3184,7 +3880,9 @@ class Plotter(tk.Tk):
             self._restore(state["session"], state["selected"])
             for cell, index in state["lines"].items():
                 if cell in self.panels:
-                    self.panels[cell].selected = min(index, len(self.panels[cell].lines) - 1)
+                    self.panels[cell].selected = min(
+                        index, len(self.panels[cell].lines) - 1
+                    )
             self._build_axes()
             self._load_controls()
         finally:
@@ -3195,8 +3893,10 @@ class Plotter(tk.Tk):
             self.filename.set(state["save_as"])
 
     def _show_plots(self):
-        self.plot_strip.set_tabs([(p["n"], f'Plot {p["n"]}') for p in self.plots],
-                                 self.plots[self.plot_index]["n"])
+        self.plot_strip.set_tabs(
+            [(p["n"], f"Plot {p['n']}") for p in self.plots],
+            self.plots[self.plot_index]["n"],
+        )
 
     def _index(self, n):
         return next(i for i, p in enumerate(self.plots) if p["n"] == n)
@@ -3257,19 +3957,27 @@ class Plotter(tk.Tk):
         line = self.panel.line
         width = line.auto_width if line.width is None else line.width
         # Within 1.2 to 2: thin lines would be faint in the box, thick ones fill it.
-        self.style_image = line_sample(line.style, line.marker, colour,
-                                       min(max(width, 1.2), 2.0), size=(40, 14))
+        self.style_image = line_sample(
+            line.style, line.marker, colour, min(max(width, 1.2), 2.0), size=(40, 14)
+        )
         self.style_button["image"] = self.style_image
         if self.style_popup and self.style_popup.winfo_exists():
-            auto = plain(self.auto_names.get(self.selected, {}).get(self.panel.selected, ""))
+            auto = plain(
+                self.auto_names.get(self.selected, {}).get(self.panel.selected, "")
+            )
             self.style_popup.show(line, colour, move_picker, auto, self.colour_map)
 
     def open_style(self):
         if self.style_popup and self.style_popup.winfo_exists():
             self.style_popup.lift()
         else:
-            self.style_popup = LineStylePopup(self, self.apply_style, self.pick_colour,
-                                              self.reset_colour, self.set_colour_map)
+            self.style_popup = LineStylePopup(
+                self,
+                self.apply_style,
+                self.pick_colour,
+                self.reset_colour,
+                self.set_colour_map,
+            )
             self._undo_keys(self.style_popup)
         self._show_colour()  # fills the editor, in the line's colour
 
@@ -3284,7 +3992,9 @@ class Plotter(tk.Tk):
         l, problem = self.panel.line, ""
         if "label" in settings:  # None: Auto; else the name typed, "" for none
             label = settings.pop("label")
-            auto = plain(self.auto_names.get(self.selected, {}).get(self.panel.selected, ""))
+            auto = plain(
+                self.auto_names.get(self.selected, {}).get(self.panel.selected, "")
+            )
             if l.label is None and label == auto:
                 pass  # still the automatic name, as shown: keep it automatic
             elif label and (why := text_problem(label)):
@@ -3311,14 +4021,20 @@ class Plotter(tk.Tk):
             self.status_timer = None
         self.status.configure(text=text, foreground=theme.ERROR if error else theme.OK)
         if text and not error:
-            self.status_timer = self.after(self.INFO_SECONDS * 1000, self._expire_status)
+            self.status_timer = self.after(
+                self.INFO_SECONDS * 1000, self._expire_status
+            )
 
     def _expire_status(self):
         self.status_timer = None
         # Instructions for a pick under way ("Click the panel...") stay until
         # it ends, which clears them.
-        if (self.derive_pick is None and self.link_pick is None and not self.picker
-                and not self.point_pick):
+        if (
+            self.derive_pick is None
+            and self.link_pick is None
+            and not self.picker
+            and not self.point_pick
+        ):
             self.status.configure(text="")
 
     def _default_name(self):
@@ -3361,10 +4077,14 @@ class Plotter(tk.Tk):
         if isinstance(saved, dict):
             for key, default in SaveOptionsPopup.DEFAULTS.items():
                 value = saved.get(key)
-                if type(value) is type(default) or (isinstance(default, float)
-                                                     and type(value) is int):
+                if type(value) is type(default) or (
+                    isinstance(default, float) and type(value) is int
+                ):
                     options[key] = value
-        if options["size"] not in ("screen", "custom") or options["unit"] not in ("in", "cm"):
+        if options["size"] not in ("screen", "custom") or options["unit"] not in (
+            "in",
+            "cm",
+        ):
             return dict(SaveOptionsPopup.DEFAULTS)
         return options
 
@@ -3372,13 +4092,20 @@ class Plotter(tk.Tk):
         if self.save_popup and self.save_popup.winfo_exists():
             self.save_popup.lift()
             return
-        self.save_popup = SaveOptionsPopup(self, self._save_options(),
-                                           tuple(self.fig.get_size_inches()), self.set_save_options)
+        self.save_popup = SaveOptionsPopup(
+            self,
+            self._save_options(),
+            tuple(self.fig.get_size_inches()),
+            self.set_save_options,
+        )
 
     def set_save_options(self, options):
         """Keep the options from the Save options window; why not, if they can't be used."""
-        inches = ((options["width"], options["height"]) if options["size"] == "custom"
-                  else self.fig.get_size_inches())
+        inches = (
+            (options["width"], options["height"])
+            if options["size"] == "custom"
+            else self.fig.get_size_inches()
+        )
         if max(inches) * options["dpi"] > self.MAX_PIXELS:
             return f"That's too big: keep each side under {self.MAX_PIXELS} pixels."
         self.settings["save_options"] = options
@@ -3393,7 +4120,8 @@ class Plotter(tk.Tk):
             self._say("Nothing plotted to save.", error=True)
             return
         if not self.settings.get("output_dir") and not self.choose_folder(
-                "output_dir", "Output folder"):
+            "output_dir", "Output folder"
+        ):
             self._say("Choose an output folder to save into.", error=True)
             return
         out_dir = Path(self.settings["output_dir"])
@@ -3417,17 +4145,27 @@ class Plotter(tk.Tk):
         selected, self.selected = self.selected, None
         for cell in self.axes:
             self._frame(cell)
-        hidden = [a for cell, p in self.panels.items() if not p.marks_saved
-                  for a in self.marks.get(cell, []) if a.get_visible()]
+        hidden = [
+            a
+            for cell, p in self.panels.items()
+            if not p.marks_saved
+            for a in self.marks.get(cell, [])
+            if a.get_visible()
+        ]
         for artist in hidden:
             artist.set_visible(False)
         options = self._save_options()
         size = self.fig.get_size_inches()
         try:
-            if options["size"] == "custom":  # just for the file; the screen keeps its own
-                self.fig.set_size_inches(options["width"], options["height"], forward=False)
-            self.fig.savefig(out_dir / name, dpi=options["dpi"],
-                             transparent=options["transparent"])
+            if (
+                options["size"] == "custom"
+            ):  # just for the file; the screen keeps its own
+                self.fig.set_size_inches(
+                    options["width"], options["height"], forward=False
+                )
+            self.fig.savefig(
+                out_dir / name, dpi=options["dpi"], transparent=options["transparent"]
+            )
         finally:
             self.fig.set_size_inches(size, forward=False)
             for artist in hidden:
@@ -3441,4 +4179,5 @@ class Plotter(tk.Tk):
 
 if __name__ == "__main__":
     from goose_plotter import main
+
     main()

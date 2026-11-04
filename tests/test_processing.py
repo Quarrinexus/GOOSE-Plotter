@@ -8,20 +8,22 @@ from goose_plotter import background, derivative, smoothing, spectrum, splicing
 
 # --- background -------------------------------------------------------------
 
+
 def test_background_subtract_removes_a_polynomial_exactly():
     x = np.linspace(0.03, 0.07, 500)
-    y = 3 - 20 * x + 150 * x ** 2
+    y = 3 - 20 * x + 150 * x**2
     assert np.allclose(background.apply(x, y, "subtract", 2)[0], 0, atol=1e-9)
     assert np.allclose(background.apply(x, y, "fit", 2)[0], y)
 
 
 def test_a_kept_cut_then_the_background_fits_only_that_part():
     x = np.linspace(0, 10, 101)
-    y = x ** 3
+    y = x**3
     kept_x, kept_y = splicing.cut(x, y, "keep", ((2.0, 5.0),))
     expected = Chebyshev.fit(kept_x, kept_y, 2)
-    assert np.allclose(background.apply(kept_x, kept_y, "subtract", 2)[0],
-                       kept_y - expected(kept_x))
+    assert np.allclose(
+        background.apply(kept_x, kept_y, "subtract", 2)[0], kept_y - expected(kept_x)
+    )
 
 
 def test_background_errors():
@@ -36,7 +38,7 @@ def test_background_errors():
 
 def test_a_function_with_linear_unknowns_matches_the_polynomial():
     x = np.linspace(0.03, 0.07, 400)
-    y = 3 - 20 * x + 150 * x ** 2 + 1e-3 * np.sin(300 * x)
+    y = 3 - 20 * x + 150 * x**2 + 1e-3 * np.sin(300 * x)
     fitted, values = background.custom_fit(x, y, "A + B * x + C * x^2")
     assert np.allclose(fitted, background.fit(x, y, 2), rtol=1e-8, atol=0)
     assert list(values) == ["A", "B", "C"]
@@ -59,7 +61,9 @@ def test_a_function_finds_an_oscillation_from_start_values():
     _, values = background.custom_fit(x, y, "A * sin(B * x) + C", "B=310")
     assert values["B"] == pytest.approx(2 * np.pi * 50, rel=1e-6)
     assert values["A"] == pytest.approx(2e-4, rel=1e-6)
-    residual, found = background.apply(x, y, "subtract", None, "A * sin(B * x) + C", "B=310")
+    residual, found = background.apply(
+        x, y, "subtract", None, "A * sin(B * x) + C", "B=310"
+    )
     assert np.allclose(residual, 0, atol=1e-12) and dict(found) == values
 
 
@@ -72,24 +76,35 @@ def test_a_function_skips_nan_and_keeps_gaps():
     assert values == pytest.approx({"A": 2, "B": 3})
 
 
-@pytest.mark.parametrize("expr, message", [
-    ("", "type a function"),
-    ("3 * x + 1", "nothing to fit"),
-    ("A * sin(y)", "'y' in the fit function"),
-    ("A sin(B * x)", "write \\* for every product"),
-    ("2x + A", "write \\* for every product"),
-    ("A (x", "can't read"),
-    ("A x +", "can't read"),
-])
+@pytest.mark.parametrize(
+    "expr, message",
+    [
+        ("", "type a function"),
+        ("3 * x + 1", "nothing to fit"),
+        ("A * sin(y)", "'y' in the fit function"),
+        ("A sin(B * x)", "write \\* for every product"),
+        ("2x + A", "write \\* for every product"),
+        ("A (x", "can't read"),
+        ("A x +", "can't read"),
+    ],
+)
 def test_a_bad_function_says_why(expr, message):
     with pytest.raises(ValueError, match=message):
         background.custom_fit(np.linspace(0, 1, 20), np.ones(20), expr)
 
 
 def test_start_values_and_their_mistakes():
-    assert background.starts("B=314; C = -1", ["A", "B", "C"]) == {"A": 1, "B": 314, "C": -1}
-    for text, message in (("D=1", "isn't a start value"), ("B", "isn't a start value"),
-                          ("B=big", "isn't a number"), ("B=inf", "isn't finite")):
+    assert background.starts("B=314; C = -1", ["A", "B", "C"]) == {
+        "A": 1,
+        "B": 314,
+        "C": -1,
+    }
+    for text, message in (
+        ("D=1", "isn't a start value"),
+        ("B", "isn't a start value"),
+        ("B=big", "isn't a number"),
+        ("B=inf", "isn't finite"),
+    ):
         with pytest.raises(ValueError, match=message):
             background.starts(text, ["A", "B"])
     with pytest.raises(ValueError, match="more than 2 points"):
@@ -102,7 +117,11 @@ def test_parameters_in_order_and_caret_powers():
     code, params = background.parse("2 * x^2 * A * sin(B * x) + C * (x + 1)")
     assert params == ["A", "B", "C"]
     x = np.array([0.5])
-    got = eval(code, {"__builtins__": {}, **background.FUNCTIONS}, {"x": x, "A": 3, "B": 2, "C": 4})
+    got = eval(
+        code,
+        {"__builtins__": {}, **background.FUNCTIONS},
+        {"x": x, "A": 3, "B": 2, "C": 4},
+    )
     assert got == pytest.approx(2 * 0.25 * 3 * np.sin(1) + 4 * 1.5)
 
 
@@ -116,7 +135,9 @@ def test_describe_and_file_part_name_the_function():
     assert background.describe("fit", 10) == "fit deg 10"
     assert background.file_part("subtract", None, "A * x") == "bg_A_-times-_x"
     assert background.file_part("subtract", 10) == "bg10"
-    assert background.describe("subtract", None, "") == "− custom"  # ticked, nothing typed
+    assert (
+        background.describe("subtract", None, "") == "− custom"
+    )  # ticked, nothing typed
     assert background.file_part("subtract", None, "") == "bg_custom"
 
 
@@ -131,9 +152,10 @@ def test_background_skips_nan():
 
 # --- smoothing --------------------------------------------------------------
 
+
 def test_savgol_keeps_a_polynomial_of_its_order():
     x = np.arange(200.0)
-    y = 0.5 * x ** 2 - 3 * x + 7
+    y = 0.5 * x**2 - 3 * x + 7
     assert np.allclose(smoothing.smooth(x, y, "savgol", 11, 2), y)
 
 
@@ -163,7 +185,9 @@ def test_smoothing_in_x_units_is_a_fit_in_x():
     x = np.sort(np.random.default_rng(1).uniform(0, 10, 400))  # uneven steps
     y = 2 * x - 1
     assert np.allclose(smoothing.smooth(x, y, "savgol", 1.0, 1, in_x=True), y)
-    assert np.allclose(smoothing.smooth(x, np.full(400, 3.0), "mean", 1.0, 0, in_x=True), 3)
+    assert np.allclose(
+        smoothing.smooth(x, np.full(400, 3.0), "mean", 1.0, 0, in_x=True), 3
+    )
 
 
 def test_stretches_break_where_x_jumps():
@@ -193,6 +217,7 @@ def test_nice_steps():
 
 
 # --- spectrum ---------------------------------------------------------------
+
 
 def test_spectrum_peak_at_the_frequency_with_its_amplitude():
     x = np.linspace(0, 2, 4000)
@@ -226,11 +251,12 @@ def test_frequency_label():
 
 # --- derivative -------------------------------------------------------------
 
+
 def test_derivatives_of_a_cubic():
     x = np.linspace(-2, 2, 2001)
-    y = x ** 3
+    y = x**3
     grid, d1 = derivative.derivative(x, y, 1, 21)
-    assert np.allclose(d1, 3 * grid ** 2, atol=1e-3)
+    assert np.allclose(d1, 3 * grid**2, atol=1e-3)
     grid, d2 = derivative.derivative(x, y, 2, 21)
     assert np.allclose(d2, 6 * grid, atol=1e-2)
 
@@ -246,8 +272,10 @@ def test_derivative_errors():
 def test_fit_report_errors_match_numpys_polynomial_covariance():
     rng = np.random.default_rng(0)
     x = np.linspace(0.03, 0.07, 400)
-    y = 3 + 200 * x + 5000 * x ** 2 + rng.normal(0, 0.05, x.size)
+    y = 3 + 200 * x + 5000 * x**2 + rng.normal(0, 0.05, x.size)
     found = background.report(x, y, background.fit(x, y, 2), 2)["parameters"]
     coefficients, covariance = np.polyfit(x, y, 2, cov=True)
     assert [v for _, v, _ in found] == pytest.approx(list(coefficients))
-    assert [e for _, _, e in found] == pytest.approx(np.sqrt(np.diag(covariance)), rel=1e-4)
+    assert [e for _, _, e in found] == pytest.approx(
+        np.sqrt(np.diag(covariance)), rel=1e-4
+    )

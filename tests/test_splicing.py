@@ -4,14 +4,14 @@ import pytest
 from goose_plotter import splicing
 
 X = np.linspace(0, 10, 101)  # steps of 0.1
-Y = X ** 2
+Y = X**2
 
 
 def test_keep_drops_rows_outside_every_range():
     x, y = splicing.cut(X, Y, "keep", ((1, 2), (5, 6)))
     assert len(x) == len(y) == 22
     assert np.all(((x >= 1) & (x <= 2)) | ((x >= 5) & (x <= 6)))
-    assert np.array_equal(y, x ** 2)
+    assert np.array_equal(y, x**2)
 
 
 def test_remove_leaves_gaps_rather_than_joining():
@@ -48,8 +48,17 @@ def test_removing_everything_is_an_error():
 
 
 def test_tidy_orders_swaps_and_drops_bad_ranges():
-    ranges = [[4, 3], [1, 2], "junk", [None, None], [5, float("nan")], [True, 3],
-              [1, 2], [None, 0.5], (7,)]
+    ranges = [
+        [4, 3],
+        [1, 2],
+        "junk",
+        [None, None],
+        [5, float("nan")],
+        [True, 3],
+        [1, 2],
+        [None, 0.5],
+        (7,),
+    ]
     assert splicing.tidy(ranges) == ((None, 0.5), (1.0, 2.0), (3.0, 4.0))
     assert splicing.tidy("not a list") == ()
 
@@ -65,5 +74,11 @@ def test_describe_and_file_part_count_many_ranges():
 
 
 def test_within_and_gaps():
-    assert splicing.within(((None, 1.0), (2.0, 3.0)), 0.5, 2.5) == ((0.5, 1.0), (2.0, 2.5))
-    assert splicing.gaps(((1.0, 2.0), (3.0, None)), None, 5.0) == ((None, 1.0), (2.0, 3.0))
+    assert splicing.within(((None, 1.0), (2.0, 3.0)), 0.5, 2.5) == (
+        (0.5, 1.0),
+        (2.0, 2.5),
+    )
+    assert splicing.gaps(((1.0, 2.0), (3.0, None)), None, 5.0) == (
+        (None, 1.0),
+        (2.0, 3.0),
+    )

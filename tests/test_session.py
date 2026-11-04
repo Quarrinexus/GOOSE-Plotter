@@ -17,15 +17,25 @@ from goose_plotter.model import (
     line_colours,
 )
 
-STEPS = (Step("cut", cuts=((0.3, None),)),
-         Step("subtract", degree=4), Step("smooth", window=31),
-         Step("fit", advanced=True, function="A * sin(B * x)", start="B=314", on=False))
+STEPS = (
+    Step("cut", cuts=((0.3, None),)),
+    Step("subtract", degree=4),
+    Step("smooth", window=31),
+    Step("fit", advanced=True, function="A * sin(B * x)", start="B=314", on=False),
+)
 
 
 def state(**panel_kw):
     """A 2 x 1 layout: a data panel with a line with steps, and its FFT linked to it."""
-    line = Line(run="r.005", x="B", x_fn="1/x", y="M006_AH", steps=STEPS,
-                colour="#123456", label="mine")
+    line = Line(
+        run="r.005",
+        x="B",
+        x_fn="1/x",
+        y="M006_AH",
+        steps=STEPS,
+        colour="#123456",
+        label="mine",
+    )
     data = Panel([line, Line(run="r.003")], **panel_kw)
     fft = Panel([l.copy() for l in data.lines], source=(0, 0))
     for l in fft.lines:
@@ -68,7 +78,9 @@ def test_not_a_session():
         with pytest.raises(ValueError):
             session.load(bad)
     with pytest.raises(ValueError, match="bigger"):
-        session.load({"format": session.FORMAT, "layout": {"counts": [7]}, "panels": {}})
+        session.load(
+            {"format": session.FORMAT, "layout": {"counts": [7]}, "panels": {}}
+        )
 
 
 def test_older_formats_are_refused():
@@ -96,12 +108,16 @@ def test_legend_names_only_what_differs():
     assert legend_labels(lines) == ["run 005", "run 003"]
     lines[1].shown = base + ((Step("despike"),),)
     assert legend_labels(lines) == ["M006_AH", "M006_AH · despiked 5σ/21"]
-    lines[1].shown = base + ((Step("fit"), Step("cut")),)  # a fit leaves the data; a cut
+    lines[1].shown = base + (
+        (Step("fit"), Step("cut")),
+    )  # a fit leaves the data; a cut
     assert legend_labels(lines) == ["M006_AH", "M006_AH"]  # without ranges does nothing
 
 
 def test_line_colours_avoid_clashes():
-    panel = Panel([Line(y="M006_AH"), Line(y="M006_AH"), Line(y="M011_AH", colour="#000000")])
+    panel = Panel(
+        [Line(y="M006_AH"), Line(y="M006_AH"), Line(y="M011_AH", colour="#000000")]
+    )
     colours = line_colours(panel, {"M006": "#2a78d6", "M011": "#eb6834"})
     assert colours[0] == "#2a78d6" and colours[2] == "#000000"
     assert len(set(colours)) == 3
@@ -112,7 +128,9 @@ def test_line_colours_from_a_colour_map():
     colours, curves = curve_colours(Panel(lines), {}, "nanoanalysis_muted")
     # Every curve, a fit curve too, a colour of its own, from one end of the
     # map to the other: each line, then its fits.
-    assert colours[0] == "#2f95ac" and colours[2] == "#2fac55"  # its ends: from its blue
+    assert (
+        colours[0] == "#2f95ac" and colours[2] == "#2fac55"
+    )  # its ends: from its blue
     assert len(set(colours) | set(curves.values())) == 4 and list(curves) == [(1, 0)]
     lines[1].colour = "#000000"  # picked: keeps its place, so no other moves
     again, _ = curve_colours(Panel(lines), {}, "nanoanalysis_muted")
@@ -121,12 +139,15 @@ def test_line_colours_from_a_colour_map():
     assert curve_colours(Panel(lines), {}, "viridis")[1] == {(1, 0): "#ff0000"}
     lines[1].steps += (Step("fft"),)  # no fit curves once the line is a spectrum
     assert curve_colours(Panel(lines), {}, "viridis")[1] == {}
-    assert line_colours(Panel([Line()]), {}, "viridis") == ["#440154"]  # one line: the start
+    assert line_colours(Panel([Line()]), {}, "viridis") == [
+        "#440154"
+    ]  # one line: the start
     stepped = line_colours(Panel([Line() for _ in range(11)]), {}, "tab10")
     assert stepped[0] == stepped[10] == "#1f77b4" and len(set(stepped)) == 10
     # Classic: the sample's colour, as before; a fit curve an unused palette one.
-    colours, curves = curve_colours(Panel([Line(y="M006_AH", steps=(Step("fit"),))]),
-                                    {"M006": "#2a78d6"})
+    colours, curves = curve_colours(
+        Panel([Line(y="M006_AH", steps=(Step("fit"),))]), {"M006": "#2a78d6"}
+    )
     assert colours == ["#2a78d6"] and curves[(0, 0)] not in colours
 
 
@@ -141,10 +162,10 @@ def test_what_a_draw_found_and_the_chosen_step_are_not_saved():
     assert loaded.found == () and loaded.step == 0 and line.copy().found == ()
 
 
-
-
 def test_changing_x_clears_every_x_unit_setting():
-    line = Line(steps=(Step("smooth", in_x=True, span=0.1), Step("cut", cuts=((1.0, 2.0),))))
+    line = Line(
+        steps=(Step("smooth", in_x=True, span=0.1), Step("cut", cuts=((1.0, 2.0),)))
+    )
     line.clear_x_units()
     smooth, cut = line.steps
     assert (smooth.span, cut.cuts) == (None, ())

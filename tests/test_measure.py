@@ -6,11 +6,23 @@ from goose_plotter import measure
 
 def test_a_region_masks_by_x_not_by_row():
     x = np.array([1.0, 5.0, 2.0, np.nan, 6.0, 1.5])  # jittered, with a gap
-    assert measure.in_region(x, (1.2, 5.5)).tolist() == [False, True, True, False,
-                                                         False, True]
+    assert measure.in_region(x, (1.2, 5.5)).tolist() == [
+        False,
+        True,
+        True,
+        False,
+        False,
+        True,
+    ]
     assert measure.in_region(x, ()).sum() == 5  # the whole line, less the gap
-    assert measure.in_region(x, (None, 1.5)).tolist() == [True, False, False, False,
-                                                          False, True]
+    assert measure.in_region(x, (None, 1.5)).tolist() == [
+        True,
+        False,
+        False,
+        False,
+        False,
+        True,
+    ]
 
 
 def test_extremes_in_a_region_skip_gaps():
@@ -34,8 +46,12 @@ def test_refine_finds_a_peak_between_bins():
 
 def test_peaks_highest_first_above_the_floor():
     x = np.linspace(0, 100, 1001)
-    y = (3 * np.exp(-(x - 20) ** 2) + 1 * np.exp(-(x - 50) ** 2)
-         + 0.2 * np.exp(-(x - 80) ** 2) + np.exp(-x))  # DC at x = 0 is an edge
+    y = (
+        3 * np.exp(-((x - 20) ** 2))
+        + 1 * np.exp(-((x - 50) ** 2))
+        + 0.2 * np.exp(-((x - 80) ** 2))
+        + np.exp(-x)
+    )  # DC at x = 0 is an edge
     found = measure.peaks(x, y, count=5, floor=10)
     assert [round(f) for f, _ in found] == [20, 50]  # 0.2 is under 10 % of 3
     assert found[0][1] == pytest.approx(3, rel=1e-3)
@@ -45,7 +61,11 @@ def test_peaks_highest_first_above_the_floor():
 
 def test_the_floor_is_of_the_tallest_peak_not_the_low_end():
     x = np.linspace(0, 100, 1001)
-    y = 30 * np.exp(-x / 2) + 3 * np.exp(-(x - 50) ** 2) + 0.2 * np.exp(-(x - 80) ** 2)
+    y = (
+        30 * np.exp(-x / 2)
+        + 3 * np.exp(-((x - 50) ** 2))
+        + 0.2 * np.exp(-((x - 80) ** 2))
+    )
     assert [round(f) for f, _ in measure.peaks(x, y, floor=10)] == [50]
 
 
@@ -65,5 +85,8 @@ def test_saved_regions_and_points_are_tidied():
     assert measure.tidy_region([None, None]) == ()
     assert measure.tidy_region(["a", 1]) == ()
     assert measure.tidy_region([None, 3]) == (None, 3.0)
-    assert measure.tidy_points([[1, 2], [3, "x"], [4, 5], [6, 7]]) == ((4.0, 5.0), (6.0, 7.0))
+    assert measure.tidy_points([[1, 2], [3, "x"], [4, 5], [6, 7]]) == (
+        (4.0, 5.0),
+        (6.0, 7.0),
+    )
     assert measure.tidy_points("nonsense") == ()

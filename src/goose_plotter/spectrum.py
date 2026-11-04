@@ -35,8 +35,11 @@ def even_grid(x, y, least, what, at_mean_x=False):
     sums = np.bincount(bins, weights=y, minlength=n)
     grid = lo + step * np.arange(n)
     filled = counts > 0
-    at = np.bincount(bins, weights=x, minlength=n)[filled] / counts[filled] if at_mean_x \
+    at = (
+        np.bincount(bins, weights=x, minlength=n)[filled] / counts[filled]
+        if at_mean_x
         else grid[filled]
+    )
     return grid, np.interp(grid, at, sums[filled] / counts[filled]), step
 
 

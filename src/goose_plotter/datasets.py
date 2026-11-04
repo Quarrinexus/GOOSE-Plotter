@@ -21,8 +21,11 @@ def find_datasets(data_dir):
     """Dataset name -> file for the data files in `data_dir`, e.g. 'Cambridge_Sep_26.005'."""
     if not data_dir or not Path(data_dir).is_dir():
         return {}
-    files = sorted(p for p in Path(data_dir).iterdir()
-                   if p.is_file() and p.suffix.lower() in DATA_EXTENSIONS)
+    files = sorted(
+        p
+        for p in Path(data_dir).iterdir()
+        if p.is_file() and p.suffix.lower() in DATA_EXTENSIONS
+    )
     stems = [p.stem for p in files]
     # Two files differing only by extension keep it, so names stay unique.
     return {p.stem if stems.count(p.stem) == 1 else p.name: p for p in files}
@@ -84,8 +87,11 @@ def _data_start(lines, delimiter):
 def detect_format(lines):
     """The format of a file's `lines`, e.g. {'delimiter': 'tab', 'header_line': 10,
     'data_line': 11}. Lines count from 1; header_line 0 means no column names."""
-    found = [(name, *start) for name, d in DELIMITERS.items()
-             if (start := _data_start(lines, d))]
+    found = [
+        (name, *start)
+        for name, d in DELIMITERS.items()
+        if (start := _data_start(lines, d))
+    ]
     if not found:
         raise FormatError("no block of numeric columns found")
     name, start, width = max(found, key=lambda f: f[2])  # max keeps the first of equals
@@ -93,8 +99,11 @@ def detect_format(lines):
     header = next((i for i in range(start - 1, -1, -1) if lines[i].strip()), None)
     names = _fields(lines[header], DELIMITERS[name]) if header is not None else []
     fits = len(names) == width and len(set(names)) == width
-    return {"delimiter": name, "header_line": header + 1 if fits else 0,
-            "data_line": start + 1}
+    return {
+        "delimiter": name,
+        "header_line": header + 1 if fits else 0,
+        "data_line": start + 1,
+    }
 
 
 def _strip_suffix(columns):
@@ -121,8 +130,10 @@ def parse(lines, fmt):
     if header >= 0:
         names = _fields(lines[header], delimiter)
         if len(names) != width:
-            raise FormatError(f"line {header + 1} has {len(names)} names but "
-                              f"line {start + 1} has {width} values")
+            raise FormatError(
+                f"line {header + 1} has {len(names)} names but "
+                f"line {start + 1} has {width} values"
+            )
         if len(set(names)) != width:
             raise FormatError(f"line {header + 1} repeats a column name")
         if all(map(_is_number, names)):
@@ -130,8 +141,14 @@ def parse(lines, fmt):
     else:
         names = [f"column_{i + 1}" for i in range(width)]
     try:
-        df = pd.read_csv(StringIO("\n".join(lines[start:])), sep=delimiter or r"\s+",
-                         header=None, names=names, usecols=range(width), index_col=False)
+        df = pd.read_csv(
+            StringIO("\n".join(lines[start:])),
+            sep=delimiter or r"\s+",
+            header=None,
+            names=names,
+            usecols=range(width),
+            index_col=False,
+        )
     except ValueError as err:  # pandas' parser errors are ValueErrors
         raise FormatError(str(err).strip()) from err
     if df.empty or not any(t.kind in "fiu" for t in df.dtypes):

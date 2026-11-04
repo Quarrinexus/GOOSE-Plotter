@@ -10,6 +10,7 @@ from goose_plotter import axis_functions, columns, datasets, profile
 
 # --- data files -------------------------------------------------------------
 
+
 def test_detects_a_run_file_past_its_preamble(tmp_path):
     path = write_run(tmp_path / "Cambridge_Sep_26.005.text", rows=50)
     fmt = datasets.detect_format(datasets.read_lines(path))
@@ -18,8 +19,13 @@ def test_detects_a_run_file_past_its_preamble(tmp_path):
 
 def test_loads_columns_without_the_run_suffix(tmp_path):
     df = datasets.load_dataset(write_run(tmp_path / "run.005.text", rows=50))
-    assert list(df.columns) == ["Timestamp", "Norminal_FIeld", "M006_AH", "M011_AH",
-                                "Source_Run"]
+    assert list(df.columns) == [
+        "Timestamp",
+        "Norminal_FIeld",
+        "M006_AH",
+        "M011_AH",
+        "Source_Run",
+    ]
     assert len(df) == 50
     assert df["Norminal_FIeld"].iloc[0] == pytest.approx(28)
 
@@ -36,7 +42,9 @@ def test_other_delimiters_and_no_header(tmp_path):
 
 def test_a_saved_format_that_no_longer_fits_falls_back_to_detection(tmp_path):
     path = write_run(tmp_path / "run.005.text", rows=20)
-    df = datasets.load_dataset(path, {"delimiter": "tab", "header_line": 2, "data_line": 3})
+    df = datasets.load_dataset(
+        path, {"delimiter": "tab", "header_line": 2, "data_line": 3}
+    )
     assert "M006_AH" in df
 
 
@@ -62,10 +70,12 @@ def test_finds_data_files_and_names_runs(tmp_path):
 
 # --- profiles ---------------------------------------------------------------
 
+
 def test_profile_reads_and_rejects(tmp_path):
     assert profile.load_profile(None) == (profile.Profile(), "")
-    (tmp_path / profile.PROFILE_NAME).write_text(json.dumps(
-        {"units": {"AH": "bridge units"}, "format": {"delimiter": ""}}))
+    (tmp_path / profile.PROFILE_NAME).write_text(
+        json.dumps({"units": {"AH": "bridge units"}, "format": {"delimiter": ""}})
+    )
     loaded, error = profile.load_profile(tmp_path)
     assert loaded.units == {"AH": "bridge units"} and loaded.format is None
     assert "'format' ignored" in error
@@ -85,6 +95,7 @@ def test_save_format_keeps_the_rest_of_the_profile(tmp_path):
 
 # --- column names and axis functions ----------------------------------------
 
+
 def test_sample_columns_match_their_profile_keys():
     labels = {"AH": "capacitance", "AH_Loss": "loss"}
     assert columns.label("M006_AH", labels) == "M006 capacitance"
@@ -99,7 +110,9 @@ def test_axis_functions():
     values = np.array([1.0, 2.0, 4.0])
     result, name = axis_functions.apply_function("1/B", values)
     assert name == "B" and np.allclose(result, [1, 0.5, 0.25])
-    assert np.allclose(axis_functions.apply_function("log10(x)", values)[0], np.log10(values))
+    assert np.allclose(
+        axis_functions.apply_function("log10(x)", values)[0], np.log10(values)
+    )
     assert np.isinf(axis_functions.apply_function("1/x", np.array([0.0]))[0][0])
     assert axis_functions.is_identity("") and axis_functions.is_identity("x")
     assert not axis_functions.is_identity("exp")
@@ -112,5 +125,7 @@ def test_axis_functions_refuse_what_they_cant_use():
         axis_functions.apply_function("x*y", np.ones(2))
     with pytest.raises(ValueError, match="none"):
         axis_functions.apply_function("2*pi", np.ones(2))
-    with pytest.raises(ValueError, match="open, x"):  # any other name is a second quantity
+    with pytest.raises(
+        ValueError, match="open, x"
+    ):  # any other name is a second quantity
         axis_functions.apply_function("open(x)", np.ones(2))

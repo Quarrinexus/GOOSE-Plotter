@@ -80,7 +80,6 @@ def exercise(app, tmp_path):
     app.update_idletasks()
 
 
-
 def test_every_control_runs(app, tmp_path):
     exercise(app, tmp_path)
     assert (tmp_path / "s.json").is_file() and (tmp_path / "m.csv").is_file()
