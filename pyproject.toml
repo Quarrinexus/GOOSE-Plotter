@@ -8,12 +8,12 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Alex Quarry", email = "52108977+Quarrinexus@users.noreply.github.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.15"
 dependencies = [
     "matplotlib>=3.11.2",
-    "numpy>=2.5.3",
-    "pandas>=3.0.6",
-    "pillow>=12.3.0",
+    "numpy>=2.5.5",
+    "pandas>=3.1.1",
+    "pillow>=13.0.0",
 ]
 
 [project.scripts]
@@ -25,7 +25,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
 ]
 
 [tool.pytest.ini_options]

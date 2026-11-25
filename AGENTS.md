@@ -11,7 +11,7 @@ this file is what isn't obvious from the code.
 uv run goose-plotter
 ```
 
-Python 3.13, managed by uv; dependencies are in `pyproject.toml`.
+Python 3.15, managed by uv; dependencies are in `pyproject.toml`.
 
 ## Tests
 

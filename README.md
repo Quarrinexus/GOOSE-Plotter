@@ -20,7 +20,7 @@ delimiter are detected automatically.
    git clone https://github.com/Quarrinexus/GOOSE-Plotter.git
    cd GOOSE-Plotter
    ```
-3. Run it. The first run downloads Python 3.13 and the dependencies into
+3. Run it. The first run downloads Python 3.15 and the dependencies into
    `.venv`; later runs start straight away.
    ```bash
    uv run goose-plotter
@@ -42,7 +42,7 @@ In PowerShell:
    ```
    or by downloading the ZIP from GitHub (Code > Download ZIP), extracting
    it, and running `cd` into the extracted folder.
-3. Run it. As on Linux, the first run downloads Python 3.13 (Tk included)
+3. Run it. As on Linux, the first run downloads Python 3.15 (Tk included)
    and the dependencies; later runs start straight away.
    ```powershell
    uv run goose-plotter
