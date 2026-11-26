@@ -17,13 +17,12 @@ delimiter are detected automatically.
    ```
 2. Get the code:
    ```bash
-   git clone https://github.com/Quarrinexus/GOOSE-Plotter.git
-   cd GOOSE-Plotter
+   uv tool install https://github.com/Quarrinexus/GOOSE-Plotter.git
    ```
-3. Run it. The first run downloads Python 3.15 and the dependencies into
-   `.venv`; later runs start straight away.
+   This also downloads Python 3.15 and the dependencies.
+3. Run it.
    ```bash
-   uv run goose-plotter
+   goose-plotter
    ```
 
 ### Windows
@@ -37,54 +36,26 @@ In PowerShell:
    ```
 2. Get the code, either with [Git for Windows](https://git-scm.com/download/win):
    ```powershell
-   git clone https://github.com/Quarrinexus/GOOSE-Plotter.git
-   cd GOOSE-Plotter
+   uv tool install https://github.com/Quarrinexus/GOOSE-Plotter.git
    ```
-   or by downloading the ZIP from GitHub (Code > Download ZIP), extracting
-   it, and running `cd` into the extracted folder.
-3. Run it. As on Linux, the first run downloads Python 3.15 (Tk included)
-   and the dependencies; later runs start straight away.
+   As on Linux, this also downloads Python 3.15 and the dependencies.
+3. Run it.
    ```powershell
-   uv run goose-plotter
+   goose-plotter
    ```
 
 Settings are kept in `C:\Users\<you>\.config\goose-plotter\settings.json`.
-
-### A command that works from any folder
-
-On any system, instead of `uv run` from the project folder:
-
-```bash
-uv tool install .
-```
-
-The command runs the code as it was when installed. After changing or
-updating the code, install it again from the project folder:
-
-`uv tool uninstall goose-plotter` removes it. If the `goose-plotter` command
-isn't found afterwards, run `uv tool update-shell` and open a new terminal.
 
 ## Update
 
 From the project folder, get the latest code:
 
 ```bash
-git pull
-```
-
-If you downloaded the ZIP instead, download it again and extract it over the
-old folder (or somewhere new).
-
-With `uv run goose-plotter` there's nothing more to do: the next run picks up
-the new code, and any new dependencies, by itself. If you installed the
-command with `uv tool install .`, reinstall it from the project folder:
-
-```bash
-uv tool install --reinstall .
+uv tool upgrade goose-plotter
 ```
 
 Your settings (`~/.config/goose-plotter/settings.json`) and each data folder's
-`goose-plotter.json` profile live outside the project folder, so updating
+`goose-plotter.json` profile live outside the main folder, so updating
 keeps them.
 
 ## Use
