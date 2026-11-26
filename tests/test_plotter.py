@@ -1106,3 +1106,23 @@ def test_a_closed_plot_cant_be_reopened_after_another_change(app):
     plot(app, x_fn="1/x")  # a change since: Ctrl+Z undoes that instead
     app.undo()
     assert len(app.plots) == 1 and app.panel.line.x_fn == "x"
+
+
+def test_each_action_draws_the_figure_once(app):
+    """A full draw is most of an action's time, so none should repeat it."""
+    plot(app)
+    app.update()
+    draws = []
+    draw = app.canvas.draw
+    app.canvas.draw = lambda: (draws.append(1), draw())
+    for action in (
+        lambda: add_step(app, "smooth"),
+        app.apply_controls,
+        lambda: app.set_layout(1, 2),
+        lambda: app._select_panel((0, 1)),
+        lambda: app._select_line(0),
+    ):
+        draws.clear()
+        action()
+        app.update()  # and any draw left for idle time
+        assert len(draws) == 1, action

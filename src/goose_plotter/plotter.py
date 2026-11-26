@@ -568,7 +568,6 @@ class Plotter(tk.Tk):
         for c in self.axes:
             self._frame(c)
         self._load_controls()
-        self.canvas.draw()
 
     # --- controls ---------------------------------------------------------
 
@@ -1919,8 +1918,9 @@ class Plotter(tk.Tk):
     def panel(self):
         return self.panels[self.selected]
 
-    def _load_controls(self):
-        """Show the selected line's settings in the controls."""
+    def _load_controls(self, draw=True):
+        """Show the selected line's settings in the controls, and draw the
+        figure unless `draw` is False (the caller draws once it's done)."""
         if self.layout_popup and self.layout_popup.winfo_exists():
             self.layout_popup.show(self.layout)
         self._fill_line_list()
@@ -1943,7 +1943,7 @@ class Plotter(tk.Tk):
         self.toolbar.enable(self.delete_button, len(self.panels) > 1)
         self._say("")
         self._show_error()
-        self._show_colour()
+        self._show_colour(draw=draw)
 
     def _fill_line_list(self):
         p, colours = self.panel, self._colours(self.panel)
@@ -2045,7 +2045,7 @@ class Plotter(tk.Tk):
             self.toolbar.push_current()
         for cell in self.axes:  # the locked panel's frame follows the selection
             self._frame(cell)
-        self._load_controls()  # loading a run can change the axis choices
+        self._load_controls(draw=False)  # loading a run can change the axis choices
         self._update_filename()
         self.canvas.draw()
         self._changed(merge)
@@ -2128,7 +2128,9 @@ class Plotter(tk.Tk):
         return values, tuple(f"{expr},   {name} = {t}" for t in texts)
 
     def _build_axes(self, merge=False):
-        """Recreate the axes, row by row, and draw every panel into them."""
+        """Recreate the axes, row by row, and draw every panel into them. The
+        figure is painted by the `_load_controls` that always follows, so the
+        marks it adds are in the one draw."""
         self.stop_picking()
         self.fig.clear()
         # A row each, then its panels, so rows can hold different numbers of
@@ -2149,7 +2151,6 @@ class Plotter(tk.Tk):
         for cell in self.axes:
             self._draw_panel(cell)
         self._update_filename()
-        self.canvas.draw()
         self._changed(merge=merge)
 
     # The stage named in a step's errors, by kind.
@@ -3400,8 +3401,7 @@ class Plotter(tk.Tk):
         """Fill the Measure tab from the selected panel, and redraw every panel's
         marks, as they follow each panel's selected line."""
         for cell in self.axes:
-            self._draw_marks(cell)
-        self.canvas.draw_idle()
+            self._draw_marks(cell)  # drawn by _load_controls, which calls this
         p = self.panel
         start, end = p.region or (None, None)
         self.region_from.set("" if start is None else f"{start:.12g}")
@@ -3644,9 +3644,10 @@ class Plotter(tk.Tk):
     def _curve_colours(self, panel):
         return curve_colours(panel, self.profile.samples, self.colour_map)
 
-    def _show_colour(self, move_picker=True, cells=None):
+    def _show_colour(self, move_picker=True, cells=None, draw=True):
         """Recolour the lines without a redraw, so zoom survives: in `cells`,
-        else the selected panel and those tied to it."""
+        else the selected panel and those tied to it. Draws the figure unless
+        `draw` is False."""
         p = self.panel
         colours = self._colours(p)
         for i, colour in enumerate(colours):
@@ -3666,7 +3667,8 @@ class Plotter(tk.Tk):
         self._show_style(colours[p.selected], move_picker)
         # Draw now rather than on idle: while the mouse is dragging in the
         # picker, idle callbacks can be held off and the line never repaints.
-        self.canvas.draw()
+        if draw:
+            self.canvas.draw()
 
     def pick_colour(self, colour):
         self.panel.line.colour = colour
@@ -3685,7 +3687,6 @@ class Plotter(tk.Tk):
         except OSError as err:
             self._say(f"Couldn't remember that: {err}", error=True)
         self._show_colour(cells=list(self.axes))
-        self.canvas.draw()
 
     def reset_colour(self):
         self.panel.line.colour = None
